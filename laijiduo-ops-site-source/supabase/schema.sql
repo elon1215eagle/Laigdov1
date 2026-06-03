@@ -1,0 +1,315 @@
+-- 萊吉多炸雞營運回報 App
+-- Supabase / PostgreSQL database schema
+
+create extension if not exists "pgcrypto";
+
+create type app_role as enum ('store_manager', 'hq', 'supervisor', 'admin');
+create type report_status as enum ('draft', 'submitted', 'needs_revision', 'approved', 'follow_up');
+create type review_action_type as enum ('approve', 'request_revision', 'assign_transfer', 'note');
+
+create table public.stores (
+  id uuid primary key default gen_random_uuid(),
+  store_code text not null unique,
+  name text not null,
+  area text not null default '高屏區',
+  manager_name text,
+  target_daily_revenue integer not null default 65000,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now()
+);
+
+create table public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  full_name text not null,
+  role app_role not null,
+  store_id uuid references public.stores(id),
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint store_manager_requires_store check (
+    role <> 'store_manager' or store_id is not null
+  )
+);
+
+create table public.products (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  sort_order integer not null,
+  is_active boolean not null default true
+);
+
+create table public.daily_reports (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id),
+  report_date date not null,
+  opened_to_1400_revenue integer not null default 0,
+  revenue_1400_to_1900 integer not null default 0,
+  revenue_1900_to_close integer not null default 0,
+  cash_difference integer,
+  status report_status not null default 'draft',
+  manager_note text,
+  submitted_by uuid references public.profiles(id),
+  submitted_at timestamptz,
+  reviewed_by uuid references public.profiles(id),
+  reviewed_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (store_id, report_date)
+);
+
+create view public.daily_report_totals as
+select
+  dr.*,
+  (
+    dr.opened_to_1400_revenue
+    + dr.revenue_1400_to_1900
+    + dr.revenue_1900_to_close
+  ) as total_revenue
+from public.daily_reports dr;
+
+create table public.inventory_counts (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references public.daily_reports(id) on delete cascade,
+  product_id uuid not null references public.products(id),
+  current_stock integer not null default 0,
+  safety_stock integer not null default 0,
+  loss_count integer not null default 0,
+  incoming_count integer not null default 0,
+  transfer_note text,
+  is_shortage boolean not null default false,
+  created_at timestamptz not null default now(),
+  unique (report_id, product_id)
+);
+
+create table public.report_photos (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references public.daily_reports(id) on delete cascade,
+  storage_path text not null,
+  caption text,
+  uploaded_by uuid references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table public.review_actions (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references public.daily_reports(id) on delete cascade,
+  action review_action_type not null,
+  note text,
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now()
+);
+
+create table public.store_supervisors (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id) on delete cascade,
+  supervisor_id uuid not null references public.profiles(id) on delete cascade,
+  unique (store_id, supervisor_id)
+);
+
+insert into public.stores (store_code, name, area, manager_name, target_daily_revenue) values
+  ('S01', '鳳山五甲店', '高屏區', '阿瑄店長', 68000),
+  ('S02', '鳳山凱旋店', '高屏區', '阿斌店長', 62000),
+  ('S03', '鳳山武廟店', '高屏區', '阿斌店長', 59000),
+  ('S04', '鳳山中山店', '高屏區', '樂樂店長', 64000),
+  ('S05', '前鎮隆興店', '高屏區', '威廷代副店', 72000),
+  ('S06', '鳳山南華店', '高屏區', '阿瑄店長', 76000),
+  ('S07', '三民鼎山店', '高屏區', '超哥店長', 53000),
+  ('S08', '三民大昌店', '高屏區', '仕鈞店長', 50000),
+  ('S09', '三民義華店', '高屏區', '阿銘店長', 66000),
+  ('S10', '屏東潮洲店', '高屏區', '以得店長', 74000),
+  ('S11', '屏東潮洲二店', '高屏區', '以得店長', 47000);
+
+insert into public.products (name, sort_order) values
+  ('雞翅', 1),
+  ('雞腿', 2),
+  ('腿排', 3),
+  ('雞排', 4),
+  ('脖子', 5),
+  ('三角骨', 6),
+  ('雞米花', 7),
+  ('花枝丸', 8),
+  ('米血', 9),
+  ('黑輪片', 10),
+  ('大熱狗', 11),
+  ('雞塊', 12),
+  ('地瓜', 13),
+  ('雞皮', 14);
+
+create or replace function public.current_profile_role()
+returns app_role
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select role from public.profiles where id = auth.uid()
+$$;
+
+create or replace function public.current_profile_store_id()
+returns uuid
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select store_id from public.profiles where id = auth.uid()
+$$;
+
+alter table public.stores enable row level security;
+alter table public.profiles enable row level security;
+alter table public.products enable row level security;
+alter table public.daily_reports enable row level security;
+alter table public.inventory_counts enable row level security;
+alter table public.report_photos enable row level security;
+alter table public.review_actions enable row level security;
+alter table public.store_supervisors enable row level security;
+
+create policy "active users can read products"
+on public.products for select
+to authenticated
+using (is_active = true);
+
+create policy "users can read their profile"
+on public.profiles for select
+to authenticated
+using (
+  id = auth.uid()
+  or public.current_profile_role() in ('hq', 'supervisor', 'admin')
+);
+
+create policy "admins manage profiles"
+on public.profiles for all
+to authenticated
+using (public.current_profile_role() = 'admin')
+with check (public.current_profile_role() = 'admin');
+
+create policy "store visibility by role"
+on public.stores for select
+to authenticated
+using (
+  public.current_profile_role() in ('hq', 'supervisor', 'admin')
+  or id = public.current_profile_store_id()
+);
+
+create policy "admin manages stores"
+on public.stores for all
+to authenticated
+using (public.current_profile_role() = 'admin')
+with check (public.current_profile_role() = 'admin');
+
+create policy "read reports by role"
+on public.daily_reports for select
+to authenticated
+using (
+  public.current_profile_role() in ('hq', 'admin')
+  or store_id = public.current_profile_store_id()
+  or exists (
+    select 1 from public.store_supervisors ss
+    where ss.store_id = daily_reports.store_id
+      and ss.supervisor_id = auth.uid()
+  )
+);
+
+create policy "store managers create own reports"
+on public.daily_reports for insert
+to authenticated
+with check (
+  public.current_profile_role() = 'store_manager'
+  and store_id = public.current_profile_store_id()
+  and submitted_by = auth.uid()
+);
+
+create policy "store managers update own editable reports"
+on public.daily_reports for update
+to authenticated
+using (
+  public.current_profile_role() = 'store_manager'
+  and store_id = public.current_profile_store_id()
+  and status in ('draft', 'needs_revision')
+)
+with check (
+  public.current_profile_role() = 'store_manager'
+  and store_id = public.current_profile_store_id()
+);
+
+create policy "supervisors update assigned reports"
+on public.daily_reports for update
+to authenticated
+using (
+  public.current_profile_role() in ('supervisor', 'admin')
+  and (
+    public.current_profile_role() = 'admin'
+    or exists (
+      select 1 from public.store_supervisors ss
+      where ss.store_id = daily_reports.store_id
+        and ss.supervisor_id = auth.uid()
+    )
+  )
+)
+with check (public.current_profile_role() in ('supervisor', 'admin'));
+
+create policy "read inventory through report access"
+on public.inventory_counts for select
+to authenticated
+using (
+  exists (
+    select 1 from public.daily_reports dr
+    where dr.id = inventory_counts.report_id
+      and (
+        public.current_profile_role() in ('hq', 'admin')
+        or dr.store_id = public.current_profile_store_id()
+        or exists (
+          select 1 from public.store_supervisors ss
+          where ss.store_id = dr.store_id
+            and ss.supervisor_id = auth.uid()
+        )
+      )
+  )
+);
+
+create policy "store managers manage inventory for own editable reports"
+on public.inventory_counts for all
+to authenticated
+using (
+  exists (
+    select 1 from public.daily_reports dr
+    where dr.id = inventory_counts.report_id
+      and dr.store_id = public.current_profile_store_id()
+      and dr.status in ('draft', 'needs_revision')
+  )
+)
+with check (
+  exists (
+    select 1 from public.daily_reports dr
+    where dr.id = inventory_counts.report_id
+      and dr.store_id = public.current_profile_store_id()
+      and dr.status in ('draft', 'needs_revision')
+  )
+);
+
+create policy "read review actions through report access"
+on public.review_actions for select
+to authenticated
+using (
+  exists (
+    select 1 from public.daily_reports dr
+    where dr.id = review_actions.report_id
+      and (
+        public.current_profile_role() in ('hq', 'admin')
+        or dr.store_id = public.current_profile_store_id()
+        or exists (
+          select 1 from public.store_supervisors ss
+          where ss.store_id = dr.store_id
+            and ss.supervisor_id = auth.uid()
+        )
+      )
+  )
+);
+
+create policy "supervisors create review actions"
+on public.review_actions for insert
+to authenticated
+with check (
+  public.current_profile_role() in ('supervisor', 'admin')
+  and created_by = auth.uid()
+);
