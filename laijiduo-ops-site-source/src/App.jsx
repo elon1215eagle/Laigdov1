@@ -254,7 +254,7 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
       <section className="entry-copy">
         <div className="brand-mark">萊</div>
         <h1>萊吉多營運回報入口</h1>
-        <p>門店回報營收、庫存與差異，總部與督導可即時查看每日營運狀況。</p>
+        <p>門店回報營收、庫存與差異，總部與營運督導可即時查看每日營運狀況。</p>
         <label>
           選擇門店
           <select onChange={(event) => onSelectStore(event.target.value)} defaultValue="">
@@ -266,13 +266,13 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
         </label>
         <div className="entry-actions">
           <button className="primary" onClick={() => onRole("hq")}>總部儀表板</button>
-          <button onClick={() => onRole("review")}>督導審核</button>
+          <button onClick={() => onRole("review")}>營運督導審核</button>
         </div>
       </section>
       <section className="entry-panels">
         <Info title="門店回報" text="依 14:00、19:00、打烊三個時段填寫營收，並補上現金差異與備註。" />
         <Info title="總部總覽" text="快速查看各門店營收、達成率、庫存狀態與待審核數量。" />
-        <Info title="督導審核" text="針對異常回報進行通過、退回修改或指派追蹤。" />
+        <Info title="營運督導審核" text="針對異常回報進行通過、退回修改或指派追蹤。" />
       </section>
     </main>
   );
@@ -294,7 +294,7 @@ function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedS
           {[
             ["hq", "總部"],
             ["store", "門店"],
-            ["review", "督導"],
+            ["review", "營運督導"],
           ].map(([key, label]) => (
             <button key={key} className={role === key ? "active" : ""} onClick={() => setRole(key)}>{label}</button>
           ))}
@@ -328,7 +328,7 @@ function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedS
 }
 
 function TopBar({ role, report }) {
-  const title = role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "督導審核台";
+  const title = role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "營運督導審核台";
   return (
     <header className="topbar">
       <div>
@@ -356,7 +356,7 @@ function HqDashboard({ reports, onSelect }) {
       <section className="kpi-strip">
         <Metric label="今日總營收" value={money(summary.total)} detail={`目標 ${money(summary.target)}`} tone="hot" />
         <Metric label="整體達成率" value={pct((summary.total / summary.target) * 100)} detail="依今日目標計算" />
-        <Metric label="待審核" value={`${reports.filter((report) => report.status === "submitted").length} 間`} detail="等待督導確認" tone="warn" />
+        <Metric label="待審核" value={`${reports.filter((report) => report.status === "submitted").length} 間`} detail="等待營運督導確認" tone="warn" />
         <Metric label="需追蹤" value={`${reports.filter((report) => report.status === "follow_up").length} 間`} detail="異常或補貨需求" tone="bad" />
         <Metric label="已達標" value={`${reports.filter((report) => totalRevenue(report) >= report.target).length} 間`} detail="營收高於目標" tone="good" />
       </section>
