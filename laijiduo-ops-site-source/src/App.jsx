@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   fetchDailyReports,
+  fetchInventoryCounts,
   fetchProducts,
   fetchStores,
   getSessionProfile,
@@ -15,7 +16,12 @@ import {
 } from "./lib/api";
 import { mockProfile, productsSeed, storesSeed } from "./lib/mockData";
 
-const today = new Date().toISOString().slice(0, 10);
+const today = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Taipei",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+}).format(new Date());
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const pct = (value) => `${Math.round(value || 0)}%`;
@@ -54,11 +60,11 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
-  async function loadWorkspace(nextProfile = profile) {
+  async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId) {
     const [storeRows, productRows] = await Promise.all([fetchStores(), fetchProducts()]);
     setStores(storeRows);
     setProducts(productRows);
-    setSelectedStoreId(nextProfile?.store_id || storeRows[0]?.id || "");
+    setSelectedStoreId(nextProfile?.store_id || preferredStoreId || storeRows[0]?.id || "");
 
     const reportRows = await fetchDailyReports(today);
     const byStore = new Map(reportRows.map((report) => [report.store_id || report.id, report]));
@@ -125,20 +131,20 @@ export function App() {
   }
 
   async function saveReport(form, inventoryRows) {
-    const payload = {
-      store_id: selectedReport.store_id,
-      report_date: today,
-      opened_to_1400_revenue: Number(form.opened_to_1400_revenue),
-      revenue_1400_to_1900: Number(form.revenue_1400_to_1900),
-      revenue_1900_to_close: Number(form.revenue_1900_to_close),
-      cash_difference: Number(form.cash_difference || 0),
-      manager_note: form.manager_note,
-      status: "submitted",
-      submitted_at: new Date().toISOString(),
-      submitted_by: profile?.id,
-    };
-    const saved = await upsertDailyReport(payload);
-    if (saved.id) {
+    try {
+      const payload = {
+        store_id: selectedReport.store_id,
+        report_date: today,
+        opened_to_1400_revenue: Number(form.opened_to_1400_revenue),
+        revenue_1400_to_1900: Number(form.revenue_1400_to_1900),
+        revenue_1900_to_close: Number(form.revenue_1900_to_close),
+        cash_difference: Number(form.cash_difference || 0),
+        manager_note: form.manager_note,
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+        submitted_by: profile?.id,
+      };
+      const saved = await upsertDailyReport(payload);
       await upsertInventoryCounts(
         saved.id,
         inventoryRows.map((row) => ({
@@ -151,23 +157,65 @@ export function App() {
           is_shortage: Number(row.current_stock || 0) < Number(row.safety_stock || 0),
         })),
       );
+      await loadWorkspace(profile, selectedReport.store_id);
+      show("營運回報與庫存已送出");
+      return true;
+    } catch (error) {
+      show(`送出失敗：${error.message}`);
+      return false;
     }
-    setReports((current) => current.map((report) => (
-      report.store_id === selectedReport.store_id
-        ? { ...report, ...payload, status: "submitted", updated_at_label: "剛剛" }
-        : report
-    )));
-    show("營運回報已送出");
   }
 
   async function handleReview(action, status) {
-    if (selectedReport?.id) {
-      await reviewReport(selectedReport.id, action, "", status);
+    if (!selectedReport?.id) {
+      show("此門店尚未送出回報");
+      return false;
     }
-    setReports((current) => current.map((report) => (
-      report.store_id === selectedReport.store_id ? { ...report, status, updated_at_label: "剛剛" } : report
-    )));
-    show("審核狀態已更新");
+    try {
+      await reviewReport(selectedReport.id, action, "", status);
+      await loadWorkspace(profile, selectedReport.store_id);
+      show("審核狀態已更新");
+      return true;
+    } catch (error) {
+      show(`審核失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function syncWorkspace() {
+    setLoading(true);
+    try {
+      await loadWorkspace(profile);
+      show("資料已同步");
+    } catch (error) {
+      show(`同步失敗：${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function exportReports() {
+    const headers = ["門店代碼", "門店", "店長", "日期", "14:00", "19:00", "打烊", "總營收", "現金差異", "狀態"];
+    const rows = reports.map((report) => [
+      report.store_code,
+      report.name,
+      report.manager_name,
+      report.report_date,
+      report.opened_to_1400_revenue,
+      report.revenue_1400_to_1900,
+      report.revenue_1900_to_close,
+      totalRevenue(report),
+      report.cash_difference ?? "",
+      statusLabel(report.status),
+    ]);
+    const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const csv = [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    link.download = `萊吉多營運回報-${today}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    show("報表已匯出");
   }
 
   if (loading) return <main className="loading">載入中...</main>;
@@ -201,7 +249,7 @@ export function App() {
         onSignOut={handleSignOut}
       />
       <main className="content">
-        <TopBar role={role} report={selectedReport} />
+        <TopBar role={role} report={selectedReport} onSync={syncWorkspace} onExport={exportReports} />
         {!hasSupabaseConfig && (
           <div className="notice">目前使用示範資料。部署後請在 Vercel 設定 Supabase 環境變數，即可切換為正式資料。</div>
         )}
@@ -311,11 +359,7 @@ function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedS
         ))}
       </select>
       <nav className="side-nav">
-        <button className="active">每日回報</button>
-        <button>營收分析</button>
-        <button>庫存回報</button>
-        <button>異常追蹤</button>
-        <button>審核紀錄</button>
+        <button className="active" disabled>每日營運回報</button>
       </nav>
       <div className="sidebar-note">
         <span>{profile?.full_name || "示範使用者"}</span>
@@ -327,7 +371,7 @@ function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedS
   );
 }
 
-function TopBar({ role, report }) {
+function TopBar({ role, report, onSync, onExport }) {
   const title = role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "營運督導審核台";
   return (
     <header className="topbar">
@@ -336,8 +380,8 @@ function TopBar({ role, report }) {
         <h1>{title}</h1>
       </div>
       <div className="top-actions">
-        <button>匯出 Excel</button>
-        <button className="primary">同步資料</button>
+        <button onClick={onExport}>匯出 CSV</button>
+        <button className="primary" onClick={onSync}>同步資料</button>
       </div>
     </header>
   );
@@ -427,6 +471,7 @@ function StoreReport({ report, products, onSave }) {
     manager_note: report.manager_note || "",
   });
   const [inventory, setInventory] = useState(products);
+  const [saving, setSaving] = useState(false);
   const currentTotal = totalRevenue(form);
 
   useEffect(() => {
@@ -439,7 +484,29 @@ function StoreReport({ report, products, onSave }) {
     });
   }, [report]);
 
-  useEffect(() => setInventory(products), [products]);
+  useEffect(() => {
+    let active = true;
+    async function loadInventory() {
+      try {
+        const savedRows = await fetchInventoryCounts(report.id);
+        if (!active) return;
+        const byProduct = new Map(savedRows.map((row) => [row.product_id, row]));
+        setInventory(products.map((product) => ({ ...product, ...byProduct.get(product.id) })));
+      } catch {
+        if (active) setInventory(products);
+      }
+    }
+    loadInventory();
+    return () => {
+      active = false;
+    };
+  }, [products, report.id]);
+
+  async function submit() {
+    setSaving(true);
+    await onSave(form, inventory);
+    setSaving(false);
+  }
 
   return (
     <div className="workspace mobile-layout">
@@ -476,7 +543,9 @@ function StoreReport({ report, products, onSave }) {
         ) : (
           <InventoryEditor rows={inventory} onChange={setInventory} />
         )}
-        <button className="submit-button" onClick={() => onSave(form, inventory)}>送出每日回報</button>
+        <button className="submit-button" disabled={saving} onClick={submit}>
+          {saving ? "送出中..." : "送出每日回報"}
+        </button>
       </section>
       <section className="panel companion">
         <div className="panel-head"><h2>門店狀態</h2><p>{report.manager_name}</p></div>
@@ -524,6 +593,33 @@ function InventoryEditor({ rows, onChange }) {
 }
 
 function ReviewConsole({ reports, report, products, onSelect, onReview }) {
+  const [inventory, setInventory] = useState(products);
+  const [reviewing, setReviewing] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    async function loadInventory() {
+      try {
+        const savedRows = await fetchInventoryCounts(report.id);
+        if (!active) return;
+        const byProduct = new Map(savedRows.map((row) => [row.product_id, row]));
+        setInventory(products.map((product) => ({ ...product, ...byProduct.get(product.id) })));
+      } catch {
+        if (active) setInventory(products);
+      }
+    }
+    loadInventory();
+    return () => {
+      active = false;
+    };
+  }, [products, report.id]);
+
+  async function review(action, status) {
+    setReviewing(true);
+    await onReview(action, status);
+    setReviewing(false);
+  }
+
   return (
     <div className="workspace review-grid">
       <section className="status-board">
@@ -563,7 +659,7 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
               <tr><th>品項</th><th>現存</th><th>安全庫存</th><th>報廢</th><th>進貨</th><th>調撥</th></tr>
             </thead>
             <tbody>
-              {products.map((item) => (
+              {inventory.map((item) => (
                 <tr key={item.id}>
                   <td><strong>{item.name}</strong></td>
                   <td>{item.current_stock}</td>
@@ -579,9 +675,9 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
       </section>
       <section className="panel action-rail">
         <div className="panel-head"><h2>審核動作</h2><p>更新回報狀態</p></div>
-        <button className="primary" onClick={() => onReview("approve", "approved")}>通過</button>
-        <button onClick={() => onReview("request_revision", "needs_revision")}>退回修改</button>
-        <button onClick={() => onReview("assign_transfer", "follow_up")}>指派追蹤</button>
+        <button disabled={reviewing} className="primary" onClick={() => review("approve", "approved")}>通過</button>
+        <button disabled={reviewing} onClick={() => review("request_revision", "needs_revision")}>退回修改</button>
+        <button disabled={reviewing} onClick={() => review("assign_transfer", "follow_up")}>指派追蹤</button>
       </section>
     </div>
   );
