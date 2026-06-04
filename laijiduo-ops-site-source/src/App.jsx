@@ -571,8 +571,8 @@ function InventoryEditor({ rows, onChange }) {
       {rows.map((row, index) => (
         <div className="stock-row" key={row.id}>
           <div>
-            <strong>{row.name}</strong>
-            <span>安全庫存 {row.safety_stock} · 報廢 {row.loss_count}</span>
+            <strong>{row.name}（{row.unit}）</strong>
+            <span>安全庫存 {row.safety_stock} {row.unit} · 報廢 {row.loss_count} {row.unit}</span>
           </div>
           <input
             type="number"
@@ -661,7 +661,7 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
             <tbody>
               {inventory.map((item) => (
                 <tr key={item.id}>
-                  <td><strong>{item.name}</strong></td>
+                  <td><strong>{item.name}（{item.unit}）</strong></td>
                   <td>{item.current_stock}</td>
                   <td>{item.safety_stock}</td>
                   <td>{item.loss_count}</td>
