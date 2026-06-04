@@ -1,15 +1,15 @@
 # 萊吉多炸雞營運回報網站
 
-給門店、總部與督導使用的每日營運回報系統。前端使用 React + Vite，資料與登入使用 Supabase，部署目標為 Vercel。
+給門店、總部與營運督導使用的每日營運回報系統。前端使用 React + Vite，資料與登入使用 Supabase，部署目標為 Vercel。
 
 ## 功能
 
 - Supabase Email / Password 登入
-- 依角色切換門店、總部、督導介面
+- 依角色切換門店、總部、營運督導介面
 - 門店填寫 14:00、19:00、打烊三段營收
 - 門店回報庫存、安全庫存、報廢、進貨與調撥備註
 - 總部查看每日營收、達成率、現金差異與回報狀態
-- 督導審核回報，支援通過、退回修改、指派追蹤
+- 營運督導審核回報，支援通過、退回修改、指派追蹤
 - 未設定 Supabase 時自動使用示範資料
 
 ## 本機開發
@@ -30,7 +30,7 @@ npm run dev
 
 - 門店：`role = store_manager`，必須設定 `store_id`
 - 總部：`role = hq`
-- 督導：`role = supervisor`
+- 營運督導：`role = supervisor`
 - 管理員：`role = admin`
 
 建立門店帳號 profile 範例：
