@@ -45,9 +45,12 @@ create table if not exists public.profiles (
 create table if not exists public.products (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
+  unit text not null default '箱',
   sort_order integer not null,
   is_active boolean not null default true
 );
+
+alter table public.products add column if not exists unit text not null default '箱';
 
 create table if not exists public.daily_reports (
   id uuid primary key default gen_random_uuid(),
@@ -137,24 +140,36 @@ on conflict (store_code) do update set
   target_daily_revenue = excluded.target_daily_revenue,
   is_active = true;
 
-insert into public.products (name, sort_order) values
-  ('招牌炸雞', 1),
-  ('雞腿', 2),
-  ('雞翅', 3),
-  ('雞塊', 4),
-  ('薯條', 5),
-  ('洋蔥圈', 6),
-  ('甜不辣', 7),
-  ('雞米花', 8),
-  ('可樂', 9),
-  ('紅茶', 10),
-  ('綠茶', 11),
-  ('醬料包', 12),
-  ('紙袋', 13),
-  ('餐盒', 14)
+insert into public.products (name, unit, sort_order) values
+  ('雞翅', '箱', 1),
+  ('腿排', '箱', 2),
+  ('雞腿', '箱', 3),
+  ('雞排', '箱', 4),
+  ('雞米花', '箱', 5),
+  ('三角骨', '箱', 6),
+  ('雞脖子', '箱', 7),
+  ('雞皮', '支', 8),
+  ('米血', '包', 9),
+  ('花枝丸', '包', 10),
+  ('黑輪', '包', 11),
+  ('熱狗', '包', 12),
+  ('雞塊', '包', 13),
+  ('地瓜', '袋', 14),
+  ('炸油', '桶', 15),
+  ('醃粉', '箱', 16),
+  ('湯翅粉', '箱', 17),
+  ('薯脆粉', '箱', 18)
 on conflict (name) do update set
+  unit = excluded.unit,
   sort_order = excluded.sort_order,
   is_active = true;
+
+update public.products
+set is_active = false
+where name not in (
+  '雞翅', '腿排', '雞腿', '雞排', '雞米花', '三角骨', '雞脖子', '雞皮',
+  '米血', '花枝丸', '黑輪', '熱狗', '雞塊', '地瓜', '炸油', '醃粉', '湯翅粉', '薯脆粉'
+);
 
 create or replace function public.current_profile_role()
 returns app_role
