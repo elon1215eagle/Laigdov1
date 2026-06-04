@@ -13,8 +13,8 @@ export function statusLabel(status) {
   return {
     draft: "草稿",
     submitted: "待審核",
-    needs_revision: "需補件",
-    approved: "審核通過",
+    needs_revision: "需修改",
+    approved: "已通過",
     follow_up: "需追蹤",
   }[status] || status;
 }
@@ -33,7 +33,8 @@ export async function signOut() {
 
 export async function getSessionProfile() {
   if (!supabase) return null;
-  const { data: sessionData } = await supabase.auth.getSession();
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
   const user = sessionData.session?.user;
   if (!user) return null;
 
@@ -111,8 +112,9 @@ export async function upsertInventoryCounts(reportId, rows) {
 export async function reviewReport(reportId, action, note, status) {
   if (!supabase) return { reportId, action, note, status };
 
-  const { data: profile } = await supabase.auth.getUser();
-  const userId = profile.user?.id;
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData.user?.id;
 
   const { error: reportError } = await supabase
     .from("daily_reports")
