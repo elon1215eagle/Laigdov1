@@ -228,7 +228,7 @@ create policy "read reports by role"
 on public.daily_reports for select
 to authenticated
 using (
-  public.current_profile_role() in ('hq', 'admin')
+  public.current_profile_role() in ('hq', 'supervisor', 'admin')
   or store_id = public.current_profile_store_id()
   or exists (
     select 1 from public.store_supervisors ss
@@ -244,6 +244,15 @@ to authenticated
 with check (
   public.current_profile_role() = 'store_manager'
   and store_id = public.current_profile_store_id()
+  and submitted_by = auth.uid()
+);
+
+drop policy if exists "admins create reports" on public.daily_reports;
+create policy "admins create reports"
+on public.daily_reports for insert
+to authenticated
+with check (
+  public.current_profile_role() = 'admin'
   and submitted_by = auth.uid()
 );
 
@@ -267,14 +276,6 @@ on public.daily_reports for update
 to authenticated
 using (
   public.current_profile_role() in ('supervisor', 'admin')
-  and (
-    public.current_profile_role() = 'admin'
-    or exists (
-      select 1 from public.store_supervisors ss
-      where ss.store_id = daily_reports.store_id
-        and ss.supervisor_id = auth.uid()
-    )
-  )
 )
 with check (public.current_profile_role() in ('supervisor', 'admin'));
 
@@ -287,7 +288,7 @@ using (
     select 1 from public.daily_reports dr
     where dr.id = inventory_counts.report_id
       and (
-        public.current_profile_role() in ('hq', 'admin')
+        public.current_profile_role() in ('hq', 'supervisor', 'admin')
         or dr.store_id = public.current_profile_store_id()
         or exists (
           select 1 from public.store_supervisors ss
@@ -319,6 +320,13 @@ with check (
   )
 );
 
+drop policy if exists "admins manage inventory" on public.inventory_counts;
+create policy "admins manage inventory"
+on public.inventory_counts for all
+to authenticated
+using (public.current_profile_role() = 'admin')
+with check (public.current_profile_role() = 'admin');
+
 drop policy if exists "read review actions through report access" on public.review_actions;
 create policy "read review actions through report access"
 on public.review_actions for select
@@ -328,7 +336,7 @@ using (
     select 1 from public.daily_reports dr
     where dr.id = review_actions.report_id
       and (
-        public.current_profile_role() in ('hq', 'admin')
+        public.current_profile_role() in ('hq', 'supervisor', 'admin')
         or dr.store_id = public.current_profile_store_id()
         or exists (
           select 1 from public.store_supervisors ss
@@ -346,4 +354,13 @@ to authenticated
 with check (
   public.current_profile_role() in ('supervisor', 'admin')
   and created_by = auth.uid()
+);
+
+drop policy if exists "supervisors read stores assignments" on public.store_supervisors;
+create policy "supervisors read stores assignments"
+on public.store_supervisors for select
+to authenticated
+using (
+  supervisor_id = auth.uid()
+  or public.current_profile_role() = 'admin'
 );

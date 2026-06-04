@@ -55,7 +55,14 @@ export async function fetchProducts() {
     .eq("is_active", true)
     .order("sort_order");
   if (error) throw error;
-  return data;
+  return data.map((product) => ({
+    ...product,
+    current_stock: 0,
+    safety_stock: 0,
+    loss_count: 0,
+    incoming_count: 0,
+    transfer_note: "",
+  }));
 }
 
 export async function fetchStores() {
@@ -85,6 +92,16 @@ export async function fetchDailyReports(reportDate) {
     manager_name: report.stores?.manager_name,
     target: report.stores?.target_daily_revenue,
   }));
+}
+
+export async function fetchInventoryCounts(reportId) {
+  if (!supabase || !reportId) return [];
+  const { data, error } = await supabase
+    .from("inventory_counts")
+    .select("*")
+    .eq("report_id", reportId);
+  if (error) throw error;
+  return data;
 }
 
 export async function upsertDailyReport(payload) {
