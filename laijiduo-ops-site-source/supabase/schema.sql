@@ -90,11 +90,15 @@ create table if not exists public.inventory_counts (
   safety_stock integer not null default 0,
   loss_count integer not null default 0,
   incoming_count integer not null default 0,
+  incoming_source text not null default '廠商進貨',
   transfer_note text,
   is_shortage boolean not null default false,
   created_at timestamptz not null default now(),
   unique (report_id, product_id)
 );
+
+alter table public.inventory_counts
+add column if not exists incoming_source text not null default '廠商進貨';
 
 create table if not exists public.report_photos (
   id uuid primary key default gen_random_uuid(),

@@ -1,7 +1,9 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import {
   fetchDailyReports,
+  fetchDailyReportsRange,
   fetchInventoryCounts,
+  fetchInventoryCountsForReports,
   fetchProducts,
   fetchStores,
   getSessionProfile,
@@ -48,6 +50,27 @@ const today = getTaipeiBusinessDate();
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const pct = (value) => `${Math.round(value || 0)}%`;
+const usageCount = (row) => Number(row.incoming_count || 0) - Number(row.current_stock || 0) - Number(row.loss_count || 0);
+
+function addDays(dateText, days) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekRange(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const day = date.getUTCDay() || 7;
+  const start = addDays(dateText, 1 - day);
+  return { start, end: addDays(start, 6) };
+}
+
+function getMonthRange(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  return { start, end };
+}
 
 function tone(status) {
   if (status === "approved") return "good";
@@ -197,6 +220,7 @@ export function App() {
           safety_stock: Number(row.safety_stock || 0),
           loss_count: Number(row.loss_count || 0),
           incoming_count: Number(row.incoming_count || 0),
+          incoming_source: row.incoming_source || "廠商進貨",
           transfer_note: row.transfer_note || "",
           is_shortage: Number(row.current_stock || 0) < Number(row.safety_stock || 0),
         })),
@@ -298,7 +322,7 @@ export function App() {
         {!hasSupabaseConfig && (
           <div className="notice">目前使用示範資料。部署後請在 Vercel 設定 Supabase 環境變數，即可切換為正式資料。</div>
         )}
-        {role === "hq" && <HqDashboard reports={reports} onSelect={setSelectedStoreId} />}
+        {role === "hq" && <HqDashboard reports={reports} products={products} onSelect={setSelectedStoreId} />}
         {role === "store" && selectedReport && (
           <StoreReport report={selectedReport} products={products} onSave={saveReport} />
         )}
@@ -478,13 +502,43 @@ function TopBar({ role, report, onSync, onExport }) {
   );
 }
 
-function HqDashboard({ reports, onSelect }) {
+function HqDashboard({ reports, products, onSelect }) {
+  const [periodRows, setPeriodRows] = useState([]);
+  const [usageRows, setUsageRows] = useState([]);
+  const weekRange = useMemo(() => getWeekRange(today), []);
+  const monthRange = useMemo(() => getMonthRange(today), []);
+
+  useEffect(() => {
+    let active = true;
+    async function loadPeriodData() {
+      try {
+        const rows = await fetchDailyReportsRange(monthRange.start, monthRange.end);
+        if (!active) return;
+        setPeriodRows(rows);
+        const reportIds = rows.map((row) => row.id).filter(Boolean);
+        const inventoryRows = await fetchInventoryCountsForReports(reportIds);
+        if (active) setUsageRows(inventoryRows);
+      } catch {
+        if (active) {
+          setPeriodRows(reports);
+          setUsageRows([]);
+        }
+      }
+    }
+    loadPeriodData();
+    return () => {
+      active = false;
+    };
+  }, [monthRange.start, monthRange.end, reports]);
+
   const summary = useMemo(() => {
     const total = reports.reduce((sum, report) => sum + totalRevenue(report), 0);
     const target = reports.reduce((sum, report) => sum + Number(report.target || 0), 0);
     return { total, target };
   }, [reports]);
   const sorted = [...reports].sort((a, b) => totalRevenue(b) - totalRevenue(a));
+  const revenueSummary = useMemo(() => buildRevenueSummary(periodRows.length ? periodRows : reports), [periodRows, reports]);
+  const usageSummary = useMemo(() => buildUsageSummary(reports, products, periodRows, usageRows), [reports, products, periodRows, usageRows]);
 
   return (
     <div className="workspace hq-grid">
@@ -494,6 +548,22 @@ function HqDashboard({ reports, onSelect }) {
         <Metric label="待審核" value={`${reports.filter((report) => report.status === "submitted").length} 間`} detail="等待營運審核確認" tone="warn" />
         <Metric label="需追蹤" value={`${reports.filter((report) => report.status === "follow_up").length} 間`} detail="異常或補貨需求" tone="bad" />
         <Metric label="已達標" value={`${reports.filter((report) => totalRevenue(report) >= report.target).length} 間`} detail="營收高於目標" tone="good" />
+      </section>
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>營收與使用量彙總</h2>
+            <p>週統計為週一至週日；月統計為本月。</p>
+          </div>
+        </div>
+        <div className="summary-grid">
+          <Metric label="每日營收" value={money(revenueSummary.daily)} detail={`營業日 ${today}`} tone="hot" />
+          <Metric label="一週營收" value={money(revenueSummary.week)} detail={`${weekRange.start} 至 ${weekRange.end}`} />
+          <Metric label="當月營收" value={money(revenueSummary.month)} detail={`${monthRange.start} 至 ${monthRange.end}`} />
+          <Metric label="每日使用量" value={`${usageSummary.daily} 件`} detail="進貨-現存-報廢" tone="warn" />
+          <Metric label="一週使用量" value={`${usageSummary.week} 件`} detail="週一至週日" />
+          <Metric label="當月使用量" value={`${usageSummary.month} 件`} detail="本月累計" />
+        </div>
       </section>
       <section className="panel wide">
         <div className="panel-head">
@@ -548,8 +618,101 @@ function HqDashboard({ reports, onSelect }) {
           ))}
         </div>
       </section>
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>各門市產品使用量</h2>
+            <p>每日、一週、當月皆以「進貨 - 現存 - 報廢」計算。</p>
+          </div>
+        </div>
+        <div className="table-wrap compact">
+          <table>
+            <thead>
+              <tr>
+                <th>門店</th>
+                <th>品項</th>
+                <th>每日使用量</th>
+                <th>一週使用量</th>
+                <th>當月使用量</th>
+              </tr>
+            </thead>
+            <tbody>
+              {usageSummary.rows.map((row) => (
+                <tr key={`${row.storeId}-${row.productId}`}>
+                  <td><strong>{row.storeName}</strong></td>
+                  <td>{row.productName}</td>
+                  <td>{row.daily}</td>
+                  <td>{row.week}</td>
+                  <td>{row.month}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
+}
+
+function buildRevenueSummary(rows) {
+  const weekRange = getWeekRange(today);
+  const monthRange = getMonthRange(today);
+  return rows.reduce(
+    (summary, report) => {
+      const revenue = totalRevenue(report);
+      if (report.report_date === today) summary.daily += revenue;
+      if (report.report_date >= weekRange.start && report.report_date <= weekRange.end) summary.week += revenue;
+      if (report.report_date >= monthRange.start && report.report_date <= monthRange.end) summary.month += revenue;
+      return summary;
+    },
+    { daily: 0, week: 0, month: 0 },
+  );
+}
+
+function buildUsageSummary(dailyReports, products, periodReports, inventoryRows) {
+  const weekRange = getWeekRange(today);
+  const monthRange = getMonthRange(today);
+  const reportsById = new Map((periodReports.length ? periodReports : dailyReports).map((report) => [report.id, report]));
+  const storeNames = new Map(dailyReports.map((report) => [report.store_id || report.id, report.name]));
+  const productNames = new Map(products.map((product) => [product.id, product.name]));
+  const rowsByKey = new Map();
+  const summary = { daily: 0, week: 0, month: 0, rows: [] };
+
+  inventoryRows.forEach((row) => {
+    const report = reportsById.get(row.report_id);
+    if (!report) return;
+    const amount = usageCount(row);
+    const storeId = report.store_id || report.id;
+    const productId = row.product_id;
+    const key = `${storeId}-${productId}`;
+    if (!rowsByKey.has(key)) {
+      rowsByKey.set(key, {
+        storeId,
+        productId,
+        storeName: report.name || storeNames.get(storeId) || "未命名門店",
+        productName: row.name || productNames.get(productId) || "未命名品項",
+        daily: 0,
+        week: 0,
+        month: 0,
+      });
+    }
+    const item = rowsByKey.get(key);
+    if (report.report_date === today) {
+      item.daily += amount;
+      summary.daily += amount;
+    }
+    if (report.report_date >= weekRange.start && report.report_date <= weekRange.end) {
+      item.week += amount;
+      summary.week += amount;
+    }
+    if (report.report_date >= monthRange.start && report.report_date <= monthRange.end) {
+      item.month += amount;
+      summary.month += amount;
+    }
+  });
+
+  summary.rows = Array.from(rowsByKey.values()).sort((a, b) => a.storeName.localeCompare(b.storeName, "zh-Hant") || a.productName.localeCompare(b.productName, "zh-Hant"));
+  return summary;
 }
 
 function StoreReport({ report, products, onSave }) {
@@ -609,10 +772,11 @@ function StoreReport({ report, products, onSave }) {
           </div>
           <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
         </div>
-        <div className="alert-line">請確認三段營收、庫存與現金差異後送出。</div>
+        <div className="alert-line">請確認三段營收、庫存、進貨與現金差異後送出。</div>
         <div className="segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
           <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
+          <button className={tab === "incoming" ? "active" : ""} onClick={() => setTab("incoming")}>進貨</button>
         </div>
         {tab === "sales" ? (
           <div className="mobile-stack">
@@ -631,8 +795,10 @@ function StoreReport({ report, products, onSave }) {
               <p>今日目標 {money(report.target)}</p>
             </div>
           </div>
-        ) : (
+        ) : tab === "inventory" ? (
           <InventoryEditor rows={inventory} onChange={setInventory} />
+        ) : (
+          <IncomingEditor rows={inventory} onChange={setInventory} />
         )}
         <button className="submit-button" disabled={saving} onClick={submit}>
           {saving ? "送出中..." : "送出每日回報"}
@@ -660,20 +826,14 @@ function InventoryEditor({ rows, onChange }) {
   return (
     <div className="mobile-stack">
       {rows.map((row, index) => (
-        <div className="stock-row" key={row.id}>
+        <div className="stock-row stock-row-wide" key={row.id}>
           <div>
             <strong>{row.name}（{row.unit}）</strong>
-            <span>安全庫存 {row.safety_stock} {row.unit} · 報廢 {row.loss_count} {row.unit}</span>
+            <span>進貨 {row.incoming_count} {row.unit} · 使用量 {usageCount(row)} {row.unit}</span>
           </div>
-          <input
-            type="number"
-            value={row.current_stock}
-            onChange={(event) => {
-              const next = [...rows];
-              next[index] = { ...row, current_stock: Number(event.target.value) };
-              onChange(next);
-            }}
-          />
+          <NumberField label="現存" value={row.current_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock: value })} />
+          <NumberField label="安全庫存" value={row.safety_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { safety_stock: value })} />
+          <NumberField label="報廢" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
           <span className={`chip ${row.current_stock < row.safety_stock ? "bad" : "good"}`}>
             {row.current_stock < row.safety_stock ? "短缺" : "正常"}
           </span>
@@ -681,6 +841,54 @@ function InventoryEditor({ rows, onChange }) {
       ))}
     </div>
   );
+}
+
+function IncomingEditor({ rows, onChange }) {
+  return (
+    <div className="mobile-stack">
+      {rows.map((row, index) => (
+        <div className="stock-row stock-row-incoming" key={row.id}>
+          <div>
+            <strong>{row.name}（{row.unit}）</strong>
+            <span>與庫存品項相同，請填今日進貨數量與來源。</span>
+          </div>
+          <NumberField label="進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
+          <label className="mini-field">
+            <span>來源</span>
+            <select
+              value={row.incoming_source || "廠商進貨"}
+              onChange={(event) => updateInventoryRow(rows, onChange, index, row, { incoming_source: event.target.value })}
+            >
+              <option>廠商進貨</option>
+              <option>門店調貨</option>
+            </select>
+          </label>
+          <label className="mini-field">
+            <span>備註</span>
+            <input
+              value={row.transfer_note || ""}
+              onChange={(event) => updateInventoryRow(rows, onChange, index, row, { transfer_note: event.target.value })}
+            />
+          </label>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NumberField({ label, value, onChange }) {
+  return (
+    <label className="mini-field">
+      <span>{label}</span>
+      <input type="number" value={value || 0} onChange={(event) => onChange(Number(event.target.value))} />
+    </label>
+  );
+}
+
+function updateInventoryRow(rows, onChange, index, row, patch) {
+  const next = [...rows];
+  next[index] = { ...row, ...patch };
+  onChange(next);
 }
 
 function ReviewConsole({ reports, report, products, onSelect, onReview }) {
@@ -747,7 +955,7 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
         <div className="table-wrap compact">
           <table>
             <thead>
-              <tr><th>品項</th><th>現存</th><th>安全庫存</th><th>報廢</th><th>進貨</th><th>調撥</th></tr>
+              <tr><th>品項</th><th>現存</th><th>安全庫存</th><th>報廢</th><th>進貨</th><th>來源</th><th>今日使用量</th><th>備註</th></tr>
             </thead>
             <tbody>
               {inventory.map((item) => (
@@ -757,6 +965,8 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
                   <td>{item.safety_stock}</td>
                   <td>{item.loss_count}</td>
                   <td>{item.incoming_count}</td>
+                  <td>{item.incoming_source || "廠商進貨"}</td>
+                  <td><strong>{usageCount(item)}</strong></td>
                   <td>{item.transfer_note}</td>
                 </tr>
               ))}

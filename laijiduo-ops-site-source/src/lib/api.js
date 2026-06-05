@@ -61,7 +61,25 @@ export async function fetchProducts() {
     safety_stock: 0,
     loss_count: 0,
     incoming_count: 0,
+    incoming_source: "廠商進貨",
     transfer_note: "",
+  }));
+}
+
+function normalizeInventoryRow(row) {
+  const note = row.transfer_note || "";
+  const sourceMatch = note.match(/^來源：(廠商進貨|門店調貨)(?:｜(.*))?$/);
+  return {
+    ...row,
+    incoming_source: row.incoming_source || sourceMatch?.[1] || "廠商進貨",
+    transfer_note: sourceMatch ? sourceMatch[2] || "" : note,
+  };
+}
+
+function fallbackIncomingSourceRows(rows) {
+  return rows.map(({ incoming_source, transfer_note, ...row }) => ({
+    ...row,
+    transfer_note: `來源：${incoming_source || "廠商進貨"}${transfer_note ? `｜${transfer_note}` : ""}`,
   }));
 }
 
@@ -94,6 +112,26 @@ export async function fetchDailyReports(reportDate) {
   }));
 }
 
+export async function fetchDailyReportsRange(dateFrom, dateTo) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("daily_report_totals")
+    .select("*, stores(name, area, store_code, manager_name, target_daily_revenue)")
+    .gte("report_date", dateFrom)
+    .lte("report_date", dateTo)
+    .order("report_date")
+    .order("store_id");
+  if (error) throw error;
+  return data.map((report) => ({
+    ...report,
+    name: report.stores?.name,
+    area: report.stores?.area,
+    store_code: report.stores?.store_code,
+    manager_name: report.stores?.manager_name,
+    target: report.stores?.target_daily_revenue,
+  }));
+}
+
 export async function fetchInventoryCounts(reportId) {
   if (!supabase || !reportId) return [];
   const { data, error } = await supabase
@@ -101,7 +139,22 @@ export async function fetchInventoryCounts(reportId) {
     .select("*")
     .eq("report_id", reportId);
   if (error) throw error;
-  return data;
+  return data.map(normalizeInventoryRow);
+}
+
+export async function fetchInventoryCountsForReports(reportIds) {
+  if (!supabase || !reportIds?.length) return [];
+  const { data, error } = await supabase
+    .from("inventory_counts")
+    .select("*, products(name, unit, sort_order)")
+    .in("report_id", reportIds);
+  if (error) throw error;
+  return data.map((row) => normalizeInventoryRow({
+    ...row,
+    name: row.products?.name,
+    unit: row.products?.unit,
+    sort_order: row.products?.sort_order,
+  }));
 }
 
 export async function upsertDailyReport(payload) {
@@ -122,8 +175,16 @@ export async function upsertInventoryCounts(reportId, rows) {
     .from("inventory_counts")
     .upsert(payload, { onConflict: "report_id,product_id" })
     .select();
-  if (error) throw error;
-  return data;
+  if (!error) return data.map(normalizeInventoryRow);
+  if (!String(error.message || "").includes("incoming_source")) throw error;
+
+  const fallbackPayload = fallbackIncomingSourceRows(payload);
+  const fallbackResult = await supabase
+    .from("inventory_counts")
+    .upsert(fallbackPayload, { onConflict: "report_id,product_id" })
+    .select();
+  if (fallbackResult.error) throw fallbackResult.error;
+  return fallbackResult.data.map(normalizeInventoryRow);
 }
 
 export async function reviewReport(reportId, action, note, status) {

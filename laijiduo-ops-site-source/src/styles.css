@@ -371,10 +371,15 @@ textarea {
 
 .kpi-strip,
 .status-board,
-.checkpoint-grid {
+.checkpoint-grid,
+.summary-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
+}
+
+.summary-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
 }
 
 .kpi-strip,
@@ -708,6 +713,31 @@ tbody tr.selected,
   grid-template-columns: minmax(0, 1fr) 76px 62px;
   align-items: center;
   gap: 8px;
+}
+
+.stock-row-wide {
+  grid-template-columns: minmax(0, 1.35fr) 92px 92px 92px 62px;
+}
+
+.stock-row-incoming {
+  grid-template-columns: minmax(0, 1.2fr) 92px 132px minmax(120px, 1fr);
+}
+
+.mini-field {
+  display: grid;
+  gap: 5px;
+}
+
+.mini-field span {
+  color: #856d60;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.mini-field input,
+.mini-field select {
+  min-height: 36px;
+  padding: 0 8px;
 }
 
 .stock-row input {
@@ -1130,7 +1160,8 @@ tbody tr.selected,
 
   .kpi-strip,
   .status-board,
-  .checkpoint-grid {
+  .checkpoint-grid,
+  .summary-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1140,6 +1171,8 @@ tbody tr.selected,
 
   .input-card,
   .stock-row,
+  .stock-row-wide,
+  .stock-row-incoming,
   .evidence-card,
   .photo-strip,
   .form-grid,

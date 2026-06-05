@@ -55,6 +55,7 @@ export const productsSeed = [
   safety_stock: 0,
   loss_count: 0,
   incoming_count: 0,
+  incoming_source: "廠商進貨",
   transfer_note: "",
 }));
 
