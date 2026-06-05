@@ -17,12 +17,34 @@ import {
 import { mockProfile, productsSeed, storesSeed } from "./lib/mockData";
 import { InspectionApp } from "./InspectionApp";
 
-const today = new Intl.DateTimeFormat("en-CA", {
+const taipeiDateTimeParts = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Taipei",
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
-}).format(new Date());
+  hour: "2-digit",
+  hourCycle: "h23",
+}).formatToParts(new Date());
+
+function getPart(parts, type) {
+  return Number(parts.find((part) => part.type === type)?.value || 0);
+}
+
+function formatDateFromUtc(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getTaipeiBusinessDate(parts = taipeiDateTimeParts) {
+  const year = getPart(parts, "year");
+  const month = getPart(parts, "month");
+  const day = getPart(parts, "day");
+  const hour = getPart(parts, "hour");
+  const taipeiDateAsUtc = Date.UTC(year, month - 1, day);
+  const businessDate = hour < 6 ? new Date(taipeiDateAsUtc - 86400000) : new Date(taipeiDateAsUtc);
+  return formatDateFromUtc(businessDate);
+}
+
+const today = getTaipeiBusinessDate();
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const pct = (value) => `${Math.round(value || 0)}%`;
@@ -445,7 +467,7 @@ function TopBar({ role, report, onSync, onExport }) {
   return (
     <header className="topbar">
       <div>
-        <p>{today} · {report?.area || "全區"} · {report?.name || "尚未選擇門店"}</p>
+        <p>營業日 {today} · {report?.area || "全區"} · {report?.name || "尚未選擇門店"}</p>
         <h1>{title}</h1>
       </div>
       <div className="top-actions">
