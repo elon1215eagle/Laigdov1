@@ -1,5 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
-import "./styles.css";
+﻿import { useEffect, useMemo, useState } from "react";
+import {
+  fetchDailyReports,
+  fetchInventoryCounts,
+  fetchProducts,
+  fetchStores,
+  getSessionProfile,
+  hasSupabaseConfig,
+  reviewReport,
+  signIn,
+  signOut,
+  statusLabel,
+  totalRevenue,
+  upsertDailyReport,
+  upsertInventoryCounts,
+} from "./lib/api";
+import { mockProfile, productsSeed, storesSeed } from "./lib/mockData";
+import { InspectionApp } from "./InspectionApp";
 
 const today = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Asia/Taipei",
@@ -8,463 +24,443 @@ const today = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 }).format(new Date());
 
-const stores = [
-  { id: "fongshan-wujia", name: "鳳山五甲店", area: "高雄", manager: "未設定" },
-  { id: "fongshan-kaixuan", name: "鳳山凱旋店", area: "高雄", manager: "未設定" },
-  { id: "fongshan-wumiao", name: "鳳山武廟店", area: "高雄", manager: "未設定" },
-  { id: "fongshan-zhongshan", name: "鳳山中山店", area: "高雄", manager: "未設定" },
-  { id: "qianzhen-longxing", name: "前鎮隆興店", area: "高雄", manager: "未設定" },
-  { id: "fongshan-nanhua", name: "鳳山南華店", area: "高雄", manager: "未設定" },
-  { id: "sanmin-dingshan", name: "三民鼎山店", area: "高雄", manager: "未設定" },
-  { id: "sanmin-dachang", name: "三民大昌店", area: "高雄", manager: "未設定" },
-  { id: "sanmin-yihua", name: "三民義華店", area: "高雄", manager: "未設定" },
-  { id: "pingtung-chaozhou", name: "屏東潮洲店", area: "屏東", manager: "未設定" },
-  { id: "pingtung-chaozhou-2", name: "屏東潮洲店", area: "屏東", manager: "未設定" },
-];
+const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
+const pct = (value) => `${Math.round(value || 0)}%`;
 
-const categoryOptions = [
-  "營運管理",
-  "產品品質",
-  "前台服務",
-  "冰箱整潔",
-  "作業區衛生",
-  "店內衛生",
-  "店外環境",
-  "設備安全",
-  "其他",
-];
+function tone(status) {
+  if (status === "approved") return "good";
+  if (status === "submitted") return "warn";
+  return "bad";
+}
 
-const severityOptions = ["一般", "重要", "緊急"];
-const statusOptions = ["待確認", "待改善", "已改善"];
-
-const seedInspections = [
-  {
-    id: "sample-1",
-    storeId: "fongshan-kaixuan",
-    storeName: "鳳山凱旋店",
-    date: "2026-06-02",
-    supervisor: "郭承廷",
-    manager: "孫協政",
-    score: 82,
-    status: "待確認",
-    imageNames: [
-      "LINE_ALBUM_2026年6月份巡檢表_260605_1.jpg",
-      "LINE_ALBUM_2026年6月份巡檢表_260605_2.jpg",
-      "LINE_ALBUM_2026年6月份巡檢表_260605_3.jpg",
-    ],
-    images: [],
-    summary: "冰箱、作業區與店外環境有多項清潔及設備事項需要追蹤。",
-    issues: [
-      {
-        category: "產品品質",
-        title: "部分品項時效與熟成需確認",
-        description: "地瓜、三角骨與腿排等品項有時效性或熟成不足的紀錄。",
-        suggestion: "由店長重新確認保存時效、熟成狀態與報廢紀錄。",
-        severity: "重要",
-        dueDate: "2026-06-09",
-        status: "待改善",
-      },
-      {
-        category: "冰箱整潔",
-        title: "冰箱內有菌痕、血水與墊片汙垢",
-        description: "冰箱內部、玻璃側邊與墊片有清潔不足紀錄。",
-        suggestion: "安排每日閉店清潔，督導下次巡檢複查。",
-        severity: "重要",
-        dueDate: "2026-06-09",
-        status: "待改善",
-      },
-      {
-        category: "作業區衛生",
-        title: "地板血水、油汙與設備表面需清潔",
-        description: "炸爐、地板、粉槽與洗手槽周邊有油汙或粉塵。",
-        suggestion: "補強尖峰後清潔流程，拍照回傳改善結果。",
-        severity: "重要",
-        dueDate: "2026-06-08",
-        status: "待改善",
-      },
-      {
-        category: "店外環境",
-        title: "周邊環境有菸頭與垃圾",
-        description: "店外周邊發現菸頭、垃圾等環境整潔問題。",
-        suggestion: "每日開店與交班巡視門口周邊。",
-        severity: "一般",
-        dueDate: "2026-06-10",
-        status: "待改善",
-      },
-      {
-        category: "設備安全",
-        title: "滅火器過期需更換",
-        description: "巡檢紀錄標註滅火器過期。",
-        suggestion: "立即更換並補拍有效期限照片。",
-        severity: "緊急",
-        dueDate: "2026-06-06",
-        status: "待改善",
-      },
-    ],
-  },
-];
-
-const storageKey = "laijiduo-inspections-v1";
-
-function createBlankIssue() {
+function normalizeReport(store, report) {
   return {
-    category: "其他",
-    title: "",
-    description: "",
-    suggestion: "",
-    severity: "一般",
-    dueDate: "",
-    status: "待確認",
+    ...store,
+    ...report,
+    store_id: report?.store_id || store.id,
+    report_date: report?.report_date || today,
+    opened_to_1400_revenue: report?.opened_to_1400_revenue ?? store.opened_to_1400_revenue ?? 0,
+    revenue_1400_to_1900: report?.revenue_1400_to_1900 ?? store.revenue_1400_to_1900 ?? 0,
+    revenue_1900_to_close: report?.revenue_1900_to_close ?? store.revenue_1900_to_close ?? 0,
+    status: report?.status || store.status || "draft",
+    cash_difference: report?.cash_difference ?? store.cash_difference ?? null,
+    target: store.target || store.target_daily_revenue || 65000,
+    manager_name: store.manager_name || "店長",
+    inventory_status: store.inventory_status || "正常",
+    updated_at_label: store.updated_at_label || "尚未回報",
   };
 }
 
-function fileToDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function loadSavedInspections() {
-  try {
-    const saved = localStorage.getItem(storageKey);
-    if (!saved) return seedInspections;
-    const parsed = JSON.parse(saved);
-    return Array.isArray(parsed) && parsed.length ? parsed : seedInspections;
-  } catch {
-    return seedInspections;
-  }
-}
-
-function normalizeAiIssues(issues) {
-  if (!Array.isArray(issues) || !issues.length) return null;
-  return issues.map((issue) => ({
-    category: categoryOptions.includes(issue.category) ? issue.category : "其他",
-    title: issue.title || "未命名問題",
-    description: issue.description || "",
-    suggestion: issue.suggestion || "",
-    severity: severityOptions.includes(issue.severity) ? issue.severity : "一般",
-    dueDate: issue.dueDate || "",
-    status: statusOptions.includes(issue.status) ? issue.status : "待確認",
-  }));
-}
-
-async function requestAiParse({ store, date, supervisor, imageRows }) {
-  const response = await fetch("/api/parse-inspection", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      storeName: store.name,
-      manager: store.manager,
-      date,
-      supervisor,
-      images: imageRows,
-    }),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data.error || "AI 解析服務暫時無法使用");
-  }
-  return data;
-}
-
-async function createDemoParse({ storeId, date, supervisor, files }) {
-  const store = stores.find((item) => item.id === storeId) || stores[0];
-  const imageRows = await Promise.all(
-    Array.from(files).map(async (file) => ({
-      name: file.name,
-      url: await fileToDataUrl(file),
-    })),
-  );
-  try {
-    const aiResult = await requestAiParse({ store, date, supervisor, imageRows });
-    return {
-      id: crypto.randomUUID(),
-      storeId: store.id,
-      storeName: aiResult.storeName || store.name,
-      date: aiResult.date || date,
-      supervisor: aiResult.supervisor || supervisor,
-      manager: aiResult.manager || store.manager,
-      score: Number(aiResult.score || 0),
-      status: "待確認",
-      imageNames: imageRows.map((image) => image.name),
-      images: imageRows,
-      summary: aiResult.summary || "AI 已完成初步解析，請確認手寫內容與問題分類。",
-      issues: normalizeAiIssues(aiResult.issues) || [createBlankIssue()],
-    };
-  } catch (error) {
-    return {
-      id: crypto.randomUUID(),
-      storeId: store.id,
-      storeName: store.name,
-      date,
-      supervisor,
-      manager: store.manager,
-      score: 80,
-      status: "待確認",
-      imageNames: Array.from(files).map((file) => file.name),
-      images: imageRows,
-      summary: `尚未連上 AI 解析服務，已建立示範草稿。原因：${error.message}`,
-      issues: [
-        {
-          category: "冰箱整潔",
-          title: "冰箱內部與墊片清潔需確認",
-          description: "由巡檢表照片判讀，冰箱清潔欄位有待加強或備註。",
-          suggestion: "請確認手寫內容後，指派門市完成清潔並回傳照片。",
-          severity: "重要",
-          dueDate: date,
-          status: "待確認",
-        },
-        {
-          category: "作業區衛生",
-          title: "作業區清潔需複查",
-          description: "作業區衛生區塊有多項手寫備註，需人工補正完整內容。",
-          suggestion: "確認炸爐、工作台、地板、洗手槽等項目。",
-          severity: "重要",
-          dueDate: date,
-          status: "待確認",
-        },
-        {
-          category: "店外環境",
-          title: "店外環境需巡視",
-          description: "店外周邊環境區塊有手寫備註，需確認是否列入追蹤。",
-          suggestion: "確認是否有菸頭、垃圾、照明或設備安全問題。",
-          severity: "一般",
-          dueDate: date,
-          status: "待確認",
-        },
-      ],
-    };
-  }
-}
-
-function buildCsv(records) {
-  const headers = ["巡檢日期", "門市", "督導", "店長", "分類", "問題", "說明", "改善建議", "嚴重度", "期限", "狀態"];
-  const rows = records.flatMap((record) =>
-    record.issues.map((issue) => [
-      record.date,
-      record.storeName,
-      record.supervisor,
-      record.manager,
-      issue.category,
-      issue.title,
-      issue.description,
-      issue.suggestion,
-      issue.severity,
-      issue.dueDate,
-      issue.status,
-    ]),
-  );
-  const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  return [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
-}
-
-function downloadCsv(csv) {
-  const link = document.createElement("a");
-  const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
-  link.href = url;
-  link.download = `巡檢問題匯整_${today}.csv`;
-  link.style.display = "none";
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
 export function App() {
-  const [page, setPage] = useState("stores");
-  const [inspections, setInspections] = useState(loadSavedInspections);
-  const [selectedId, setSelectedId] = useState(() => loadSavedInspections()[0]?.id || seedInspections[0].id);
-  const [csvExport, setCsvExport] = useState(null);
-  const selected = inspections.find((item) => item.id === selectedId) || inspections[0];
+  const [activeModule, setActiveModule] = useState("ops");
+  const [profile, setProfile] = useState(null);
+  const [role, setRole] = useState("entry");
+  const [stores, setStores] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+
+  async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId) {
+    const [storeRows, productRows] = await Promise.all([fetchStores(), fetchProducts()]);
+    setStores(storeRows);
+    setProducts(productRows);
+    setSelectedStoreId(nextProfile?.store_id || preferredStoreId || storeRows[0]?.id || "");
+
+    const reportRows = await fetchDailyReports(today);
+    const byStore = new Map(reportRows.map((report) => [report.store_id || report.id, report]));
+    setReports(storeRows.map((store) => normalizeReport(store, byStore.get(store.id))));
+  }
 
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(inspections));
-  }, [inspections]);
+    async function boot() {
+      try {
+        if (hasSupabaseConfig) {
+          const sessionProfile = await getSessionProfile();
+          setProfile(sessionProfile);
+          if (!sessionProfile) return;
 
-  function addInspection(record) {
-    setInspections((current) => [record, ...current]);
-    setSelectedId(record.id);
-    setPage("review");
+          setRole(sessionProfile.role === "store_manager" ? "store" : sessionProfile.role === "supervisor" ? "review" : "hq");
+          await loadWorkspace(sessionProfile);
+        } else {
+          setProfile(mockProfile);
+          setStores(storesSeed);
+          setProducts(productsSeed);
+          setSelectedStoreId(storesSeed[0]?.id || "");
+          setReports(storesSeed.map((store) => normalizeReport(store)));
+        }
+      } catch (error) {
+        setMessage(error.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    boot();
+  }, []);
+
+  const selectedReport = reports.find((report) => report.store_id === selectedStoreId || report.id === selectedStoreId) || reports[0];
+
+  if (activeModule === "inspection") {
+    return <InspectionApp onBack={() => setActiveModule("ops")} />;
   }
 
-  function updateInspection(nextRecord) {
-    setInspections((current) => current.map((item) => (item.id === nextRecord.id ? nextRecord : item)));
-  }
-
-  const stats = useMemo(() => {
-    const issues = inspections.flatMap((item) => item.issues);
-    return {
-      inspections: inspections.length,
-      issues: issues.length,
-      urgent: issues.filter((issue) => issue.severity === "緊急").length,
-      pending: issues.filter((issue) => issue.status !== "已改善").length,
-    };
-  }, [inspections]);
-
-  return (
-    <div className="app">
-      <aside className="sidebar">
-        <div className="brand">
-          <div className="brand-mark">萊</div>
-          <div>
-            <strong>萊吉多門店管理</strong>
-            <span>督導巡檢中心</span>
-          </div>
-        </div>
-        <nav className="side-nav">
-          <button className={page === "stores" ? "active" : ""} onClick={() => setPage("stores")}>門店管理</button>
-          <button className={page === "upload" ? "active" : ""} onClick={() => setPage("upload")}>巡檢表上傳</button>
-          <button className={page === "review" ? "active" : ""} onClick={() => setPage("review")}>解析確認</button>
-          <button className={page === "tracking" ? "active" : ""} onClick={() => setPage("tracking")}>問題追蹤</button>
-        </nav>
-        <label className="field-label">巡檢紀錄</label>
-        <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
-          {inspections.map((inspection) => (
-            <option key={inspection.id} value={inspection.id}>
-              {inspection.date} {inspection.storeName}
-            </option>
-          ))}
-        </select>
-        <div className="sidebar-note">
-          <span>目前流程</span>
-          <strong>上傳 → 解析 → 確認 → 追蹤</strong>
-          <p>此版本先保留人工確認，避免手寫辨識錯字直接進入正式資料。</p>
-        </div>
-      </aside>
-      <main className="content">
-        <header className="topbar">
-          <div>
-            <p>{today} · {selected?.storeName || "尚未選擇門市"}</p>
-            <h1>{pageTitle(page)}</h1>
-          </div>
-          <div className="top-actions">
-            <button
-              onClick={() => {
-                const csv = buildCsv(inspections);
-                setCsvExport(csv);
-                downloadCsv(csv);
-              }}
-            >
-              匯出 CSV
-            </button>
-            <button className="primary" onClick={() => setPage("upload")}>新增巡檢</button>
-          </div>
-        </header>
-
-        <section className="kpi-strip">
-          <Metric label="巡檢紀錄" value={`${stats.inspections} 筆`} detail="已上傳或待確認" />
-          <Metric label="問題明細" value={`${stats.issues} 項`} detail="可追蹤改善事項" />
-          <Metric label="緊急事項" value={`${stats.urgent} 項`} detail="需優先處理" tone="bad" />
-          <Metric label="待處理" value={`${stats.pending} 項`} detail="尚未標記已改善" tone="warn" />
-        </section>
-
-        {page === "stores" && (
-          <StoreManagementPanel
-            inspections={inspections}
-            onSelectStore={(storeId) => {
-              const inspection = inspections.find((item) => item.storeId === storeId);
-              if (inspection) setSelectedId(inspection.id);
-              setPage(inspection ? "review" : "upload");
-            }}
-          />
-        )}
-        {page === "upload" && <UploadPanel onAdd={addInspection} />}
-        {page === "review" && selected && <ReviewPanel record={selected} onChange={updateInspection} />}
-        {page === "tracking" && (
-          <TrackingPanel
-            inspections={inspections}
-            onSelect={(id) => {
-              setSelectedId(id);
-              setPage("review");
-            }}
-          />
-        )}
-        {csvExport && <CsvExportPanel csv={csvExport} onClose={() => setCsvExport(null)} />}
-      </main>
-    </div>
-  );
-}
-
-function CsvExportPanel({ csv, onClose }) {
-  const [copied, setCopied] = useState(false);
-
-  async function copyCsv() {
+  async function handleLogin(email, password) {
+    setLoading(true);
     try {
-      await navigator.clipboard.writeText(csv);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
-    } catch {
-      setCopied(false);
+      await signIn(email, password);
+      const nextProfile = await getSessionProfile();
+      setProfile(nextProfile);
+      setRole(nextProfile.role === "store_manager" ? "store" : nextProfile.role === "supervisor" ? "review" : "hq");
+      await loadWorkspace(nextProfile);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
     }
   }
 
+  async function handleSignOut() {
+    await signOut();
+    setProfile(hasSupabaseConfig ? null : mockProfile);
+    setRole("entry");
+    if (hasSupabaseConfig) {
+      setStores([]);
+      setProducts([]);
+      setReports([]);
+    }
+  }
+
+  function show(text) {
+    setMessage(text);
+    window.setTimeout(() => setMessage(""), 2500);
+  }
+
+  async function saveReport(form, inventoryRows) {
+    try {
+      const payload = {
+        store_id: selectedReport.store_id,
+        report_date: today,
+        opened_to_1400_revenue: Number(form.opened_to_1400_revenue),
+        revenue_1400_to_1900: Number(form.revenue_1400_to_1900),
+        revenue_1900_to_close: Number(form.revenue_1900_to_close),
+        cash_difference: Number(form.cash_difference || 0),
+        manager_note: form.manager_note,
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+        submitted_by: profile?.id,
+      };
+      const saved = await upsertDailyReport(payload);
+      await upsertInventoryCounts(
+        saved.id,
+        inventoryRows.map((row) => ({
+          product_id: row.product_id || row.id,
+          current_stock: Number(row.current_stock || 0),
+          safety_stock: Number(row.safety_stock || 0),
+          loss_count: Number(row.loss_count || 0),
+          incoming_count: Number(row.incoming_count || 0),
+          transfer_note: row.transfer_note || "",
+          is_shortage: Number(row.current_stock || 0) < Number(row.safety_stock || 0),
+        })),
+      );
+      await loadWorkspace(profile, selectedReport.store_id);
+      show("營運回報與庫存已送出");
+      return true;
+    } catch (error) {
+      show(`送出失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function handleReview(action, status) {
+    if (!selectedReport?.id) {
+      show("此門店尚未送出回報");
+      return false;
+    }
+    try {
+      await reviewReport(selectedReport.id, action, "", status);
+      await loadWorkspace(profile, selectedReport.store_id);
+      show("審核狀態已更新");
+      return true;
+    } catch (error) {
+      show(`審核失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function syncWorkspace() {
+    setLoading(true);
+    try {
+      await loadWorkspace(profile);
+      show("資料已同步");
+    } catch (error) {
+      show(`同步失敗：${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function exportReports() {
+    const headers = ["門店代碼", "門店", "店長", "日期", "14:00", "19:00", "打烊", "總營收", "現金差異", "狀態"];
+    const rows = reports.map((report) => [
+      report.store_code,
+      report.name,
+      report.manager_name,
+      report.report_date,
+      report.opened_to_1400_revenue,
+      report.revenue_1400_to_1900,
+      report.revenue_1900_to_close,
+      totalRevenue(report),
+      report.cash_difference ?? "",
+      statusLabel(report.status),
+    ]);
+    const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const csv = [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+    link.download = `萊吉多營運回報-${today}.csv`;
+    link.click();
+    URL.revokeObjectURL(link.href);
+    show("報表已匯出");
+  }
+
+  if (loading) return <main className="loading">載入中...</main>;
+
+  if (!profile && hasSupabaseConfig) {
+    return <LoginScreen onLogin={handleLogin} message={message} />;
+  }
+
+  if (role === "entry") {
+    return (
+      <EntryScreen
+        stores={stores}
+        onSelectStore={(storeId) => {
+          setSelectedStoreId(storeId);
+          setRole("store");
+        }}
+        onRole={setRole}
+      />
+    );
+  }
+
   return (
-    <section className="csv-export-panel">
-      <div className="panel-head">
-        <div>
-          <h2>CSV 已產生</h2>
-          <p>若瀏覽器沒有自動下載，可在這裡再次下載或複製內容。</p>
-        </div>
-        <button onClick={onClose}>關閉</button>
-      </div>
-      <div className="csv-actions">
-        <button className="primary" onClick={() => downloadCsv(csv)}>下載 CSV</button>
-        <button onClick={copyCsv}>{copied ? "已複製" : "複製內容"}</button>
-      </div>
-      <textarea readOnly value={csv} />
-    </section>
+    <div className="app">
+      <Sidebar
+        role={role}
+        profile={profile}
+        stores={stores}
+        selectedStoreId={selectedStoreId}
+        setRole={setRole}
+        setSelectedStoreId={setSelectedStoreId}
+        onInspection={() => setActiveModule("inspection")}
+        onSignOut={handleSignOut}
+      />
+      <main className="content">
+        <TopBar role={role} report={selectedReport} onSync={syncWorkspace} onExport={exportReports} />
+        {!hasSupabaseConfig && (
+          <div className="notice">目前使用示範資料。部署後請在 Vercel 設定 Supabase 環境變數，即可切換為正式資料。</div>
+        )}
+        {role === "hq" && <HqDashboard reports={reports} onSelect={setSelectedStoreId} />}
+        {role === "store" && selectedReport && (
+          <StoreReport report={selectedReport} products={products} onSave={saveReport} />
+        )}
+        {role === "review" && selectedReport && (
+          <ReviewConsole
+            reports={reports}
+            report={selectedReport}
+            products={products}
+            onSelect={setSelectedStoreId}
+            onReview={handleReview}
+          />
+        )}
+      </main>
+      {message && <div className="toast show">{message}</div>}
+    </div>
   );
 }
 
-function pageTitle(page) {
-  return {
-    stores: "門店管理",
-    upload: "巡檢表上傳",
-    review: "解析結果確認",
-    tracking: "問題追蹤總覽",
-  }[page] || "門店管理";
+function LoginScreen({ onLogin, message }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  return (
+    <main className="login-screen">
+      <section className="login-card">
+        <div className="brand-mark">萊</div>
+        <h1>萊吉多營運回報</h1>
+        <p>請使用 Supabase Auth 建立的帳號登入。</p>
+        <label>
+          Email
+          <input value={email} onChange={(event) => setEmail(event.target.value)} />
+        </label>
+        <label>
+          密碼
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+        </label>
+        <button className="primary" onClick={() => onLogin(email, password)}>登入</button>
+        {message && <p className="error">{message}</p>}
+      </section>
+    </main>
+  );
 }
 
-function StoreManagementPanel({ inspections, onSelectStore }) {
-  const storeRows = stores.map((store) => {
-    const storeInspections = inspections.filter((inspection) => inspection.storeId === store.id);
-    const issues = storeInspections.flatMap((inspection) => inspection.issues);
-    const latest = [...storeInspections].sort((a, b) => b.date.localeCompare(a.date))[0];
-    return {
-      ...store,
-      latestDate: latest?.date || "尚未巡檢",
-      inspectionCount: storeInspections.length,
-      pendingCount: issues.filter((issue) => issue.status !== "已改善").length,
-      urgentCount: issues.filter((issue) => issue.severity === "緊急").length,
-      score: latest?.score ?? "-",
-    };
-  });
+function EntryScreen({ stores, onSelectStore, onRole }) {
+  return (
+    <main className="entry-screen">
+      <section className="entry-copy">
+        <div className="brand-mark">萊</div>
+        <h1>萊吉多營運回報入口</h1>
+        <p>門店回報營收、庫存與差異，總部與營運督導可即時查看每日營運狀況。</p>
+        <label>
+          選擇門店
+          <select onChange={(event) => onSelectStore(event.target.value)} defaultValue="">
+            <option value="" disabled>請選擇門店</option>
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
+          </select>
+        </label>
+        <div className="entry-actions">
+          <button className="primary" onClick={() => onRole("hq")}>總部儀表板</button>
+          <button onClick={() => onRole("review")}>營運督導審核</button>
+        </div>
+      </section>
+      <section className="entry-panels">
+        <Info title="門店回報" text="依 14:00、19:00、打烊三個時段填寫營收，並補上現金差異與備註。" />
+        <Info title="總部總覽" text="快速查看各門店營收、達成率、庫存狀態與待審核數量。" />
+        <Info title="營運督導審核" text="針對異常回報進行通過、退回修改或指派追蹤。" />
+      </section>
+    </main>
+  );
+}
+
+function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedStoreId, onInspection, onSignOut }) {
+  const isStoreManager = profile?.role === "store_manager";
+  return (
+    <aside className="sidebar">
+      <div className="brand">
+        <div className="brand-mark">萊</div>
+        <div>
+          <strong>萊吉多營運回報</strong>
+          <span>門店營運管理</span>
+        </div>
+      </div>
+      {!isStoreManager && (
+        <div className="role-switcher">
+          {[
+            ["hq", "總部"],
+            ["store", "門店"],
+            ["review", "營運督導"],
+          ].map(([key, label]) => (
+            <button key={key} className={role === key ? "active" : ""} onClick={() => setRole(key)}>{label}</button>
+          ))}
+        </div>
+      )}
+      <label className="field-label">門店</label>
+      <select
+        value={selectedStoreId}
+        disabled={isStoreManager}
+        onChange={(event) => setSelectedStoreId(event.target.value)}
+      >
+        {stores.map((store) => (
+          <option key={store.id} value={store.id}>{store.name}</option>
+        ))}
+      </select>
+      <nav className="side-nav">
+        <button className="active" disabled>每日營運回報</button>
+        <button onClick={onInspection}>巡檢管理</button>
+      </nav>
+      <div className="sidebar-note">
+        <span>{profile?.full_name || "示範使用者"}</span>
+        <strong>{profile?.role || "demo"}</strong>
+        <p>正式部署後，角色與可查看門店會由 Supabase Auth 與 profiles 資料表控制。</p>
+      </div>
+      <button onClick={onSignOut}>登出 / 回入口</button>
+    </aside>
+  );
+}
+
+function TopBar({ role, report, onSync, onExport }) {
+  const title = role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "營運督導審核台";
+  return (
+    <header className="topbar">
+      <div>
+        <p>{today} · {report?.area || "全區"} · {report?.name || "尚未選擇門店"}</p>
+        <h1>{title}</h1>
+      </div>
+      <div className="top-actions">
+        <button onClick={onExport}>匯出 CSV</button>
+        <button className="primary" onClick={onSync}>同步資料</button>
+      </div>
+    </header>
+  );
+}
+
+function HqDashboard({ reports, onSelect }) {
+  const summary = useMemo(() => {
+    const total = reports.reduce((sum, report) => sum + totalRevenue(report), 0);
+    const target = reports.reduce((sum, report) => sum + Number(report.target || 0), 0);
+    return { total, target };
+  }, [reports]);
+  const sorted = [...reports].sort((a, b) => totalRevenue(b) - totalRevenue(a));
 
   return (
-    <div className="workspace store-management-grid">
+    <div className="workspace hq-grid">
+      <section className="kpi-strip">
+        <Metric label="今日總營收" value={money(summary.total)} detail={`目標 ${money(summary.target)}`} tone="hot" />
+        <Metric label="整體達成率" value={pct((summary.total / summary.target) * 100)} detail="依今日目標計算" />
+        <Metric label="待審核" value={`${reports.filter((report) => report.status === "submitted").length} 間`} detail="等待營運督導確認" tone="warn" />
+        <Metric label="需追蹤" value={`${reports.filter((report) => report.status === "follow_up").length} 間`} detail="異常或補貨需求" tone="bad" />
+        <Metric label="已達標" value={`${reports.filter((report) => totalRevenue(report) >= report.target).length} 間`} detail="營收高於目標" tone="good" />
+      </section>
       <section className="panel wide">
         <div className="panel-head">
           <div>
-            <h2>門市主檔</h2>
-            <p>從門市角度查看巡檢紀錄、待改善事項與最新分數。</p>
+            <h2>門店營收排行</h2>
+            <p>依 14:00、19:00、打烊三段營收加總。</p>
           </div>
         </div>
-        <div className="store-card-grid">
-          {storeRows.map((store) => (
-            <button className="store-card" key={store.id} onClick={() => onSelectStore(store.id)}>
-              <div>
-                <strong>{store.name}</strong>
-                <span>{store.area} · 店長 {store.manager}</span>
-              </div>
-              <div className="store-card-metrics">
-                <Metric label="最新巡檢" value={store.latestDate} detail={`分數 ${store.score}`} />
-                <Metric label="巡檢筆數" value={`${store.inspectionCount} 筆`} detail="累積紀錄" />
-                <Metric label="待改善" value={`${store.pendingCount} 項`} detail="未結案問題" tone={store.pendingCount ? "warn" : "good"} />
-                <Metric label="緊急" value={`${store.urgentCount} 項`} detail="優先處理" tone={store.urgentCount ? "bad" : "good"} />
-              </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>門店</th>
+                <th>14:00</th>
+                <th>19:00</th>
+                <th>打烊</th>
+                <th>總營收</th>
+                <th>達成率</th>
+                <th>庫存</th>
+                <th>現金差異</th>
+                <th>狀態</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map((report) => (
+                <tr key={report.store_id} onClick={() => onSelect(report.store_id)}>
+                  <td><strong>{report.name}</strong><span>{report.manager_name || report.store_code}</span></td>
+                  <td>{money(report.opened_to_1400_revenue)}</td>
+                  <td>{money(report.revenue_1400_to_1900)}</td>
+                  <td>{money(report.revenue_1900_to_close)}</td>
+                  <td><strong>{money(totalRevenue(report))}</strong></td>
+                  <td><Progress value={(totalRevenue(report) / report.target) * 100} /></td>
+                  <td>{report.inventory_status}</td>
+                  <td className={report.cash_difference < 0 ? "negative" : ""}>{report.cash_difference ?? "未填"}</td>
+                  <td><span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="panel">
+        <div className="panel-head"><h2>前六名</h2><p>營收排行</p></div>
+        <div className="ranking">
+          {sorted.slice(0, 6).map((report, index) => (
+            <button key={report.store_id} onClick={() => onSelect(report.store_id)}>
+              <span>{index + 1}</span>
+              <strong>{report.name}</strong>
+              <div><i style={{ width: `${Math.min(100, (totalRevenue(report) / Math.max(1, totalRevenue(sorted[0]))) * 100)}%` }} /></div>
+              <em>{money(totalRevenue(report))}</em>
             </button>
           ))}
         </div>
@@ -473,225 +469,252 @@ function StoreManagementPanel({ inspections, onSelectStore }) {
   );
 }
 
-function UploadPanel({ onAdd }) {
-  const [storeId, setStoreId] = useState(stores[0].id);
-  const [date, setDate] = useState(today);
-  const [supervisor, setSupervisor] = useState("");
-  const [files, setFiles] = useState([]);
-  const [parsing, setParsing] = useState(false);
+function StoreReport({ report, products, onSave }) {
+  const [tab, setTab] = useState("sales");
+  const [form, setForm] = useState({
+    opened_to_1400_revenue: report.opened_to_1400_revenue,
+    revenue_1400_to_1900: report.revenue_1400_to_1900,
+    revenue_1900_to_close: report.revenue_1900_to_close,
+    cash_difference: report.cash_difference || 0,
+    manager_note: report.manager_note || "",
+  });
+  const [inventory, setInventory] = useState(products);
+  const [saving, setSaving] = useState(false);
+  const currentTotal = totalRevenue(form);
 
-  async function submit(event) {
-    event.preventDefault();
-    if (!files.length) return;
-    setParsing(true);
-    const parsed = await createDemoParse({ storeId, date, supervisor: supervisor || "未填寫", files });
-    onAdd(parsed);
-    setFiles([]);
-    setParsing(false);
+  useEffect(() => {
+    setForm({
+      opened_to_1400_revenue: report.opened_to_1400_revenue,
+      revenue_1400_to_1900: report.revenue_1400_to_1900,
+      revenue_1900_to_close: report.revenue_1900_to_close,
+      cash_difference: report.cash_difference || 0,
+      manager_note: report.manager_note || "",
+    });
+  }, [report]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadInventory() {
+      try {
+        const savedRows = await fetchInventoryCounts(report.id);
+        if (!active) return;
+        const byProduct = new Map(savedRows.map((row) => [row.product_id, row]));
+        setInventory(products.map((product) => ({ ...product, ...byProduct.get(product.id) })));
+      } catch {
+        if (active) setInventory(products);
+      }
+    }
+    loadInventory();
+    return () => {
+      active = false;
+    };
+  }, [products, report.id]);
+
+  async function submit() {
+    setSaving(true);
+    await onSave(form, inventory);
+    setSaving(false);
   }
 
   return (
-    <div className="workspace upload-grid">
-      <form className="panel upload-panel" onSubmit={submit}>
-        <div className="panel-head">
+    <div className="workspace mobile-layout">
+      <section className="phone-shell">
+        <div className="phone-header">
           <div>
-            <h2>上傳一間店的巡檢表</h2>
-            <p>可一次上傳正面、背面、補充手寫頁等多張照片。</p>
+            <p>{report.name}</p>
+            <h2>每日回報</h2>
           </div>
+          <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
         </div>
-        <div className="form-grid">
-          <label>
-            門市
-            <select value={storeId} onChange={(event) => setStoreId(event.target.value)}>
-              {stores.map((store) => (
-                <option key={store.id} value={store.id}>{store.name}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            巡檢日期
-            <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-          </label>
-          <label>
-            督導姓名
-            <input value={supervisor} onChange={(event) => setSupervisor(event.target.value)} placeholder="例如：郭承廷" />
-          </label>
-          <label className="file-drop">
-            <span>巡檢表照片</span>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(event) => setFiles(Array.from(event.target.files || []))}
-            />
-            <em>{files.length ? `已選擇 ${files.length} 張` : "選擇照片或掃描檔"}</em>
-          </label>
+        <div className="alert-line">請確認三段營收、庫存與現金差異後送出。</div>
+        <div className="segments">
+          <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
+          <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
         </div>
-        <button className="submit-button static" type="submit" disabled={!files.length || parsing}>
-          {parsing ? "解析草稿建立中..." : "建立解析草稿"}
+        {tab === "sales" ? (
+          <div className="mobile-stack">
+            <RevenueInput label="14:00" helper="開店至 14:00" value={form.opened_to_1400_revenue} onChange={(value) => setForm({ ...form, opened_to_1400_revenue: value })} />
+            <RevenueInput label="19:00" helper="14:00 至 19:00" value={form.revenue_1400_to_1900} onChange={(value) => setForm({ ...form, revenue_1400_to_1900: value })} />
+            <RevenueInput label="打烊" helper="19:00 至打烊" value={form.revenue_1900_to_close} onChange={(value) => setForm({ ...form, revenue_1900_to_close: value })} />
+            <RevenueInput label="現金差異" helper="正數或負數" value={form.cash_difference} onChange={(value) => setForm({ ...form, cash_difference: value })} />
+            <label className="note-box">
+              <span>店長備註</span>
+              <textarea value={form.manager_note} onChange={(event) => setForm({ ...form, manager_note: event.target.value })} />
+            </label>
+            <div className="target-card">
+              <span>今日總營收</span>
+              <strong>{money(currentTotal)}</strong>
+              <Progress value={(currentTotal / report.target) * 100} />
+              <p>今日目標 {money(report.target)}</p>
+            </div>
+          </div>
+        ) : (
+          <InventoryEditor rows={inventory} onChange={setInventory} />
+        )}
+        <button className="submit-button" disabled={saving} onClick={submit}>
+          {saving ? "送出中..." : "送出每日回報"}
         </button>
-      </form>
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <h2>解析策略</h2>
-            <p>先把照片變成可修改的問題清單，確認後再納入追蹤。</p>
-          </div>
-        </div>
-        <div className="flow-list">
-          <span>1. 督導上傳巡檢表照片</span>
-          <span>2. 系統建立文字與問題草稿</span>
-          <span>3. 主管確認手寫內容</span>
-          <span>4. 追蹤改善期限與狀態</span>
-        </div>
+      </section>
+      <section className="panel companion">
+        <div className="panel-head"><h2>門店狀態</h2><p>{report.manager_name}</p></div>
+        <Metric label="今日總營收" value={money(currentTotal)} detail={`目標 ${money(report.target)}`} tone="hot" />
+        <Metric label="達成率" value={pct((currentTotal / report.target) * 100)} detail="依今日目標計算" tone={currentTotal >= report.target ? "good" : "warn"} />
       </section>
     </div>
   );
 }
 
-function ReviewPanel({ record, onChange }) {
-  function patchRecord(patch) {
-    onChange({ ...record, ...patch });
-  }
+function RevenueInput({ label, helper, value, onChange }) {
+  return (
+    <label className="input-card">
+      <span>{label}<small>{helper}</small></span>
+      <input type="number" value={value} onChange={(event) => onChange(Number(event.target.value))} />
+    </label>
+  );
+}
 
-  function patchIssue(index, patch) {
-    const issues = [...record.issues];
-    issues[index] = { ...issues[index], ...patch };
-    patchRecord({ issues });
-  }
+function InventoryEditor({ rows, onChange }) {
+  return (
+    <div className="mobile-stack">
+      {rows.map((row, index) => (
+        <div className="stock-row" key={row.id}>
+          <div>
+            <strong>{row.name}（{row.unit}）</strong>
+            <span>安全庫存 {row.safety_stock} {row.unit} · 報廢 {row.loss_count} {row.unit}</span>
+          </div>
+          <input
+            type="number"
+            value={row.current_stock}
+            onChange={(event) => {
+              const next = [...rows];
+              next[index] = { ...row, current_stock: Number(event.target.value) };
+              onChange(next);
+            }}
+          />
+          <span className={`chip ${row.current_stock < row.safety_stock ? "bad" : "good"}`}>
+            {row.current_stock < row.safety_stock ? "短缺" : "正常"}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
-  function addIssue() {
-    patchRecord({ issues: [...record.issues, createBlankIssue()] });
-  }
+function ReviewConsole({ reports, report, products, onSelect, onReview }) {
+  const [inventory, setInventory] = useState(products);
+  const [reviewing, setReviewing] = useState(false);
 
-  function removeIssue(index) {
-    patchRecord({ issues: record.issues.filter((_, currentIndex) => currentIndex !== index) });
+  useEffect(() => {
+    let active = true;
+    async function loadInventory() {
+      try {
+        const savedRows = await fetchInventoryCounts(report.id);
+        if (!active) return;
+        const byProduct = new Map(savedRows.map((row) => [row.product_id, row]));
+        setInventory(products.map((product) => ({ ...product, ...byProduct.get(product.id) })));
+      } catch {
+        if (active) setInventory(products);
+      }
+    }
+    loadInventory();
+    return () => {
+      active = false;
+    };
+  }, [products, report.id]);
+
+  async function review(action, status) {
+    setReviewing(true);
+    await onReview(action, status);
+    setReviewing(false);
   }
 
   return (
-    <div className="workspace review-workspace">
-      <section className="panel image-panel">
-        <div className="panel-head">
-          <div>
-            <h2>原始巡檢表</h2>
-            <p>{record.imageNames.length} 張照片</p>
-          </div>
-        </div>
-        <div className="inspection-images">
-          {record.images.length ? (
-            record.images.map((image) => <img key={image.url} src={image.url} alt={image.name} />)
-          ) : (
-            record.imageNames.map((name) => <div className="image-placeholder" key={name}>{name}</div>)
-          )}
-        </div>
+    <div className="workspace review-grid">
+      <section className="status-board">
+        <Metric label="草稿" value={reports.filter((item) => item.status === "draft").length} detail="尚未送出" tone="bad" />
+        <Metric label="待審核" value={reports.filter((item) => item.status === "submitted").length} detail="等待確認" tone="warn" />
+        <Metric label="需追蹤" value={reports.filter((item) => item.status === "follow_up").length} detail="異常門店" tone="bad" />
+        <Metric label="已通過" value={reports.filter((item) => item.status === "approved").length} detail="完成審核" tone="good" />
       </section>
-
+      <section className="panel store-queue">
+        <div className="panel-head"><h2>門店佇列</h2><p>點選查看明細</p></div>
+        {reports.map((item) => (
+          <button className={item.store_id === report.store_id ? "selected queue-item" : "queue-item"} key={item.store_id} onClick={() => onSelect(item.store_id)}>
+            <span className={`dot ${tone(item.status)}`} />
+            <strong>{item.name}</strong>
+            <em>{item.updated_at_label}</em>
+            <small>{statusLabel(item.status)}</small>
+          </button>
+        ))}
+      </section>
       <section className="panel review-main">
         <div className="panel-head">
           <div>
-            <h2>巡檢主檔</h2>
-            <p>確認門市、日期、督導與摘要。</p>
+            <h2>{report.name}</h2>
+            <p>{report.manager_name} · {report.area} · 總營收 {money(totalRevenue(report))}</p>
           </div>
-          <span className={`chip ${record.status === "已完成" ? "good" : "warn"}`}>{record.status}</span>
+          <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
         </div>
-        <div className="form-grid compact-form">
-          <label>門市<input value={record.storeName} onChange={(event) => patchRecord({ storeName: event.target.value })} /></label>
-          <label>巡檢日期<input type="date" value={record.date} onChange={(event) => patchRecord({ date: event.target.value })} /></label>
-          <label>督導<input value={record.supervisor} onChange={(event) => patchRecord({ supervisor: event.target.value })} /></label>
-          <label>店長<input value={record.manager} onChange={(event) => patchRecord({ manager: event.target.value })} /></label>
-          <label>分數<input type="number" value={record.score} onChange={(event) => patchRecord({ score: Number(event.target.value) })} /></label>
-          <label>狀態<select value={record.status} onChange={(event) => patchRecord({ status: event.target.value })}>
-            <option>待確認</option>
-            <option>已完成</option>
-          </select></label>
-          <label className="wide-field">摘要<textarea value={record.summary} onChange={(event) => patchRecord({ summary: event.target.value })} /></label>
+        <div className="checkpoint-grid">
+          <Metric label="14:00" value={money(report.opened_to_1400_revenue)} detail="開店至 14:00" />
+          <Metric label="19:00" value={money(report.revenue_1400_to_1900)} detail="14:00 至 19:00" />
+          <Metric label="打烊" value={money(report.revenue_1900_to_close)} detail="19:00 至打烊" />
+          <Metric label="總營收" value={money(totalRevenue(report))} detail={`達成 ${pct((totalRevenue(report) / report.target) * 100)}`} tone="hot" />
         </div>
-
-        <div className="panel-head issue-head">
-          <div>
-            <h2>問題明細</h2>
-            <p>每一列都會進入後續追蹤。</p>
-          </div>
-          <button onClick={addIssue}>新增問題</button>
+        <div className="table-wrap compact">
+          <table>
+            <thead>
+              <tr><th>品項</th><th>現存</th><th>安全庫存</th><th>報廢</th><th>進貨</th><th>調撥</th></tr>
+            </thead>
+            <tbody>
+              {inventory.map((item) => (
+                <tr key={item.id}>
+                  <td><strong>{item.name}（{item.unit}）</strong></td>
+                  <td>{item.current_stock}</td>
+                  <td>{item.safety_stock}</td>
+                  <td>{item.loss_count}</td>
+                  <td>{item.incoming_count}</td>
+                  <td>{item.transfer_note}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <div className="issue-editor-list">
-          {record.issues.map((issue, index) => (
-            <article className="issue-editor" key={`${issue.title}-${index}`}>
-              <div className="issue-editor-top">
-                <select value={issue.category} onChange={(event) => patchIssue(index, { category: event.target.value })}>
-                  {categoryOptions.map((option) => <option key={option}>{option}</option>)}
-                </select>
-                <select value={issue.severity} onChange={(event) => patchIssue(index, { severity: event.target.value })}>
-                  {severityOptions.map((option) => <option key={option}>{option}</option>)}
-                </select>
-                <select value={issue.status} onChange={(event) => patchIssue(index, { status: event.target.value })}>
-                  {statusOptions.map((option) => <option key={option}>{option}</option>)}
-                </select>
-                <button onClick={() => removeIssue(index)}>刪除</button>
-              </div>
-              <label>問題<input value={issue.title} onChange={(event) => patchIssue(index, { title: event.target.value })} /></label>
-              <label>說明<textarea value={issue.description} onChange={(event) => patchIssue(index, { description: event.target.value })} /></label>
-              <label>改善建議<textarea value={issue.suggestion} onChange={(event) => patchIssue(index, { suggestion: event.target.value })} /></label>
-              <label>改善期限<input type="date" value={issue.dueDate} onChange={(event) => patchIssue(index, { dueDate: event.target.value })} /></label>
-            </article>
-          ))}
-        </div>
+      </section>
+      <section className="panel action-rail">
+        <div className="panel-head"><h2>審核動作</h2><p>更新回報狀態</p></div>
+        <button disabled={reviewing} className="primary" onClick={() => review("approve", "approved")}>通過</button>
+        <button disabled={reviewing} onClick={() => review("request_revision", "needs_revision")}>退回修改</button>
+        <button disabled={reviewing} onClick={() => review("assign_transfer", "follow_up")}>指派追蹤</button>
       </section>
     </div>
   );
 }
 
-function TrackingPanel({ inspections, onSelect }) {
-  const rows = inspections.flatMap((inspection) =>
-    inspection.issues.map((issue, index) => ({ ...issue, inspection, rowId: `${inspection.id}-${index}` })),
-  );
-
+function Info({ title, text }) {
   return (
-    <section className="panel">
-      <div className="panel-head">
-        <div>
-          <h2>問題追蹤</h2>
-          <p>依門市、分類、嚴重度與改善狀態查看所有巡檢缺失。</p>
-        </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>門市</th>
-              <th>日期</th>
-              <th>分類</th>
-              <th>問題</th>
-              <th>嚴重度</th>
-              <th>期限</th>
-              <th>狀態</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.rowId} onClick={() => onSelect(row.inspection.id)}>
-                <td><strong>{row.inspection.storeName}</strong><span>{row.inspection.supervisor}</span></td>
-                <td>{row.inspection.date}</td>
-                <td>{row.category}</td>
-                <td>{row.title}</td>
-                <td><span className={`chip ${row.severity === "緊急" ? "bad" : row.severity === "重要" ? "warn" : ""}`}>{row.severity}</span></td>
-                <td>{row.dueDate}</td>
-                <td><span className={`chip ${row.status === "已改善" ? "good" : "warn"}`}>{row.status}</span></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </section>
+    <div className="info-card">
+      <strong>{title}</strong>
+      <p>{text}</p>
+    </div>
   );
 }
 
-function Metric({ label, value, detail, tone = "neutral" }) {
+function Metric({ label, value, detail, tone: metricTone = "neutral" }) {
   return (
-    <div className={`metric ${tone}`}>
+    <div className={`metric ${metricTone}`}>
       <span>{label}</span>
       <strong>{value}</strong>
       <p>{detail}</p>
+    </div>
+  );
+}
+
+function Progress({ value }) {
+  return (
+    <div className="progress">
+      <span style={{ width: `${Math.min(100, Math.max(0, value || 0))}%` }} />
+      <em>{pct(value)}</em>
     </div>
   );
 }
