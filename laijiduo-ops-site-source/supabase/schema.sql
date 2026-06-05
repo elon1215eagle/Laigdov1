@@ -121,6 +121,43 @@ create table if not exists public.store_supervisors (
   unique (store_id, supervisor_id)
 );
 
+create table if not exists public.store_inspections (
+  id uuid primary key default gen_random_uuid(),
+  store_id uuid not null references public.stores(id),
+  inspection_date date not null,
+  supervisor_name text not null,
+  manager_name text,
+  score integer,
+  status text not null default '待確認',
+  summary text,
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.store_inspection_photos (
+  id uuid primary key default gen_random_uuid(),
+  inspection_id uuid not null references public.store_inspections(id) on delete cascade,
+  storage_path text not null,
+  original_name text,
+  page_order integer not null default 1,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.store_inspection_issues (
+  id uuid primary key default gen_random_uuid(),
+  inspection_id uuid not null references public.store_inspections(id) on delete cascade,
+  category text not null,
+  title text not null,
+  description text,
+  suggestion text,
+  severity text not null default '一般',
+  due_date date,
+  status text not null default '待確認',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 insert into public.stores (store_code, name, area, manager_name, target_daily_revenue) values
   ('S01', '鳳山五甲店', '南區', '阿瑄店長', 68000),
   ('S02', '鳳山凱旋店', '南區', '阿斌店長', 62000),
@@ -199,6 +236,9 @@ alter table public.inventory_counts enable row level security;
 alter table public.report_photos enable row level security;
 alter table public.review_actions enable row level security;
 alter table public.store_supervisors enable row level security;
+alter table public.store_inspections enable row level security;
+alter table public.store_inspection_photos enable row level security;
+alter table public.store_inspection_issues enable row level security;
 
 drop policy if exists "active users can read products" on public.products;
 create policy "active users can read products"
@@ -379,3 +419,68 @@ using (
   supervisor_id = auth.uid()
   or public.current_profile_role() = 'admin'
 );
+
+drop policy if exists "read inspections by role" on public.store_inspections;
+create policy "read inspections by role"
+on public.store_inspections for select
+to authenticated
+using (
+  public.current_profile_role() in ('hq', 'supervisor', 'admin')
+  or store_id = public.current_profile_store_id()
+  or exists (
+    select 1 from public.store_supervisors ss
+    where ss.store_id = store_inspections.store_id
+      and ss.supervisor_id = auth.uid()
+  )
+);
+
+drop policy if exists "supervisors manage inspections" on public.store_inspections;
+create policy "supervisors manage inspections"
+on public.store_inspections for all
+to authenticated
+using (public.current_profile_role() in ('supervisor', 'admin'))
+with check (public.current_profile_role() in ('supervisor', 'admin'));
+
+drop policy if exists "read inspection photos through inspection access" on public.store_inspection_photos;
+create policy "read inspection photos through inspection access"
+on public.store_inspection_photos for select
+to authenticated
+using (
+  exists (
+    select 1 from public.store_inspections si
+    where si.id = store_inspection_photos.inspection_id
+      and (
+        public.current_profile_role() in ('hq', 'supervisor', 'admin')
+        or si.store_id = public.current_profile_store_id()
+      )
+  )
+);
+
+drop policy if exists "supervisors manage inspection photos" on public.store_inspection_photos;
+create policy "supervisors manage inspection photos"
+on public.store_inspection_photos for all
+to authenticated
+using (public.current_profile_role() in ('supervisor', 'admin'))
+with check (public.current_profile_role() in ('supervisor', 'admin'));
+
+drop policy if exists "read inspection issues through inspection access" on public.store_inspection_issues;
+create policy "read inspection issues through inspection access"
+on public.store_inspection_issues for select
+to authenticated
+using (
+  exists (
+    select 1 from public.store_inspections si
+    where si.id = store_inspection_issues.inspection_id
+      and (
+        public.current_profile_role() in ('hq', 'supervisor', 'admin')
+        or si.store_id = public.current_profile_store_id()
+      )
+  )
+);
+
+drop policy if exists "supervisors manage inspection issues" on public.store_inspection_issues;
+create policy "supervisors manage inspection issues"
+on public.store_inspection_issues for all
+to authenticated
+using (public.current_profile_role() in ('supervisor', 'admin'))
+with check (public.current_profile_role() in ('supervisor', 'admin'));
