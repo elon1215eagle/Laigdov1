@@ -1014,6 +1014,34 @@ tbody tr.selected,
   padding: 0;
 }
 
+.csv-export-panel {
+  margin-top: 16px;
+  padding: 18px;
+  border: 1px solid #ecd8cc;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.csv-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.csv-actions button {
+  text-align: center;
+  min-width: 120px;
+}
+
+.csv-export-panel textarea {
+  width: 100%;
+  min-height: 180px;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
 @media (max-width: 1120px) {
   .app {
     grid-template-columns: 1fr;
@@ -1064,7 +1092,8 @@ tbody tr.selected,
   }
 
   .top-actions,
-  .filters {
+  .filters,
+  .csv-actions {
     flex-direction: column;
   }
 

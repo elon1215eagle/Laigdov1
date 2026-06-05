@@ -240,7 +240,7 @@ async function createDemoParse({ storeId, date, supervisor, files }) {
   }
 }
 
-function exportCsv(records) {
+function buildCsv(records) {
   const headers = ["巡檢日期", "門市", "督導", "店長", "分類", "問題", "說明", "改善建議", "嚴重度", "期限", "狀態"];
   const rows = records.flatMap((record) =>
     record.issues.map((issue) => [
@@ -258,18 +258,26 @@ function exportCsv(records) {
     ]),
   );
   const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-  const csv = [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+  return [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
+}
+
+function downloadCsv(csv) {
   const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+  const url = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
+  link.href = url;
   link.download = `巡檢問題匯整_${today}.csv`;
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(link.href);
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function App() {
   const [page, setPage] = useState("stores");
   const [inspections, setInspections] = useState(loadSavedInspections);
   const [selectedId, setSelectedId] = useState(() => loadSavedInspections()[0]?.id || seedInspections[0].id);
+  const [csvExport, setCsvExport] = useState(null);
   const selected = inspections.find((item) => item.id === selectedId) || inspections[0];
 
   useEffect(() => {
@@ -333,7 +341,15 @@ export function App() {
             <h1>{pageTitle(page)}</h1>
           </div>
           <div className="top-actions">
-            <button onClick={() => exportCsv(inspections)}>匯出 CSV</button>
+            <button
+              onClick={() => {
+                const csv = buildCsv(inspections);
+                setCsvExport(csv);
+                downloadCsv(csv);
+              }}
+            >
+              匯出 CSV
+            </button>
             <button className="primary" onClick={() => setPage("upload")}>新增巡檢</button>
           </div>
         </header>
@@ -366,8 +382,40 @@ export function App() {
             }}
           />
         )}
+        {csvExport && <CsvExportPanel csv={csvExport} onClose={() => setCsvExport(null)} />}
       </main>
     </div>
+  );
+}
+
+function CsvExportPanel({ csv, onClose }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyCsv() {
+    try {
+      await navigator.clipboard.writeText(csv);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  return (
+    <section className="csv-export-panel">
+      <div className="panel-head">
+        <div>
+          <h2>CSV 已產生</h2>
+          <p>若瀏覽器沒有自動下載，可在這裡再次下載或複製內容。</p>
+        </div>
+        <button onClick={onClose}>關閉</button>
+      </div>
+      <div className="csv-actions">
+        <button className="primary" onClick={() => downloadCsv(csv)}>下載 CSV</button>
+        <button onClick={copyCsv}>{copied ? "已複製" : "複製內容"}</button>
+      </div>
+      <textarea readOnly value={csv} />
+    </section>
   );
 }
 
