@@ -53,6 +53,8 @@ function normalizeReport(store, report) {
 
 export function App() {
   const [activeModule, setActiveModule] = useState("ops");
+  const [inspectionGateOpen, setInspectionGateOpen] = useState(false);
+  const [inspectionPassword, setInspectionPassword] = useState("");
   const [profile, setProfile] = useState(null);
   const [role, setRole] = useState("entry");
   const [stores, setStores] = useState([]);
@@ -103,6 +105,20 @@ export function App() {
 
   if (activeModule === "inspection") {
     return <InspectionApp onBack={() => setActiveModule("ops")} />;
+  }
+
+  function requestInspectionAccess() {
+    setInspectionPassword("");
+    setInspectionGateOpen(true);
+  }
+
+  function confirmInspectionAccess() {
+    if (inspectionPassword === "8599") {
+      setInspectionGateOpen(false);
+      setActiveModule("inspection");
+      return;
+    }
+    show("巡檢管理密碼錯誤");
   }
 
   async function handleLogin(email, password) {
@@ -252,7 +268,7 @@ export function App() {
         selectedStoreId={selectedStoreId}
         setRole={setRole}
         setSelectedStoreId={setSelectedStoreId}
-        onInspection={() => setActiveModule("inspection")}
+        onInspection={requestInspectionAccess}
         onSignOut={handleSignOut}
       />
       <main className="content">
@@ -274,7 +290,46 @@ export function App() {
           />
         )}
       </main>
+      {inspectionGateOpen && (
+        <InspectionPasswordDialog
+          password={inspectionPassword}
+          setPassword={setInspectionPassword}
+          onCancel={() => setInspectionGateOpen(false)}
+          onConfirm={confirmInspectionAccess}
+        />
+      )}
       {message && <div className="toast show">{message}</div>}
+    </div>
+  );
+}
+
+function InspectionPasswordDialog({ password, setPassword, onCancel, onConfirm }) {
+  return (
+    <div className="modal-backdrop">
+      <section className="password-dialog">
+        <div className="panel-head">
+          <div>
+            <h2>巡檢管理密碼</h2>
+            <p>請輸入授權密碼後進入巡檢管理。</p>
+          </div>
+        </div>
+        <input
+          autoFocus
+          type="password"
+          inputMode="numeric"
+          value={password}
+          placeholder="請輸入密碼"
+          onChange={(event) => setPassword(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") onConfirm();
+            if (event.key === "Escape") onCancel();
+          }}
+        />
+        <div className="dialog-actions">
+          <button onClick={onCancel}>取消</button>
+          <button className="primary" onClick={onConfirm}>進入</button>
+        </div>
+      </section>
     </div>
   );
 }
@@ -309,7 +364,7 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
       <section className="entry-copy">
         <div className="brand-mark">萊</div>
         <h1>萊吉多營運回報入口</h1>
-        <p>門店回報營收、庫存與差異，總部與營運督導可即時查看每日營運狀況。</p>
+        <p>門店回報營收、庫存與差異，總部與營運審核可即時查看每日營運狀況。</p>
         <label>
           選擇門店
           <select onChange={(event) => onSelectStore(event.target.value)} defaultValue="">
@@ -321,13 +376,13 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
         </label>
         <div className="entry-actions">
           <button className="primary" onClick={() => onRole("hq")}>總部儀表板</button>
-          <button onClick={() => onRole("review")}>營運督導審核</button>
+          <button onClick={() => onRole("review")}>營運審核</button>
         </div>
       </section>
       <section className="entry-panels">
         <Info title="門店回報" text="依 14:00、19:00、打烊三個時段填寫營收，並補上現金差異與備註。" />
         <Info title="總部總覽" text="快速查看各門店營收、達成率、庫存狀態與待審核數量。" />
-        <Info title="營運督導審核" text="針對異常回報進行通過、退回修改或指派追蹤。" />
+        <Info title="營運審核" text="針對異常回報進行通過、退回修改或指派追蹤。" />
       </section>
     </main>
   );
@@ -349,9 +404,16 @@ function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedS
           {[
             ["hq", "總部"],
             ["store", "門店"],
-            ["review", "營運督導"],
+            ["review", "營運審核"],
+            ["inspection", "巡檢管理"],
           ].map(([key, label]) => (
-            <button key={key} className={role === key ? "active" : ""} onClick={() => setRole(key)}>{label}</button>
+            <button
+              key={key}
+              className={role === key ? "active" : ""}
+              onClick={() => (key === "inspection" ? onInspection() : setRole(key))}
+            >
+              {label}
+            </button>
           ))}
         </div>
       )}
@@ -367,7 +429,6 @@ function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedS
       </select>
       <nav className="side-nav">
         <button className="active" disabled>每日營運回報</button>
-        <button onClick={onInspection}>巡檢管理</button>
       </nav>
       <div className="sidebar-note">
         <span>{profile?.full_name || "示範使用者"}</span>
@@ -380,7 +441,7 @@ function Sidebar({ role, profile, stores, selectedStoreId, setRole, setSelectedS
 }
 
 function TopBar({ role, report, onSync, onExport }) {
-  const title = role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "營運督導審核台";
+  const title = role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "門店回報審核台";
   return (
     <header className="topbar">
       <div>
@@ -408,7 +469,7 @@ function HqDashboard({ reports, onSelect }) {
       <section className="kpi-strip">
         <Metric label="今日總營收" value={money(summary.total)} detail={`目標 ${money(summary.target)}`} tone="hot" />
         <Metric label="整體達成率" value={pct((summary.total / summary.target) * 100)} detail="依今日目標計算" />
-        <Metric label="待審核" value={`${reports.filter((report) => report.status === "submitted").length} 間`} detail="等待營運督導確認" tone="warn" />
+        <Metric label="待審核" value={`${reports.filter((report) => report.status === "submitted").length} 間`} detail="等待營運審核確認" tone="warn" />
         <Metric label="需追蹤" value={`${reports.filter((report) => report.status === "follow_up").length} 間`} detail="異常或補貨需求" tone="bad" />
         <Metric label="已達標" value={`${reports.filter((report) => totalRevenue(report) >= report.target).length} 間`} detail="營收高於目標" tone="good" />
       </section>

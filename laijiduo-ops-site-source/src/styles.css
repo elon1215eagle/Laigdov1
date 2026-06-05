@@ -129,6 +129,33 @@ body {
   box-shadow: 0 12px 30px rgba(44, 33, 28, 0.2);
 }
 
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(44, 33, 28, 0.34);
+}
+
+.password-dialog {
+  width: min(420px, 100%);
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #ecd8cc;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(44, 33, 28, 0.22);
+}
+
+.dialog-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 button,
 input,
 select,
@@ -212,11 +239,15 @@ td span,
 .role-switcher,
 .segments {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   padding: 4px;
   background: #fff1e7;
   border-radius: 8px;
   gap: 4px;
+}
+
+.segments {
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .role-switcher button,
