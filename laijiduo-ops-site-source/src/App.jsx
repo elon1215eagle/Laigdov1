@@ -9,10 +9,17 @@ const today = new Intl.DateTimeFormat("en-CA", {
 }).format(new Date());
 
 const stores = [
-  { id: "kaixuan", name: "凱旋店", area: "高雄", manager: "孫協政" },
-  { id: "sinyi", name: "信義店", area: "台北", manager: "陳店長" },
-  { id: "beitun", name: "北屯店", area: "台中", manager: "林店長" },
-  { id: "tainan", name: "台南店", area: "台南", manager: "黃店長" },
+  { id: "fongshan-wujia", name: "鳳山五甲店", area: "高雄", manager: "未設定" },
+  { id: "fongshan-kaixuan", name: "鳳山凱旋店", area: "高雄", manager: "未設定" },
+  { id: "fongshan-wumiao", name: "鳳山武廟店", area: "高雄", manager: "未設定" },
+  { id: "fongshan-zhongshan", name: "鳳山中山店", area: "高雄", manager: "未設定" },
+  { id: "qianzhen-longxing", name: "前鎮隆興店", area: "高雄", manager: "未設定" },
+  { id: "fongshan-nanhua", name: "鳳山南華店", area: "高雄", manager: "未設定" },
+  { id: "sanmin-dingshan", name: "三民鼎山店", area: "高雄", manager: "未設定" },
+  { id: "sanmin-dachang", name: "三民大昌店", area: "高雄", manager: "未設定" },
+  { id: "sanmin-yihua", name: "三民義華店", area: "高雄", manager: "未設定" },
+  { id: "pingtung-chaozhou", name: "屏東潮洲店", area: "屏東", manager: "未設定" },
+  { id: "pingtung-chaozhou-2", name: "屏東潮洲店", area: "屏東", manager: "未設定" },
 ];
 
 const categoryOptions = [
@@ -33,8 +40,8 @@ const statusOptions = ["待確認", "待改善", "已改善"];
 const seedInspections = [
   {
     id: "sample-1",
-    storeId: "kaixuan",
-    storeName: "凱旋店",
+    storeId: "fongshan-kaixuan",
+    storeName: "鳳山凱旋店",
     date: "2026-06-02",
     supervisor: "郭承廷",
     manager: "孫協政",
@@ -293,9 +300,9 @@ export function App() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand-mark">來</div>
+          <div className="brand-mark">萊</div>
           <div>
-            <strong>來吉多門店管理</strong>
+            <strong>萊吉多門店管理</strong>
             <span>督導巡檢中心</span>
           </div>
         </div>
