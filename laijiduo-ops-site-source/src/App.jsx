@@ -262,28 +262,19 @@ export function App() {
     }
   }
 
-  function exportReports() {
-    const headers = ["門店代碼", "門店", "店長", "日期", "14:00", "19:00", "打烊", "總營收", "現金差異", "狀態"];
-    const rows = reports.map((report) => [
-      report.store_code,
-      report.name,
-      report.manager_name,
-      report.report_date,
-      report.opened_to_1400_revenue,
-      report.revenue_1400_to_1900,
-      report.revenue_1900_to_close,
-      totalRevenue(report),
-      report.cash_difference ?? "",
-      statusLabel(report.status),
-    ]);
-    const escape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
-    const csv = [headers, ...rows].map((row) => row.map(escape).join(",")).join("\n");
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }));
-    link.download = `萊吉多營運回報-${today}.csv`;
-    link.click();
-    URL.revokeObjectURL(link.href);
-    show("報表已匯出");
+  async function exportReports() {
+    try {
+      const weekRange = getWeekRange(today);
+      const monthRange = getMonthRange(today);
+      const monthReports = await fetchDailyReportsRange(monthRange.start, monthRange.end);
+      const periodReports = monthReports.length ? monthReports : reports;
+      const inventoryRows = await fetchInventoryCountsForReports(periodReports.map((report) => report.id).filter(Boolean));
+      const csv = buildOperationsCsv({ reports, periodReports, inventoryRows, products, weekRange, monthRange });
+      downloadTextFile(csv, `萊吉多營運回報-${today}.csv`);
+      show("報表已匯出");
+    } catch (error) {
+      show(`匯出失敗：${error.message}`);
+    }
   }
 
   if (loading) return <main className="loading">載入中...</main>;
@@ -669,6 +660,206 @@ function buildRevenueSummary(rows) {
   );
 }
 
+function isNamedProductName(name) {
+  return Boolean(name && name !== "未命名品項");
+}
+
+function downloadTextFile(text, filename) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([`\uFEFF${text}`], { type: "text/csv;charset=utf-8" }));
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function csvEscape(value) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function csvSection(title, headers, rows) {
+  return [
+    [title],
+    headers,
+    ...rows,
+    [],
+  ].map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
+function buildOperationsCsv({ reports, periodReports, inventoryRows, products, weekRange, monthRange }) {
+  const activePeriodReports = periodReports.length ? periodReports : reports;
+  const dailyReports = activePeriodReports.filter((report) => report.report_date === today);
+  const weeklyReports = activePeriodReports.filter((report) => report.report_date >= weekRange.start && report.report_date <= weekRange.end);
+  const monthlyReports = activePeriodReports.filter((report) => report.report_date >= monthRange.start && report.report_date <= monthRange.end);
+  const productNames = new Map(products.map((product) => [product.id, product.name]));
+
+  const revenueHeaders = ["期間", "日期範圍", "門店代碼", "門店", "店長", "14:00營收", "19:00營收", "打烊營收", "總營收", "現金差異", "回報天數", "狀態"];
+  const dailyRevenueRows = dailyReports.map((report) => revenueRow("每日", today, report));
+  const weeklyRevenueRows = aggregateRevenueByStore(weeklyReports).map((row) => aggregateRevenueRow("每週", `${weekRange.start} 至 ${weekRange.end}`, row));
+  const monthlyRevenueRows = aggregateRevenueByStore(monthlyReports).map((row) => aggregateRevenueRow("每月", `${monthRange.start} 至 ${monthRange.end}`, row));
+
+  const usageHeaders = ["期間", "日期範圍", "日期", "門店", "品項", "進貨", "進貨來源", "現存庫存", "報廢", "消耗", "備註"];
+  const dailyUsageRows = buildUsageDetailRows({
+    label: "每日",
+    rangeLabel: today,
+    reports: dailyReports,
+    inventoryRows,
+    productNames,
+    aggregate: false,
+  });
+  const weeklyUsageRows = buildUsageDetailRows({
+    label: "每週",
+    rangeLabel: `${weekRange.start} 至 ${weekRange.end}`,
+    reports: weeklyReports,
+    inventoryRows,
+    productNames,
+    aggregate: true,
+  });
+  const monthlyUsageRows = buildUsageDetailRows({
+    label: "每月",
+    rangeLabel: `${monthRange.start} 至 ${monthRange.end}`,
+    reports: monthlyReports,
+    inventoryRows,
+    productNames,
+    aggregate: true,
+  });
+
+  return [
+    csvSection("營收：每日各店", revenueHeaders, dailyRevenueRows),
+    csvSection("營收：每週各店", revenueHeaders, weeklyRevenueRows),
+    csvSection("營收：每月各店", revenueHeaders, monthlyRevenueRows),
+    csvSection("使用量：每日各店", usageHeaders, dailyUsageRows),
+    csvSection("使用量：每週各店", usageHeaders, weeklyUsageRows),
+    csvSection("使用量：每月各店", usageHeaders, monthlyUsageRows),
+  ].join("\n");
+}
+
+function revenueRow(label, rangeLabel, report) {
+  return [
+    label,
+    rangeLabel,
+    report.store_code,
+    report.name,
+    report.manager_name,
+    report.opened_to_1400_revenue,
+    report.revenue_1400_to_1900,
+    report.revenue_1900_to_close,
+    totalRevenue(report),
+    report.cash_difference ?? "",
+    1,
+    statusLabel(report.status),
+  ];
+}
+
+function aggregateRevenueByStore(rows) {
+  const byStore = new Map();
+  rows.forEach((report) => {
+    const key = report.store_id || report.id || report.store_code;
+    if (!byStore.has(key)) {
+      byStore.set(key, {
+        ...report,
+        opened_to_1400_revenue: 0,
+        revenue_1400_to_1900: 0,
+        revenue_1900_to_close: 0,
+        cash_difference: 0,
+        days: new Set(),
+      });
+    }
+    const item = byStore.get(key);
+    item.opened_to_1400_revenue += Number(report.opened_to_1400_revenue || 0);
+    item.revenue_1400_to_1900 += Number(report.revenue_1400_to_1900 || 0);
+    item.revenue_1900_to_close += Number(report.revenue_1900_to_close || 0);
+    item.cash_difference += Number(report.cash_difference || 0);
+    item.days.add(report.report_date);
+  });
+  return Array.from(byStore.values());
+}
+
+function aggregateRevenueRow(label, rangeLabel, row) {
+  return [
+    label,
+    rangeLabel,
+    row.store_code,
+    row.name,
+    row.manager_name,
+    row.opened_to_1400_revenue,
+    row.revenue_1400_to_1900,
+    row.revenue_1900_to_close,
+    totalRevenue(row),
+    row.cash_difference,
+    row.days.size,
+    "",
+  ];
+}
+
+function buildUsageDetailRows({ label, rangeLabel, reports, inventoryRows, productNames, aggregate }) {
+  const reportsById = new Map(reports.map((report) => [report.id, report]));
+  const relevantRows = inventoryRows
+    .map((row) => ({ row, report: reportsById.get(row.report_id) }))
+    .filter(({ row, report }) => report && isNamedProductName(row.name || productNames.get(row.product_id)));
+
+  if (!aggregate) {
+    return relevantRows.map(({ row, report }) => {
+      const productName = row.name || productNames.get(row.product_id);
+      return [
+        label,
+        rangeLabel,
+        report.report_date,
+        report.name,
+        productName,
+        Number(row.incoming_count || 0),
+        row.incoming_source || "廠商進貨",
+        Number(row.current_stock || 0),
+        Number(row.loss_count || 0),
+        usageCount(row),
+        row.transfer_note || "",
+      ];
+    });
+  }
+
+  const byStoreProduct = new Map();
+  relevantRows.forEach(({ row, report }) => {
+    const productName = row.name || productNames.get(row.product_id);
+    const key = `${report.store_id || report.id}-${row.product_id}`;
+    if (!byStoreProduct.has(key)) {
+      byStoreProduct.set(key, {
+        latestDate: "",
+        storeName: report.name,
+        productName,
+        incoming: 0,
+        sourceSet: new Set(),
+        currentStock: 0,
+        loss: 0,
+        usage: 0,
+        noteSet: new Set(),
+      });
+    }
+    const item = byStoreProduct.get(key);
+    item.incoming += Number(row.incoming_count || 0);
+    item.loss += Number(row.loss_count || 0);
+    item.usage += usageCount(row);
+    if (row.incoming_source) item.sourceSet.add(row.incoming_source);
+    if (row.transfer_note) item.noteSet.add(row.transfer_note);
+    if (!item.latestDate || report.report_date >= item.latestDate) {
+      item.latestDate = report.report_date;
+      item.currentStock = Number(row.current_stock || 0);
+    }
+  });
+
+  return Array.from(byStoreProduct.values()).map((item) => [
+    label,
+    rangeLabel,
+    item.latestDate,
+    item.storeName,
+    item.productName,
+    item.incoming,
+    Array.from(item.sourceSet).join(" / ") || "廠商進貨",
+    item.currentStock,
+    item.loss,
+    item.usage,
+    Array.from(item.noteSet).join("；"),
+  ]);
+}
+
 function buildUsageSummary(dailyReports, products, periodReports, inventoryRows) {
   const weekRange = getWeekRange(today);
   const monthRange = getMonthRange(today);
@@ -681,6 +872,8 @@ function buildUsageSummary(dailyReports, products, periodReports, inventoryRows)
   inventoryRows.forEach((row) => {
     const report = reportsById.get(row.report_id);
     if (!report) return;
+    const productName = row.name || productNames.get(row.product_id);
+    if (!isNamedProductName(productName)) return;
     const amount = usageCount(row);
     const storeId = report.store_id || report.id;
     const productId = row.product_id;
@@ -690,7 +883,7 @@ function buildUsageSummary(dailyReports, products, periodReports, inventoryRows)
         storeId,
         productId,
         storeName: report.name || storeNames.get(storeId) || "未命名門店",
-        productName: row.name || productNames.get(productId) || "未命名品項",
+        productName,
         daily: 0,
         week: 0,
         month: 0,
