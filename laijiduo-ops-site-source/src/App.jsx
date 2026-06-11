@@ -1,9 +1,8 @@
 ﻿import { useEffect, useMemo, useState } from "react";
 import {
   fetchDailyReports,
-  fetchDailyReportsRange,
+  fetchHqDashboardData,
   fetchInventoryCounts,
-  fetchInventoryCountsForReports,
   fetchProducts,
   fetchStores,
   getSessionProfile,
@@ -110,12 +109,15 @@ export function App() {
   const [message, setMessage] = useState("");
 
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId) {
-    const [storeRows, productRows] = await Promise.all([fetchStores(), fetchProducts()]);
+    const [storeRows, productRows, reportRows] = await Promise.all([
+      fetchStores(),
+      fetchProducts(),
+      fetchDailyReports(today),
+    ]);
     setStores(storeRows);
     setProducts(productRows);
     setSelectedStoreId(nextProfile?.store_id || preferredStoreId || storeRows[0]?.id || "");
 
-    const reportRows = await fetchDailyReports(today);
     const byStore = new Map(reportRows.map((report) => [report.store_id || report.id, report]));
     setReports(storeRows.map((store) => normalizeReport(store, byStore.get(store.id))));
   }
@@ -266,9 +268,8 @@ export function App() {
     try {
       const weekRange = getWeekRange(today);
       const monthRange = getMonthRange(today);
-      const monthReports = await fetchDailyReportsRange(monthRange.start, monthRange.end);
+      const { reports: monthReports, inventoryRows } = await fetchHqDashboardData(monthRange.start, monthRange.end);
       const periodReports = monthReports.length ? monthReports : reports;
-      const inventoryRows = await fetchInventoryCountsForReports(periodReports.map((report) => report.id).filter(Boolean));
       const csv = buildOperationsCsv({ reports, periodReports, inventoryRows, products, weekRange, monthRange });
       downloadTextFile(csv, `萊吉多營運回報-${today}.csv`);
       show("報表已匯出");
@@ -503,12 +504,10 @@ function HqDashboard({ reports, products, onSelect }) {
     let active = true;
     async function loadPeriodData() {
       try {
-        const rows = await fetchDailyReportsRange(monthRange.start, monthRange.end);
+        const { reports: rows, inventoryRows } = await fetchHqDashboardData(monthRange.start, monthRange.end);
         if (!active) return;
         setPeriodRows(rows);
-        const reportIds = rows.map((row) => row.id).filter(Boolean);
-        const inventoryRows = await fetchInventoryCountsForReports(reportIds);
-        if (active) setUsageRows(inventoryRows);
+        setUsageRows(inventoryRows);
       } catch {
         if (active) {
           setPeriodRows(reports);

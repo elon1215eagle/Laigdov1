@@ -71,6 +71,12 @@ create table if not exists public.daily_reports (
   unique (store_id, report_date)
 );
 
+create index if not exists daily_reports_report_date_store_id_idx
+on public.daily_reports (report_date, store_id);
+
+create index if not exists daily_reports_store_id_report_date_idx
+on public.daily_reports (store_id, report_date desc);
+
 create or replace view public.daily_report_totals
 with (security_invoker = true) as
 select
@@ -96,6 +102,12 @@ create table if not exists public.inventory_counts (
   created_at timestamptz not null default now(),
   unique (report_id, product_id)
 );
+
+create index if not exists inventory_counts_report_id_idx
+on public.inventory_counts (report_id);
+
+create index if not exists inventory_counts_product_id_idx
+on public.inventory_counts (product_id);
 
 alter table public.inventory_counts
 add column if not exists incoming_source text not null default '廠商進貨';
@@ -124,6 +136,9 @@ create table if not exists public.store_supervisors (
   supervisor_id uuid not null references public.profiles(id) on delete cascade,
   unique (store_id, supervisor_id)
 );
+
+create index if not exists store_supervisors_supervisor_id_store_id_idx
+on public.store_supervisors (supervisor_id, store_id);
 
 create table if not exists public.store_inspections (
   id uuid primary key default gen_random_uuid(),

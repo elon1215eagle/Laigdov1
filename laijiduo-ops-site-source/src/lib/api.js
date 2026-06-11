@@ -1,6 +1,34 @@
 import { productsSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 
+const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, is_active";
+const PRODUCT_FIELDS = "id, name, unit, sort_order, is_active";
+const REPORT_FIELDS = [
+  "id",
+  "store_id",
+  "report_date",
+  "opened_to_1400_revenue",
+  "revenue_1400_to_1900",
+  "revenue_1900_to_close",
+  "cash_difference",
+  "status",
+  "manager_note",
+  "total_revenue",
+  "stores(name, area, store_code, manager_name, target_daily_revenue)",
+].join(", ");
+const INVENTORY_REPORT_FIELDS = [
+  "report_id",
+  "product_id",
+  "current_stock",
+  "safety_stock",
+  "loss_count",
+  "incoming_count",
+  "incoming_source",
+  "transfer_note",
+  "is_shortage",
+  "products(name, unit, sort_order)",
+].join(", ");
+
 export function totalRevenue(report) {
   return (
     Number(report.opened_to_1400_revenue || 0) +
@@ -51,7 +79,7 @@ export async function fetchProducts() {
   if (!supabase) return productsSeed;
   const { data, error } = await supabase
     .from("products")
-    .select("*")
+    .select(PRODUCT_FIELDS)
     .eq("is_active", true)
     .order("sort_order");
   if (error) throw error;
@@ -87,7 +115,7 @@ export async function fetchStores() {
   if (!supabase) return storesSeed;
   const { data, error } = await supabase
     .from("stores")
-    .select("*")
+    .select(STORE_FIELDS)
     .eq("is_active", true)
     .order("store_code");
   if (error) throw error;
@@ -98,7 +126,7 @@ export async function fetchDailyReports(reportDate) {
   if (!supabase) return storesSeed;
   const { data, error } = await supabase
     .from("daily_report_totals")
-    .select("*, stores(name, area, store_code, manager_name, target_daily_revenue)")
+    .select(REPORT_FIELDS)
     .eq("report_date", reportDate)
     .order("store_id");
   if (error) throw error;
@@ -116,7 +144,7 @@ export async function fetchDailyReportsRange(dateFrom, dateTo) {
   if (!supabase) return [];
   const { data, error } = await supabase
     .from("daily_report_totals")
-    .select("*, stores(name, area, store_code, manager_name, target_daily_revenue)")
+    .select(REPORT_FIELDS)
     .gte("report_date", dateFrom)
     .lte("report_date", dateTo)
     .order("report_date")
@@ -146,7 +174,7 @@ export async function fetchInventoryCountsForReports(reportIds) {
   if (!supabase || !reportIds?.length) return [];
   const { data, error } = await supabase
     .from("inventory_counts")
-    .select("*, products(name, unit, sort_order)")
+    .select(INVENTORY_REPORT_FIELDS)
     .in("report_id", reportIds);
   if (error) throw error;
   return data.map((row) => normalizeInventoryRow({
@@ -155,6 +183,13 @@ export async function fetchInventoryCountsForReports(reportIds) {
     unit: row.products?.unit,
     sort_order: row.products?.sort_order,
   }));
+}
+
+export async function fetchHqDashboardData(dateFrom, dateTo) {
+  const reports = await fetchDailyReportsRange(dateFrom, dateTo);
+  const reportIds = reports.map((report) => report.id).filter(Boolean);
+  const inventoryRows = await fetchInventoryCountsForReports(reportIds);
+  return { reports, inventoryRows };
 }
 
 export async function upsertDailyReport(payload) {

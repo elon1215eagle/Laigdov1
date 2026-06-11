@@ -70,3 +70,20 @@ Vercel 也要設定同樣兩個環境變數。
 7. Deploy。
 
 本專案已包含 `vercel.json`，Vercel 會依此使用 Vite 建置並輸出 `dist`。
+## 業績報表效能維護
+
+業績報表頁載入目標為 2 秒內。若 Supabase 資料量增加，請確認 `supabase/schema.sql` 內的索引已套用：
+
+- `daily_reports_report_date_store_id_idx`：加速每日、每週、每月業績範圍查詢。
+- `daily_reports_store_id_report_date_idx`：加速單店歷史業績查詢與店別排序。
+- `inventory_counts_report_id_idx`：加速依報表批次載入庫存資料。
+- `inventory_counts_product_id_idx`：加速商品庫存關聯查詢。
+- `store_supervisors_supervisor_id_store_id_idx`：加速督導權限判斷。
+
+前端載入流程已改為併發請求門店、商品與當日報表，並限制 Supabase 回傳欄位，只取儀表板需要的資料。部署前請執行：
+
+```bash
+npm run build
+```
+
+部署後請用總部帳號進入「總部營運總覽」，確認今日業績表、每週/每月營收、庫存用量排行與 CSV 匯出皆正常。
