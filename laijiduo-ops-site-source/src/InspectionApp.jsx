@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./styles.css";
 
 const today = new Intl.DateTimeFormat("en-CA", {
@@ -606,7 +606,8 @@ function buildSingleInspectionHtml(record, output = "document") {
     .issue-table th:nth-child(3), .issue-table th:nth-child(4) { width: 22%; }
     .issue-table th:nth-child(5), .issue-table th:nth-child(6), .issue-table th:nth-child(7) { width: 8%; }
     .note-box { min-height: 74px; border: 1px solid #999; padding: 10px; white-space: pre-wrap; }
-    .sign-table td { height: 68px; }
+    .sign-table td { height: 88px; text-align: center; vertical-align: middle; }
+    .signature-img { max-width: 240px; max-height: 76px; object-fit: contain; }
     .footer { margin-top: 10px; color: #666; font-size: 11px; text-align: right; }
     @media print {
       .sheet { padding: 0; }
@@ -654,7 +655,7 @@ function buildSingleInspectionHtml(record, output = "document") {
   <h2>簽核確認</h2>
   <table class="sign-table">
     <thead><tr><th>督導簽名</th><th>店長簽名</th><th>總部複核</th></tr></thead>
-    <tbody><tr><td></td><td></td><td></td></tr></tbody>
+    <tbody><tr><td></td><td>${record.managerSignature ? `<img class="signature-img" src="${htmlEscape(record.managerSignature)}" />` : ""}</td><td></td></tr></tbody>
   </table>
   <p class="footer">本表由萊吉多營運 APP 匯出，作為門店巡檢、改善追蹤與週會檢討依據。</p>
   </div>
@@ -847,6 +848,7 @@ function OnlineInspectionForm({ onAdd }) {
   const [supervisor, setSupervisor] = useState("");
   const [manager, setManager] = useState("");
   const [form, setForm] = useState(createBlankInspectionForm);
+  const [managerSignature, setManagerSignature] = useState("");
   const selectedStore = stores.find((store) => store.id === storeId) || stores[0];
   const total = getFormScore(form);
 
@@ -919,9 +921,11 @@ function OnlineInspectionForm({ onAdd }) {
       images: [],
       summary: form.conclusion || `線上巡檢完成，總分 ${total.score} / ${total.maxScore}，待改善 ${issues.filter((issue) => issue.title).length} 項。`,
       formData: form,
+      managerSignature,
       issues,
     });
     setForm(createBlankInspectionForm());
+    setManagerSignature("");
   }
 
   return (
@@ -1009,10 +1013,100 @@ function OnlineInspectionForm({ onAdd }) {
         </section>
         <section className="panel">
           <label className="wide-field">巡檢建議與總結<textarea value={form.conclusion} onChange={(event) => setForm({ ...form, conclusion: event.target.value })} placeholder="例如：本次主要問題集中在作業區清潔與冰箱管理，下次複查前需由店長每日拍照回傳。" /></label>
+          <SignaturePad
+            title="店長電子簽名"
+            value={managerSignature}
+            onChange={setManagerSignature}
+          />
           <button className="submit-button static" type="submit">儲存巡檢結果並產生追蹤</button>
         </section>
       </section>
     </form>
+  );
+}
+
+function SignaturePad({ title, value, onChange }) {
+  const canvasRef = useRef(null);
+  const [drawing, setDrawing] = useState(false);
+
+  useEffect(() => {
+    const canvasNode = canvasRef.current;
+    if (!canvasNode) return;
+    const context = canvasNode.getContext("2d");
+    context.lineWidth = 2.4;
+    context.lineCap = "round";
+    context.strokeStyle = "#1f1f1f";
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvasNode.width, canvasNode.height);
+    if (!value) return;
+    const image = new Image();
+    image.onload = () => context.drawImage(image, 0, 0, canvasNode.width, canvasNode.height);
+    image.src = value;
+  }, [value]);
+
+  function point(event) {
+    const canvasNode = canvasRef.current;
+    const rect = canvasNode.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvasNode.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvasNode.height,
+    };
+  }
+
+  function start(event) {
+    const canvasNode = canvasRef.current;
+    if (!canvasNode) return;
+    event.preventDefault();
+    const context = canvasNode.getContext("2d");
+    const next = point(event);
+    context.beginPath();
+    context.moveTo(next.x, next.y);
+    setDrawing(true);
+  }
+
+  function move(event) {
+    const canvasNode = canvasRef.current;
+    if (!drawing || !canvasNode) return;
+    event.preventDefault();
+    const context = canvasNode.getContext("2d");
+    const next = point(event);
+    context.lineTo(next.x, next.y);
+    context.stroke();
+  }
+
+  function end() {
+    const canvasNode = canvasRef.current;
+    if (!canvasNode || !drawing) return;
+    setDrawing(false);
+    onChange(canvasNode.toDataURL("image/png"));
+  }
+
+  function clear() {
+    const canvasNode = canvasRef.current;
+    if (!canvasNode) return;
+    const context = canvasNode.getContext("2d");
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvasNode.width, canvasNode.height);
+    onChange("");
+  }
+
+  return (
+    <div className="signature-pad">
+      <div className="signature-head">
+        <strong>{title}</strong>
+        <button type="button" onClick={clear}>清除簽名</button>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width="720"
+        height="220"
+        onPointerDown={start}
+        onPointerMove={move}
+        onPointerUp={end}
+        onPointerLeave={end}
+      />
+      <p>請店長於現場確認巡檢結果後簽名。</p>
+    </div>
   );
 }
 
@@ -1272,6 +1366,14 @@ function ReviewPanel({ record, onChange }) {
             })}
           </div>
         )}
+        <div className="signature-review">
+          <strong>店長電子簽名</strong>
+          {record.managerSignature ? (
+            <img src={record.managerSignature} alt="店長電子簽名" />
+          ) : (
+            <span>尚未簽名</span>
+          )}
+        </div>
 
         <div className="panel-head issue-head">
           <div>
