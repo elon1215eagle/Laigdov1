@@ -1,4 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  createStoreInspection,
+  fetchStoreInspections,
+  fetchStores,
+  hasSupabaseConfig,
+  updateStoreInspection,
+} from "./lib/api";
 import "./styles.css";
 
 const today = new Intl.DateTimeFormat("en-CA", {
@@ -28,7 +35,7 @@ function getMonthRange(dateText) {
   return { start, end };
 }
 
-const stores = [
+const fallbackStores = [
   { id: "fongshan-wujia", name: "鳳山五甲店", area: "高雄", manager: "未設定" },
   { id: "fongshan-kaixuan", name: "鳳山凱旋店", area: "高雄", manager: "未設定" },
   { id: "fongshan-wumiao", name: "鳳山武廟店", area: "高雄", manager: "未設定" },
@@ -403,8 +410,8 @@ async function requestAiParse({ store, date, supervisor, imageRows }) {
   return data;
 }
 
-async function createDemoParse({ storeId, date, supervisor, files }) {
-  const store = stores.find((item) => item.id === storeId) || stores[0];
+async function createDemoParse({ storeId, date, supervisor, files, stores }) {
+  const store = stores.find((item) => item.id === storeId) || stores[0] || fallbackStores[0];
   const imageRows = await Promise.all(
     Array.from(files).map(async (file) => ({
       name: file.name,
@@ -422,6 +429,7 @@ async function createDemoParse({ storeId, date, supervisor, files }) {
       manager: aiResult.manager || store.manager,
       score: Number(aiResult.score || 0),
       status: "待確認",
+      sourceType: "upload",
       imageNames: imageRows.map((image) => image.name),
       images: imageRows,
       summary: aiResult.summary || "AI 已完成初步解析，請確認手寫內容與問題分類。",
@@ -437,6 +445,7 @@ async function createDemoParse({ storeId, date, supervisor, files }) {
       manager: store.manager,
       score: 80,
       status: "待確認",
+      sourceType: "upload",
       imageNames: Array.from(files).map((file) => file.name),
       images: imageRows,
       summary: `尚未連上 AI 解析服務，已建立示範草稿。原因：${error.message}`,
@@ -716,7 +725,7 @@ function countBy(rows, keyFn) {
   return Array.from(map.values()).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, "zh-Hant"));
 }
 
-function buildInspectionAnalytics(inspections, filters) {
+function buildInspectionAnalytics(inspections, filters, stores) {
   const filtered = inspections
     .filter((record) => record.date >= filters.from && record.date <= filters.to)
     .filter((record) => filters.storeId === "all" || record.storeId === filters.storeId)
@@ -786,23 +795,71 @@ function buildInspectionAnalytics(inspections, filters) {
 
 export function InspectionApp({ onBack }) {
   const [page, setPage] = useState("stores");
+  const [inspectionStores, setInspectionStores] = useState(fallbackStores);
   const [inspections, setInspections] = useState(loadSavedInspections);
   const [selectedId, setSelectedId] = useState(() => loadSavedInspections()[0]?.id || seedInspections[0].id);
   const [csvExport, setCsvExport] = useState(null);
+  const [syncMessage, setSyncMessage] = useState("");
   const selected = inspections.find((item) => item.id === selectedId) || inspections[0];
 
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(inspections));
+    if (!hasSupabaseConfig) localStorage.setItem(storageKey, JSON.stringify(inspections));
   }, [inspections]);
 
-  function addInspection(record) {
-    setInspections((current) => [record, ...current]);
-    setSelectedId(record.id);
+  useEffect(() => {
+    let active = true;
+    async function loadCloudData() {
+      if (!hasSupabaseConfig) return;
+      try {
+        const storeRows = await fetchStores();
+        if (!active) return;
+        setInspectionStores(storeRows.map((store) => ({
+          id: store.id,
+          name: store.name,
+          area: store.area,
+          manager: store.manager_name || "未設定",
+        })));
+        const cloudInspections = await fetchStoreInspections();
+        if (!active || !cloudInspections) return;
+        setInspections(cloudInspections.length ? cloudInspections : []);
+        setSelectedId(cloudInspections[0]?.id || "");
+        setSyncMessage("巡檢資料已連接 Supabase");
+      } catch (error) {
+        if (!active) return;
+        setSyncMessage(`Supabase 巡檢資料讀取失敗，暫用本機資料：${error.message}`);
+      }
+    }
+    loadCloudData();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function addInspection(record) {
+    try {
+      const saved = hasSupabaseConfig ? await createStoreInspection(record) : record;
+      setInspections((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
+      setSelectedId(saved.id);
+      setSyncMessage(hasSupabaseConfig ? "巡檢資料已儲存至 Supabase" : "巡檢資料已儲存在本機");
+    } catch (error) {
+      setInspections((current) => [record, ...current]);
+      setSelectedId(record.id);
+      setSyncMessage(`Supabase 儲存失敗，已暫存本機：${error.message}`);
+    }
     setPage("review");
   }
 
   function updateInspection(nextRecord) {
     setInspections((current) => current.map((item) => (item.id === nextRecord.id ? nextRecord : item)));
+  }
+
+  async function persistInspection(record) {
+    try {
+      if (hasSupabaseConfig) await updateStoreInspection(record);
+      setSyncMessage(hasSupabaseConfig ? "巡檢修改已同步 Supabase" : "巡檢修改已儲存在本機");
+    } catch (error) {
+      setSyncMessage(`巡檢修改同步失敗：${error.message}`);
+    }
   }
 
   const stats = useMemo(() => {
@@ -844,7 +901,7 @@ export function InspectionApp({ onBack }) {
         <div className="sidebar-note">
           <span>目前流程</span>
           <strong>現場填表 → 自動算分 → 產生追蹤</strong>
-          <p>督導現場以點選為主，必要時再補備註與改善建議。</p>
+          <p>{syncMessage || "督導現場以點選為主，必要時再補備註與改善建議。"}</p>
         </div>
       </aside>
       <main className="content">
@@ -878,6 +935,7 @@ export function InspectionApp({ onBack }) {
         {page === "stores" && (
           <StoreManagementPanel
             inspections={inspections}
+            stores={inspectionStores}
             onSelectStore={(storeId) => {
               const inspection = inspections.find((item) => item.storeId === storeId);
               if (inspection) setSelectedId(inspection.id);
@@ -885,9 +943,9 @@ export function InspectionApp({ onBack }) {
             }}
           />
         )}
-        {page === "form" && <OnlineInspectionForm onAdd={addInspection} />}
-        {page === "upload" && <UploadPanel onAdd={addInspection} />}
-        {page === "review" && selected && <ReviewPanel record={selected} onChange={updateInspection} />}
+        {page === "form" && <OnlineInspectionForm stores={inspectionStores} onAdd={addInspection} />}
+        {page === "upload" && <UploadPanel stores={inspectionStores} onAdd={addInspection} />}
+        {page === "review" && selected && <ReviewPanel record={selected} onChange={updateInspection} onPersist={persistInspection} />}
         {page === "tracking" && (
           <TrackingPanel
             inspections={inspections}
@@ -900,7 +958,7 @@ export function InspectionApp({ onBack }) {
         {page === "analytics" && <InspectionAnalyticsPanel inspections={inspections} onSelect={(id) => {
           setSelectedId(id);
           setPage("review");
-        }} />}
+        }} stores={inspectionStores} />}
         {csvExport && <CsvExportPanel csv={csvExport} onClose={() => setCsvExport(null)} />}
       </main>
     </div>
@@ -949,15 +1007,19 @@ function pageTitle(page) {
   }[page] || "門店管理";
 }
 
-function OnlineInspectionForm({ onAdd }) {
-  const [storeId, setStoreId] = useState(stores[0].id);
+function OnlineInspectionForm({ stores, onAdd }) {
+  const [storeId, setStoreId] = useState(stores[0]?.id || "");
   const [date, setDate] = useState(today);
   const [supervisor, setSupervisor] = useState("");
   const [manager, setManager] = useState("");
   const [form, setForm] = useState(createBlankInspectionForm);
   const [managerSignature, setManagerSignature] = useState("");
-  const selectedStore = stores.find((store) => store.id === storeId) || stores[0];
+  const selectedStore = stores.find((store) => store.id === storeId) || stores[0] || fallbackStores[0];
   const total = getFormScore(form);
+
+  useEffect(() => {
+    if (!storeId && stores[0]?.id) setStoreId(stores[0].id);
+  }, [storeId, stores]);
 
   function patchItem(sectionId, itemId, patch) {
     setForm((current) => ({
@@ -1132,7 +1194,7 @@ function OnlineInspectionForm({ onAdd }) {
   );
 }
 
-function InspectionAnalyticsPanel({ inspections, onSelect }) {
+function InspectionAnalyticsPanel({ inspections, stores, onSelect }) {
   const week = getWeekRange(today);
   const month = getMonthRange(today);
   const [mode, setMode] = useState("week");
@@ -1157,8 +1219,8 @@ function InspectionAnalyticsPanel({ inspections, onSelect }) {
   }
 
   const analytics = useMemo(
-    () => buildInspectionAnalytics(inspections, { from, to, storeId }),
-    [inspections, from, to, storeId],
+    () => buildInspectionAnalytics(inspections, { from, to, storeId }, stores),
+    [inspections, from, to, storeId, stores],
   );
 
   return (
@@ -1438,7 +1500,7 @@ function InspectionSection({ section, form, onQuickSet, onPatchItem, onPatchProd
   );
 }
 
-function StoreManagementPanel({ inspections, onSelectStore }) {
+function StoreManagementPanel({ inspections, stores, onSelectStore }) {
   const storeRows = stores.map((store) => {
     const storeInspections = inspections.filter((inspection) => inspection.storeId === store.id);
     const issues = storeInspections.flatMap((inspection) => inspection.issues);
@@ -1483,18 +1545,22 @@ function StoreManagementPanel({ inspections, onSelectStore }) {
   );
 }
 
-function UploadPanel({ onAdd }) {
-  const [storeId, setStoreId] = useState(stores[0].id);
+function UploadPanel({ stores, onAdd }) {
+  const [storeId, setStoreId] = useState(stores[0]?.id || "");
   const [date, setDate] = useState(today);
   const [supervisor, setSupervisor] = useState("");
   const [files, setFiles] = useState([]);
   const [parsing, setParsing] = useState(false);
 
+  useEffect(() => {
+    if (!storeId && stores[0]?.id) setStoreId(stores[0].id);
+  }, [storeId, stores]);
+
   async function submit(event) {
     event.preventDefault();
     if (!files.length) return;
     setParsing(true);
-    const parsed = await createDemoParse({ storeId, date, supervisor: supervisor || "未填寫", files });
+    const parsed = await createDemoParse({ storeId, date, supervisor: supervisor || "未填寫", files, stores });
     onAdd(parsed);
     setFiles([]);
     setParsing(false);
@@ -1559,7 +1625,7 @@ function UploadPanel({ onAdd }) {
   );
 }
 
-function ReviewPanel({ record, onChange }) {
+function ReviewPanel({ record, onChange, onPersist }) {
   function patchRecord(patch) {
     onChange({ ...record, ...patch });
   }
@@ -1603,6 +1669,7 @@ function ReviewPanel({ record, onChange }) {
             <p>確認門市、日期、督導與摘要。</p>
           </div>
           <div className="inspection-export-actions">
+            <button onClick={() => onPersist(record)}>同步</button>
             <button onClick={() => exportInspectionExcel(record)}>Excel</button>
             <button onClick={() => exportInspectionWord(record)}>Word</button>
             <button onClick={() => exportInspectionPdf(record)}>PDF</button>

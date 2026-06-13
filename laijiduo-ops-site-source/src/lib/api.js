@@ -60,6 +60,22 @@ const LEGACY_INVENTORY_REPORT_FIELDS = [
   "is_shortage",
   "products(name, unit, sort_order)",
 ].join(", ");
+const INSPECTION_FIELDS = [
+  "id",
+  "store_id",
+  "inspection_date",
+  "supervisor_name",
+  "manager_name",
+  "score",
+  "status",
+  "summary",
+  "form_data",
+  "manager_signature",
+  "source_type",
+  "created_at",
+  "stores(name, area, store_code, manager_name)",
+].join(", ");
+const INSPECTION_ISSUE_FIELDS = "id, inspection_id, category, title, description, suggestion, severity, due_date, status, created_at";
 
 export function totalRevenue(report) {
   return (
@@ -340,6 +356,143 @@ export async function reviewReport(reportId, action, note, status) {
     .single();
   if (error) throw error;
   return data;
+}
+
+function normalizeInspectionRow(row, issueRows = []) {
+  return {
+    id: row.id,
+    storeId: row.store_id,
+    storeName: row.stores?.name || "未命名門店",
+    date: row.inspection_date,
+    supervisor: row.supervisor_name || "",
+    manager: row.manager_name || row.stores?.manager_name || "",
+    score: Number(row.score || 0),
+    maxScore: row.form_data ? undefined : 100,
+    status: row.status || "待確認",
+    imageNames: [],
+    images: [],
+    summary: row.summary || "",
+    formData: row.form_data || null,
+    managerSignature: row.manager_signature || "",
+    sourceType: row.source_type || "online",
+    issues: issueRows.map((issue) => ({
+      id: issue.id,
+      category: issue.category,
+      title: issue.title,
+      description: issue.description || "",
+      suggestion: issue.suggestion || "",
+      severity: issue.severity || "一般",
+      dueDate: issue.due_date || "",
+      status: issue.status || "待確認",
+    })),
+  };
+}
+
+export async function fetchStoreInspections() {
+  if (!supabase) return null;
+  const { data: inspections, error } = await supabase
+    .from("store_inspections")
+    .select(INSPECTION_FIELDS)
+    .order("inspection_date", { ascending: false })
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+
+  const inspectionIds = inspections.map((inspection) => inspection.id);
+  const { data: issues, error: issueError } = inspectionIds.length
+    ? await supabase
+      .from("store_inspection_issues")
+      .select(INSPECTION_ISSUE_FIELDS)
+      .in("inspection_id", inspectionIds)
+      .order("created_at", { ascending: true })
+    : { data: [], error: null };
+  if (issueError) throw issueError;
+
+  const issuesByInspection = new Map();
+  issues.forEach((issue) => {
+    if (!issuesByInspection.has(issue.inspection_id)) issuesByInspection.set(issue.inspection_id, []);
+    issuesByInspection.get(issue.inspection_id).push(issue);
+  });
+
+  return inspections.map((inspection) => normalizeInspectionRow(inspection, issuesByInspection.get(inspection.id) || []));
+}
+
+export async function createStoreInspection(record) {
+  if (!supabase) return record;
+  const payload = {
+    store_id: record.storeId,
+    inspection_date: record.date,
+    supervisor_name: record.supervisor || "未填寫",
+    manager_name: record.manager || "",
+    score: Number(record.score || 0),
+    status: record.status || "待確認",
+    summary: record.summary || "",
+    form_data: record.formData || null,
+    manager_signature: record.managerSignature || "",
+    source_type: record.sourceType || (record.formData ? "online" : "upload"),
+  };
+  const { data, error } = await supabase
+    .from("store_inspections")
+    .insert(payload)
+    .select(INSPECTION_FIELDS)
+    .single();
+  if (error) throw error;
+
+  const issuePayload = (record.issues || [])
+    .filter((issue) => issue.title || issue.description || issue.suggestion)
+    .map((issue) => ({
+      inspection_id: data.id,
+      category: issue.category || "其他",
+      title: issue.title || "未命名問題",
+      description: issue.description || "",
+      suggestion: issue.suggestion || "",
+      severity: issue.severity || "一般",
+      due_date: issue.dueDate || null,
+      status: issue.status || "待確認",
+    }));
+  if (issuePayload.length) {
+    const { error: issueError } = await supabase.from("store_inspection_issues").insert(issuePayload);
+    if (issueError) throw issueError;
+  }
+  const rows = await fetchStoreInspections();
+  return rows.find((row) => row.id === data.id) || normalizeInspectionRow(data, []);
+}
+
+export async function updateStoreInspection(record) {
+  if (!supabase) return record;
+  const { error } = await supabase
+    .from("store_inspections")
+    .update({
+      inspection_date: record.date,
+      supervisor_name: record.supervisor || "未填寫",
+      manager_name: record.manager || "",
+      score: Number(record.score || 0),
+      status: record.status || "待確認",
+      summary: record.summary || "",
+      form_data: record.formData || null,
+      manager_signature: record.managerSignature || "",
+      source_type: record.sourceType || (record.formData ? "online" : "upload"),
+    })
+    .eq("id", record.id);
+  if (error) throw error;
+
+  await supabase.from("store_inspection_issues").delete().eq("inspection_id", record.id);
+  const issuePayload = (record.issues || [])
+    .filter((issue) => issue.title || issue.description || issue.suggestion)
+    .map((issue) => ({
+      inspection_id: record.id,
+      category: issue.category || "其他",
+      title: issue.title || "未命名問題",
+      description: issue.description || "",
+      suggestion: issue.suggestion || "",
+      severity: issue.severity || "一般",
+      due_date: issue.dueDate || null,
+      status: issue.status || "待確認",
+    }));
+  if (issuePayload.length) {
+    const { error: issueError } = await supabase.from("store_inspection_issues").insert(issuePayload);
+    if (issueError) throw issueError;
+  }
+  return record;
 }
 
 export { hasSupabaseConfig };
