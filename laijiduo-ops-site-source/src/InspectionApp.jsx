@@ -533,11 +533,14 @@ function buildInspectionExportRows(record) {
 
 function buildSingleInspectionHtml(record, output = "document") {
   const scoreMax = record.maxScore || (record.formData ? getFormScore(record.formData).maxScore : 100);
+  const scoreRate = scoreMax ? Math.round((Number(record.score || 0) / scoreMax) * 1000) / 10 : 0;
+  const scoreLevel = scoreRate >= 90 ? "優良" : scoreRate >= 80 ? "合格" : scoreRate >= 70 ? "需追蹤" : "需立即改善";
   const rows = buildInspectionExportRows(record);
   const sectionRows = record.formData
     ? inspectionSections.map((section) => {
       const score = getSectionScore(section, record.formData);
-      return `<tr><td>${htmlEscape(section.title)}</td><td>${htmlEscape(score)}</td><td>${htmlEscape(section.maxScore)}</td></tr>`;
+      const rate = section.maxScore ? Math.round((score / section.maxScore) * 1000) / 10 : 100;
+      return `<tr><td>${htmlEscape(section.title)}</td><td class="num">${htmlEscape(score)}</td><td class="num">${htmlEscape(section.maxScore)}</td><td class="num">${htmlEscape(rate)}%</td></tr>`;
     }).join("")
     : "";
   const detailRows = rows.length
@@ -545,8 +548,8 @@ function buildSingleInspectionHtml(record, output = "document") {
       <tr>
         <td>${htmlEscape(row.section)}</td>
         <td>${htmlEscape(row.item)}</td>
-        <td>${htmlEscape(row.score)}</td>
-        <td>${htmlEscape(row.maxScore)}</td>
+        <td class="num">${htmlEscape(row.score)}</td>
+        <td class="num">${htmlEscape(row.maxScore)}</td>
         <td>${htmlEscape(row.status)}</td>
         <td>${htmlEscape(row.note)}</td>
         <td>${htmlEscape(row.suggestion)}</td>
@@ -573,41 +576,88 @@ function buildSingleInspectionHtml(record, output = "document") {
   <title>${htmlEscape(record.storeName)} 巡檢表</title>
   <style>
     ${printStyle}
-    body { font-family: "Microsoft JhengHei", Arial, sans-serif; color: #222; }
-    h1 { margin: 0 0 12px; font-size: 24px; }
-    h2 { margin: 22px 0 8px; font-size: 17px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
-    th, td { border: 1px solid #999; padding: 6px 8px; font-size: 12px; vertical-align: top; }
-    th { background: #f2f2f2; }
-    .summary td { font-size: 14px; }
-    .score { font-size: 22px; font-weight: 800; }
-    .note { white-space: pre-wrap; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Microsoft JhengHei", Arial, sans-serif; color: #202020; background: #fff; }
+    .sheet { max-width: 1120px; margin: 0 auto; padding: 22px; }
+    .report-head { display: grid; grid-template-columns: 1fr 210px; gap: 16px; align-items: start; border-bottom: 3px solid #202020; padding-bottom: 14px; margin-bottom: 14px; }
+    .brand { margin: 0; font-size: 14px; font-weight: 800; letter-spacing: 1px; }
+    h1 { margin: 4px 0 8px; font-size: 26px; }
+    .subtitle { margin: 0; color: #555; font-size: 12px; }
+    .score-box { border: 2px solid #202020; padding: 12px; text-align: center; }
+    .score-box span { display: block; font-size: 12px; color: #555; }
+    .score-box strong { display: block; margin: 4px 0; font-size: 30px; }
+    .score-box em { display: inline-block; padding: 3px 10px; border-radius: 999px; background: #f2f2f2; font-style: normal; font-weight: 800; }
+    h2 { margin: 22px 0 8px; padding-left: 8px; border-left: 5px solid #df3e24; font-size: 17px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; table-layout: fixed; }
+    th, td { border: 1px solid #999; padding: 7px 8px; font-size: 12px; line-height: 1.45; vertical-align: top; word-break: break-word; }
+    th { background: #f2f2f2; font-weight: 800; text-align: left; }
+    .meta th { width: 14%; background: #f7f7f7; }
+    .meta td { width: 36%; font-size: 14px; }
+    .num { text-align: right; white-space: nowrap; }
+    .section-table th:nth-child(1) { width: 58%; }
+    .section-table th:nth-child(2), .section-table th:nth-child(3), .section-table th:nth-child(4) { width: 14%; }
+    .detail-table th:nth-child(1) { width: 20%; }
+    .detail-table th:nth-child(2) { width: 13%; }
+    .detail-table th:nth-child(3), .detail-table th:nth-child(4) { width: 7%; }
+    .detail-table th:nth-child(5) { width: 18%; }
+    .detail-table th:nth-child(6), .detail-table th:nth-child(7) { width: 17.5%; }
+    .issue-table th:nth-child(1) { width: 13%; }
+    .issue-table th:nth-child(2) { width: 17%; }
+    .issue-table th:nth-child(3), .issue-table th:nth-child(4) { width: 22%; }
+    .issue-table th:nth-child(5), .issue-table th:nth-child(6), .issue-table th:nth-child(7) { width: 8%; }
+    .note-box { min-height: 74px; border: 1px solid #999; padding: 10px; white-space: pre-wrap; }
+    .sign-table td { height: 68px; }
+    .footer { margin-top: 10px; color: #666; font-size: 11px; text-align: right; }
+    @media print {
+      .sheet { padding: 0; }
+      h2 { break-after: avoid; }
+      tr, .score-box { break-inside: avoid; }
+    }
   </style>
 </head>
 <body>
-  <h1>萊吉多店面督導巡檢表</h1>
-  <table class="summary">
+  <div class="sheet">
+  <div class="report-head">
+    <div>
+      <p class="brand">LAIJIDUO OPERATIONS</p>
+      <h1>萊吉多店面督導巡檢表</h1>
+      <p class="subtitle">單店巡檢紀錄、評分明細與改善追蹤表</p>
+    </div>
+    <div class="score-box">
+      <span>巡檢總分</span>
+      <strong>${htmlEscape(record.score)} / ${htmlEscape(scoreMax)}</strong>
+      <em>${htmlEscape(scoreLevel)}｜${htmlEscape(scoreRate)}%</em>
+    </div>
+  </div>
+  <table class="meta">
     <tr><th>巡檢日期</th><td>${htmlEscape(record.date)}</td><th>門市名稱</th><td>${htmlEscape(record.storeName)}</td></tr>
     <tr><th>店長名稱</th><td>${htmlEscape(record.manager)}</td><th>督導名稱</th><td>${htmlEscape(record.supervisor)}</td></tr>
-    <tr><th>總分</th><td class="score">${htmlEscape(record.score)} / ${htmlEscape(scoreMax)}</td><th>狀態</th><td>${htmlEscape(record.status)}</td></tr>
+    <tr><th>巡檢狀態</th><td>${htmlEscape(record.status)}</td><th>匯出日期</th><td>${htmlEscape(today)}</td></tr>
   </table>
   <h2>評分分類總覽</h2>
-  <table>
-    <thead><tr><th>區段</th><th>得分</th><th>滿分</th></tr></thead>
-    <tbody>${sectionRows || `<tr><td colspan="3">無分類分數資料</td></tr>`}</tbody>
+  <table class="section-table">
+    <thead><tr><th>區段</th><th>得分</th><th>滿分</th><th>達成率</th></tr></thead>
+    <tbody>${sectionRows || `<tr><td colspan="4">無分類分數資料</td></tr>`}</tbody>
   </table>
   <h2>巡檢逐項明細</h2>
-  <table>
+  <table class="detail-table">
     <thead><tr><th>區段</th><th>項目</th><th>得分</th><th>滿分</th><th>狀態 / 檢核</th><th>說明</th><th>改善建議</th></tr></thead>
     <tbody>${detailRows}</tbody>
   </table>
   <h2>問題追蹤明細</h2>
-  <table>
+  <table class="issue-table">
     <thead><tr><th>分類</th><th>問題</th><th>說明</th><th>改善建議</th><th>嚴重度</th><th>期限</th><th>狀態</th></tr></thead>
     <tbody>${issueRows || `<tr><td colspan="7">無待追蹤問題</td></tr>`}</tbody>
   </table>
   <h2>巡檢建議與總結</h2>
-  <p class="note">${htmlEscape(record.summary || "")}</p>
+  <div class="note-box">${htmlEscape(record.summary || "")}</div>
+  <h2>簽核確認</h2>
+  <table class="sign-table">
+    <thead><tr><th>督導簽名</th><th>店長簽名</th><th>總部複核</th></tr></thead>
+    <tbody><tr><td></td><td></td><td></td></tr></tbody>
+  </table>
+  <p class="footer">本表由萊吉多營運 APP 匯出，作為門店巡檢、改善追蹤與週會檢討依據。</p>
+  </div>
 </body>
 </html>`;
 }
