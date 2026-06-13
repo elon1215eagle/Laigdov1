@@ -486,6 +486,152 @@ function downloadCsv(csv) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function htmlEscape(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+}
+
+function fileSafeName(value) {
+  return String(value || "巡檢表").replace(/[\\/:*?"<>|]/g, "-");
+}
+
+function downloadBlob(content, filename, type) {
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  link.href = url;
+  link.download = filename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function buildInspectionExportRows(record) {
+  if (!record.formData) return [];
+  return inspectionSections.flatMap((section) =>
+    section.items.map((item) => {
+      const row = record.formData.sections?.[section.id]?.items?.[item.id] || {};
+      const checks = section.type === "product"
+        ? section.columns.map((column) => `${column}:${row.checks?.[column] || ""}`).join(" / ")
+        : row.status || "";
+      return {
+        section: section.title,
+        item: item.name,
+        score: row.score ?? "",
+        maxScore: item.maxScore,
+        status: checks,
+        note: row.note || "",
+        suggestion: row.suggestion || "",
+      };
+    }),
+  );
+}
+
+function buildSingleInspectionHtml(record, output = "document") {
+  const scoreMax = record.maxScore || (record.formData ? getFormScore(record.formData).maxScore : 100);
+  const rows = buildInspectionExportRows(record);
+  const sectionRows = record.formData
+    ? inspectionSections.map((section) => {
+      const score = getSectionScore(section, record.formData);
+      return `<tr><td>${htmlEscape(section.title)}</td><td>${htmlEscape(score)}</td><td>${htmlEscape(section.maxScore)}</td></tr>`;
+    }).join("")
+    : "";
+  const detailRows = rows.length
+    ? rows.map((row) => `
+      <tr>
+        <td>${htmlEscape(row.section)}</td>
+        <td>${htmlEscape(row.item)}</td>
+        <td>${htmlEscape(row.score)}</td>
+        <td>${htmlEscape(row.maxScore)}</td>
+        <td>${htmlEscape(row.status)}</td>
+        <td>${htmlEscape(row.note)}</td>
+        <td>${htmlEscape(row.suggestion)}</td>
+      </tr>
+    `).join("")
+    : `<tr><td colspan="7">此紀錄由照片解析建立，無線上填表逐項分數。</td></tr>`;
+  const issueRows = (record.issues || []).map((issue) => `
+    <tr>
+      <td>${htmlEscape(issue.category)}</td>
+      <td>${htmlEscape(issue.title)}</td>
+      <td>${htmlEscape(issue.description)}</td>
+      <td>${htmlEscape(issue.suggestion)}</td>
+      <td>${htmlEscape(issue.severity)}</td>
+      <td>${htmlEscape(issue.dueDate)}</td>
+      <td>${htmlEscape(issue.status)}</td>
+    </tr>
+  `).join("");
+  const printStyle = output === "pdf" ? "@page { size: A4; margin: 12mm; }" : "";
+
+  return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${htmlEscape(record.storeName)} 巡檢表</title>
+  <style>
+    ${printStyle}
+    body { font-family: "Microsoft JhengHei", Arial, sans-serif; color: #222; }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    h2 { margin: 22px 0 8px; font-size: 17px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    th, td { border: 1px solid #999; padding: 6px 8px; font-size: 12px; vertical-align: top; }
+    th { background: #f2f2f2; }
+    .summary td { font-size: 14px; }
+    .score { font-size: 22px; font-weight: 800; }
+    .note { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>萊吉多店面督導巡檢表</h1>
+  <table class="summary">
+    <tr><th>巡檢日期</th><td>${htmlEscape(record.date)}</td><th>門市名稱</th><td>${htmlEscape(record.storeName)}</td></tr>
+    <tr><th>店長名稱</th><td>${htmlEscape(record.manager)}</td><th>督導名稱</th><td>${htmlEscape(record.supervisor)}</td></tr>
+    <tr><th>總分</th><td class="score">${htmlEscape(record.score)} / ${htmlEscape(scoreMax)}</td><th>狀態</th><td>${htmlEscape(record.status)}</td></tr>
+  </table>
+  <h2>評分分類總覽</h2>
+  <table>
+    <thead><tr><th>區段</th><th>得分</th><th>滿分</th></tr></thead>
+    <tbody>${sectionRows || `<tr><td colspan="3">無分類分數資料</td></tr>`}</tbody>
+  </table>
+  <h2>巡檢逐項明細</h2>
+  <table>
+    <thead><tr><th>區段</th><th>項目</th><th>得分</th><th>滿分</th><th>狀態 / 檢核</th><th>說明</th><th>改善建議</th></tr></thead>
+    <tbody>${detailRows}</tbody>
+  </table>
+  <h2>問題追蹤明細</h2>
+  <table>
+    <thead><tr><th>分類</th><th>問題</th><th>說明</th><th>改善建議</th><th>嚴重度</th><th>期限</th><th>狀態</th></tr></thead>
+    <tbody>${issueRows || `<tr><td colspan="7">無待追蹤問題</td></tr>`}</tbody>
+  </table>
+  <h2>巡檢建議與總結</h2>
+  <p class="note">${htmlEscape(record.summary || "")}</p>
+</body>
+</html>`;
+}
+
+function exportInspectionExcel(record) {
+  const filename = `${fileSafeName(record.date)}_${fileSafeName(record.storeName)}_巡檢表.xls`;
+  downloadBlob(`\uFEFF${buildSingleInspectionHtml(record, "excel")}`, filename, "application/vnd.ms-excel;charset=utf-8");
+}
+
+function exportInspectionWord(record) {
+  const filename = `${fileSafeName(record.date)}_${fileSafeName(record.storeName)}_巡檢表.doc`;
+  downloadBlob(`\uFEFF${buildSingleInspectionHtml(record, "word")}`, filename, "application/msword;charset=utf-8");
+}
+
+function exportInspectionPdf(record) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return;
+  printWindow.document.open();
+  printWindow.document.write(buildSingleInspectionHtml(record, "pdf"));
+  printWindow.document.close();
+  printWindow.focus();
+  window.setTimeout(() => printWindow.print(), 300);
+}
+
 export function InspectionApp({ onBack }) {
   const [page, setPage] = useState("stores");
   const [inspections, setInspections] = useState(loadSavedInspections);
@@ -1044,7 +1190,12 @@ function ReviewPanel({ record, onChange }) {
             <h2>巡檢主檔</h2>
             <p>確認門市、日期、督導與摘要。</p>
           </div>
-          <span className={`chip ${record.status === "已完成" ? "good" : "warn"}`}>{record.status}</span>
+          <div className="inspection-export-actions">
+            <button onClick={() => exportInspectionExcel(record)}>Excel</button>
+            <button onClick={() => exportInspectionWord(record)}>Word</button>
+            <button onClick={() => exportInspectionPdf(record)}>PDF</button>
+            <span className={`chip ${record.status === "已完成" ? "good" : "warn"}`}>{record.status}</span>
+          </div>
         </div>
         <div className="form-grid compact-form">
           <label>門市<input value={record.storeName} onChange={(event) => patchRecord({ storeName: event.target.value })} /></label>

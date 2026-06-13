@@ -1109,6 +1109,18 @@ tbody tr.selected,
   margin-bottom: 18px;
 }
 
+.inspection-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.inspection-export-actions button {
+  min-width: 76px;
+  text-align: center;
+}
+
 .inspection-items {
   display: grid;
   gap: 12px;
@@ -1348,6 +1360,7 @@ tbody tr.selected,
 
   .top-actions,
   .filters,
+  .inspection-export-actions,
   .csv-actions {
     flex-direction: column;
   }
