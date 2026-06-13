@@ -37,6 +37,112 @@ const categoryOptions = [
 const severityOptions = ["一般", "重要", "緊急"];
 const statusOptions = ["待確認", "待改善", "已改善"];
 
+const inspectionSections = [
+  {
+    id: "product",
+    title: "一、營運管理 - 產品品質",
+    maxScore: 50,
+    type: "product",
+    columns: ["外觀", "口感", "熟度", "時效", "顏色"],
+    items: ["雞翅", "地瓜", "三角骨", "米花", "腿排", "點心類", "雞腿", "雞排", "雞皮", "雞脖子"].map((name) => ({
+      id: `product-${name}`,
+      name,
+      maxScore: 5,
+    })),
+  },
+  {
+    id: "process",
+    title: "二、營運管理 - 營運流程",
+    maxScore: 5,
+    type: "basic",
+    items: [
+      "開店 / 閉店流程執行正確",
+      "現場人員出勤與服裝整潔",
+      "銷售數據、庫存紀錄正確",
+      "現場人員編制合理性",
+      "店面連絡用手機運作正常",
+    ].map((name, index) => ({ id: `process-${index}`, name, maxScore: 1 })),
+  },
+  {
+    id: "service",
+    title: "三、前台服務",
+    maxScore: 10,
+    type: "basic",
+    items: [
+      { name: "櫃面商品擺放整齊美觀", maxScore: 3 },
+      { name: "員工服務態度親切積極", maxScore: 3 },
+      { name: "顧客意見處理與回饋（現場與 Google 評論）", maxScore: 2 },
+      { name: "銷售出餐速度與效率", maxScore: 2 },
+    ].map((item, index) => ({ id: `service-${index}`, ...item })),
+  },
+  {
+    id: "fridge",
+    title: "四、冰箱整潔（食材存放）",
+    maxScore: 5,
+    type: "basic",
+    items: [
+      "冰箱整潔無結霜、異味、黑痕",
+      "食材保存與標示規範",
+      "食材使用：先進先出",
+      "溫控管制確實",
+      "冰箱膠條片壓條槽清潔",
+    ].map((name, index) => ({ id: `fridge-${index}`, name, maxScore: 1 })),
+  },
+  {
+    id: "workarea",
+    title: "五、作業區衛生",
+    maxScore: 21,
+    type: "basic",
+    items: [
+      { name: "煙罩汙垢、鐵管汙漬、前台桌面清潔", maxScore: 3 },
+      { name: "三角斗未刮、粉槽污漬、出口鐵面清潔", maxScore: 3 },
+      { name: "炸爐面板、蓋板與外觀油污", maxScore: 3 },
+      { name: "手推垃圾、洗手槽、清洗區清潔", maxScore: 3 },
+      { name: "室內地板、排煙風管、電風扇清潔", maxScore: 3 },
+      { name: "熱風機、排風扇與備品區整潔", maxScore: 2 },
+      { name: "食材交叉污染防範", maxScore: 3 },
+      { name: "油品更換品質", maxScore: 1 },
+    ].map((item, index) => ({ id: `workarea-${index}`, ...item })),
+  },
+  {
+    id: "inside",
+    title: "六、店內衛生",
+    maxScore: 4,
+    type: "basic",
+    items: [
+      { name: "通風口、天花板、照明設備", maxScore: 2 },
+      { name: "垃圾分類及定期消毒滅蟲", maxScore: 2 },
+    ].map((item, index) => ({ id: `inside-${index}`, ...item })),
+  },
+  {
+    id: "outside",
+    title: "七、店外周遭環境（整潔、設備與安全）",
+    maxScore: 5,
+    type: "basic",
+    items: [
+      "周邊環境維持整潔",
+      "社區溝通",
+      "排煙、炸爐、冰箱、監控等設備運作正常",
+      "消防、急救、緊急出口設備齊全並定期檢查",
+      "店面外觀、照明、招牌整潔維護",
+    ].map((name, index) => ({ id: `outside-${index}`, name, maxScore: 1 })),
+  },
+  {
+    id: "other",
+    title: "八、其他（不計分）",
+    maxScore: 0,
+    type: "basic",
+    items: [
+      "上次巡檢缺失改善情況",
+      "其他需特別注意事項",
+      "其他",
+    ].map((name, index) => ({ id: `other-${index}`, name, maxScore: 0 })),
+  },
+];
+
+const checkOptions = ["良好", "需改善", "不適用"];
+const productCheckOptions = ["良好", "普通", "需改善", "不適用"];
+
 const seedInspections = [
   {
     id: "sample-1",
@@ -116,6 +222,113 @@ function createBlankIssue() {
     dueDate: "",
     status: "待確認",
   };
+}
+
+function createBlankInspectionForm() {
+  const sections = Object.fromEntries(
+    inspectionSections.map((section) => [
+      section.id,
+      {
+        items: Object.fromEntries(
+          section.items.map((item) => [
+            item.id,
+            {
+              score: item.maxScore,
+              maxScore: item.maxScore,
+              status: item.maxScore ? "良好" : "OK",
+              checks: section.type === "product"
+                ? Object.fromEntries(section.columns.map((column) => [column, "良好"]))
+                : {},
+              note: "",
+              suggestion: "",
+            },
+          ]),
+        ),
+      },
+    ]),
+  );
+  return {
+    sections,
+    customFindings: [
+      { title: "", score: 0, maxScore: 0, status: "待確認", note: "", suggestion: "" },
+      { title: "", score: 0, maxScore: 0, status: "待確認", note: "", suggestion: "" },
+    ],
+    conclusion: "",
+  };
+}
+
+function getFormScore(form) {
+  const fixed = inspectionSections.reduce(
+    (total, section) => {
+      section.items.forEach((item) => {
+        const row = form.sections?.[section.id]?.items?.[item.id];
+        total.score += Number(row?.score || 0);
+        total.maxScore += Number(item.maxScore || 0);
+      });
+      return total;
+    },
+    { score: 0, maxScore: 0 },
+  );
+  const custom = (form.customFindings || []).reduce(
+    (total, item) => ({
+      score: total.score + Number(item.score || 0),
+      maxScore: total.maxScore + Number(item.maxScore || 0),
+    }),
+    { score: 0, maxScore: 0 },
+  );
+  return {
+    score: Math.round((fixed.score + custom.score) * 10) / 10,
+    maxScore: fixed.maxScore + custom.maxScore,
+  };
+}
+
+function getSectionScore(section, form) {
+  return section.items.reduce((sum, item) => {
+    const row = form.sections?.[section.id]?.items?.[item.id];
+    return sum + Number(row?.score || 0);
+  }, 0);
+}
+
+function scoreTone(score, maxScore) {
+  const rate = maxScore ? score / maxScore : 1;
+  if (rate >= 0.9) return "good";
+  if (rate >= 0.75) return "warn";
+  return "bad";
+}
+
+function makeIssuesFromForm(form, date) {
+  const issues = [];
+  inspectionSections.forEach((section) => {
+    section.items.forEach((item) => {
+      const row = form.sections?.[section.id]?.items?.[item.id];
+      if (!row) return;
+      const hasDeduction = Number(row.score || 0) < Number(item.maxScore || 0);
+      const hasNote = row.note?.trim() || row.suggestion?.trim();
+      if (!hasDeduction && !hasNote) return;
+      issues.push({
+        category: section.title.replace(/^[一二三四五六七八]、/, "").replace(/（.*）/, ""),
+        title: item.name,
+        description: row.note || `本項得分 ${row.score} / ${item.maxScore}`,
+        suggestion: row.suggestion || "請店長於期限內完成改善，督導下次巡檢複查。",
+        severity: Number(row.score || 0) <= Number(item.maxScore || 0) * 0.5 ? "重要" : "一般",
+        dueDate: date,
+        status: "待改善",
+      });
+    });
+  });
+  (form.customFindings || []).forEach((item, index) => {
+    if (!item.title?.trim() && !item.note?.trim()) return;
+    issues.push({
+      category: "其他",
+      title: item.title || `督導自填巡檢結果 ${index + 1}`,
+      description: item.note || "",
+      suggestion: item.suggestion || "",
+      severity: item.status === "緊急" ? "緊急" : "一般",
+      dueDate: date,
+      status: "待改善",
+    });
+  });
+  return issues.length ? issues : [createBlankIssue()];
 }
 
 function fileToDataUrl(file) {
@@ -316,6 +529,7 @@ export function InspectionApp({ onBack }) {
         </div>
         <nav className="side-nav">
           <button className={page === "stores" ? "active" : ""} onClick={() => setPage("stores")}>門店管理</button>
+          <button className={page === "form" ? "active" : ""} onClick={() => setPage("form")}>線上填表</button>
           <button className={page === "upload" ? "active" : ""} onClick={() => setPage("upload")}>巡檢表上傳</button>
           <button className={page === "review" ? "active" : ""} onClick={() => setPage("review")}>解析確認</button>
           <button className={page === "tracking" ? "active" : ""} onClick={() => setPage("tracking")}>問題追蹤</button>
@@ -330,8 +544,8 @@ export function InspectionApp({ onBack }) {
         </select>
         <div className="sidebar-note">
           <span>目前流程</span>
-          <strong>上傳 → 解析 → 確認 → 追蹤</strong>
-          <p>此版本先保留人工確認，避免手寫辨識錯字直接進入正式資料。</p>
+          <strong>現場填表 → 自動算分 → 產生追蹤</strong>
+          <p>督導現場以點選為主，必要時再補備註與改善建議。</p>
         </div>
       </aside>
       <main className="content">
@@ -351,7 +565,7 @@ export function InspectionApp({ onBack }) {
             >
               匯出 CSV
             </button>
-            <button className="primary" onClick={() => setPage("upload")}>新增巡檢</button>
+            <button className="primary" onClick={() => setPage("form")}>新增巡檢</button>
           </div>
         </header>
 
@@ -372,6 +586,7 @@ export function InspectionApp({ onBack }) {
             }}
           />
         )}
+        {page === "form" && <OnlineInspectionForm onAdd={addInspection} />}
         {page === "upload" && <UploadPanel onAdd={addInspection} />}
         {page === "review" && selected && <ReviewPanel record={selected} onChange={updateInspection} />}
         {page === "tracking" && (
@@ -423,10 +638,246 @@ function CsvExportPanel({ csv, onClose }) {
 function pageTitle(page) {
   return {
     stores: "門店管理",
+    form: "線上巡檢填表",
     upload: "巡檢表上傳",
     review: "解析結果確認",
     tracking: "問題追蹤總覽",
   }[page] || "門店管理";
+}
+
+function OnlineInspectionForm({ onAdd }) {
+  const [storeId, setStoreId] = useState(stores[0].id);
+  const [date, setDate] = useState(today);
+  const [supervisor, setSupervisor] = useState("");
+  const [manager, setManager] = useState("");
+  const [form, setForm] = useState(createBlankInspectionForm);
+  const selectedStore = stores.find((store) => store.id === storeId) || stores[0];
+  const total = getFormScore(form);
+
+  function patchItem(sectionId, itemId, patch) {
+    setForm((current) => ({
+      ...current,
+      sections: {
+        ...current.sections,
+        [sectionId]: {
+          ...current.sections[sectionId],
+          items: {
+            ...current.sections[sectionId].items,
+            [itemId]: {
+              ...current.sections[sectionId].items[itemId],
+              ...patch,
+            },
+          },
+        },
+      },
+    }));
+  }
+
+  function patchProductCheck(sectionId, itemId, column, value) {
+    setForm((current) => {
+      const row = current.sections[sectionId].items[itemId];
+      return {
+        ...current,
+        sections: {
+          ...current.sections,
+          [sectionId]: {
+            ...current.sections[sectionId],
+            items: {
+              ...current.sections[sectionId].items,
+              [itemId]: {
+                ...row,
+                checks: { ...row.checks, [column]: value },
+              },
+            },
+          },
+        },
+      };
+    });
+  }
+
+  function quickSet(section, item, status) {
+    const score = status === "良好" ? item.maxScore : status === "不適用" ? item.maxScore : 0;
+    patchItem(section.id, item.id, { status, score });
+  }
+
+  function patchCustom(index, patch) {
+    const customFindings = [...form.customFindings];
+    customFindings[index] = { ...customFindings[index], ...patch };
+    setForm({ ...form, customFindings });
+  }
+
+  function submit(event) {
+    event.preventDefault();
+    const issues = makeIssuesFromForm(form, date);
+    onAdd({
+      id: crypto.randomUUID(),
+      storeId,
+      storeName: selectedStore.name,
+      date,
+      supervisor: supervisor || "未填寫",
+      manager: manager || selectedStore.manager,
+      score: total.score,
+      maxScore: total.maxScore,
+      status: "已完成",
+      imageNames: [],
+      images: [],
+      summary: form.conclusion || `線上巡檢完成，總分 ${total.score} / ${total.maxScore}，待改善 ${issues.filter((issue) => issue.title).length} 項。`,
+      formData: form,
+      issues,
+    });
+    setForm(createBlankInspectionForm());
+  }
+
+  return (
+    <form className="workspace inspection-form-grid" onSubmit={submit}>
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>線上巡檢填表</h2>
+            <p>現場以點選與填分為主；有扣分或備註的項目會自動進入問題追蹤。</p>
+          </div>
+          <div className={`inspection-score ${scoreTone(total.score, total.maxScore)}`}>
+            <span>總分</span>
+            <strong>{total.score} / {total.maxScore}</strong>
+          </div>
+        </div>
+        <div className="form-grid compact-form">
+          <label>
+            門市
+            <select value={storeId} onChange={(event) => setStoreId(event.target.value)}>
+              {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+            </select>
+          </label>
+          <label>巡檢日期<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+          <label>督導姓名<input value={supervisor} onChange={(event) => setSupervisor(event.target.value)} placeholder="例如：郭承廷" /></label>
+          <label>店長姓名<input value={manager} onChange={(event) => setManager(event.target.value)} placeholder={selectedStore.manager} /></label>
+        </div>
+      </section>
+
+      <section className="panel inspection-scorecard">
+        <div className="panel-head">
+          <div>
+            <h2>評分總覽</h2>
+            <p>分類分數即時計算，低分項目優先複查。</p>
+          </div>
+        </div>
+        <div className="inspection-summary-list">
+          {inspectionSections.map((section) => {
+            const score = getSectionScore(section, form);
+            return (
+              <div className={`inspection-summary-row ${scoreTone(score, section.maxScore)}`} key={section.id}>
+                <span>{section.title}</span>
+                <strong>{score} / {section.maxScore}</strong>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="inspection-form-sections">
+        {inspectionSections.map((section) => (
+          <InspectionSection
+            key={section.id}
+            section={section}
+            form={form}
+            onQuickSet={quickSet}
+            onPatchItem={patchItem}
+            onPatchProductCheck={patchProductCheck}
+          />
+        ))}
+        <section className="panel">
+          <div className="panel-head">
+            <div>
+              <h2>督導自填巡檢結果</h2>
+              <p>保留 2 個現場彈性欄位，給固定表單未涵蓋的事項使用。</p>
+            </div>
+          </div>
+          <div className="custom-finding-grid">
+            {form.customFindings.map((item, index) => (
+              <article className="custom-finding" key={index}>
+                <label>項目<input value={item.title} onChange={(event) => patchCustom(index, { title: event.target.value })} placeholder={`自填欄位 ${index + 1}`} /></label>
+                <div className="form-grid">
+                  <label>得分<input type="number" step="0.5" value={item.score} onChange={(event) => patchCustom(index, { score: Number(event.target.value) })} /></label>
+                  <label>滿分<input type="number" step="0.5" value={item.maxScore} onChange={(event) => patchCustom(index, { maxScore: Number(event.target.value) })} /></label>
+                  <label>狀態<select value={item.status} onChange={(event) => patchCustom(index, { status: event.target.value })}>
+                    <option>待確認</option>
+                    <option>一般</option>
+                    <option>緊急</option>
+                  </select></label>
+                </div>
+                <label>說明<textarea value={item.note} onChange={(event) => patchCustom(index, { note: event.target.value })} /></label>
+                <label>改善建議<textarea value={item.suggestion} onChange={(event) => patchCustom(index, { suggestion: event.target.value })} /></label>
+              </article>
+            ))}
+          </div>
+        </section>
+        <section className="panel">
+          <label className="wide-field">巡檢建議與總結<textarea value={form.conclusion} onChange={(event) => setForm({ ...form, conclusion: event.target.value })} placeholder="例如：本次主要問題集中在作業區清潔與冰箱管理，下次複查前需由店長每日拍照回傳。" /></label>
+          <button className="submit-button static" type="submit">儲存巡檢結果並產生追蹤</button>
+        </section>
+      </section>
+    </form>
+  );
+}
+
+function InspectionSection({ section, form, onQuickSet, onPatchItem, onPatchProductCheck }) {
+  const score = getSectionScore(section, form);
+  return (
+    <section className="panel inspection-section">
+      <div className="panel-head">
+        <div>
+          <h2>{section.title}</h2>
+          <p>小計 {score} / {section.maxScore}</p>
+        </div>
+        <span className={`chip ${scoreTone(score, section.maxScore)}`}>{score} / {section.maxScore}</span>
+      </div>
+      <div className="inspection-items">
+        {section.items.map((item) => {
+          const row = form.sections[section.id].items[item.id];
+          return (
+            <article className="inspection-item" key={item.id}>
+              <div className="inspection-item-main">
+                <strong>{item.name}</strong>
+                <span>滿分 {item.maxScore}</span>
+              </div>
+              {section.type === "product" && (
+                <div className="product-checks">
+                  {section.columns.map((column) => (
+                    <label key={column}>
+                      <span>{column}</span>
+                      <select value={row.checks[column]} onChange={(event) => onPatchProductCheck(section.id, item.id, column, event.target.value)}>
+                        {productCheckOptions.map((option) => <option key={option}>{option}</option>)}
+                      </select>
+                    </label>
+                  ))}
+                </div>
+              )}
+              <div className="inspection-item-controls">
+                <label>
+                  <span>狀態</span>
+                  <select value={row.status} onChange={(event) => onQuickSet(section, item, event.target.value)}>
+                    {checkOptions.map((option) => <option key={option}>{option}</option>)}
+                  </select>
+                </label>
+                <label>
+                  <span>得分</span>
+                  <input type="number" step="0.5" min="0" max={item.maxScore} value={row.score} onChange={(event) => onPatchItem(section.id, item.id, { score: Number(event.target.value) })} />
+                </label>
+                <label>
+                  <span>說明 / 改善建議</span>
+                  <input value={row.note} onChange={(event) => onPatchItem(section.id, item.id, { note: event.target.value })} placeholder="扣分原因或現場狀況" />
+                </label>
+                <label>
+                  <span>改善方式</span>
+                  <input value={row.suggestion} onChange={(event) => onPatchItem(section.id, item.id, { suggestion: event.target.value })} placeholder="店長需完成的動作" />
+                </label>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
 }
 
 function StoreManagementPanel({ inspections, onSelectStore }) {
@@ -607,6 +1058,19 @@ function ReviewPanel({ record, onChange }) {
           </select></label>
           <label className="wide-field">摘要<textarea value={record.summary} onChange={(event) => patchRecord({ summary: event.target.value })} /></label>
         </div>
+        {record.formData && (
+          <div className="inspection-summary-list review-summary">
+            {inspectionSections.map((section) => {
+              const score = getSectionScore(section, record.formData);
+              return (
+                <div className={`inspection-summary-row ${scoreTone(score, section.maxScore)}`} key={section.id}>
+                  <span>{section.title}</span>
+                  <strong>{score} / {section.maxScore}</strong>
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div className="panel-head issue-head">
           <div>

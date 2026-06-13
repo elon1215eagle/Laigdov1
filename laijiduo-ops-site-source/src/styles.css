@@ -1029,6 +1029,151 @@ tbody tr.selected,
   font-size: 18px;
 }
 
+.inspection-form-grid {
+  grid-template-columns: minmax(0, 1fr) 320px;
+  align-items: start;
+}
+
+.inspection-scorecard {
+  position: sticky;
+  top: 24px;
+  grid-column: 2;
+}
+
+.inspection-form-sections {
+  grid-column: 1;
+  display: grid;
+  gap: 16px;
+}
+
+.inspection-score {
+  min-width: 150px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #fff6ee;
+  text-align: right;
+}
+
+.inspection-score span,
+.inspection-item-main span {
+  display: block;
+  color: #806456;
+  font-size: 12px;
+}
+
+.inspection-score strong {
+  display: block;
+  margin-top: 4px;
+  color: #c2321f;
+  font-size: 24px;
+}
+
+.inspection-score.good strong,
+.inspection-summary-row.good strong {
+  color: #247a47;
+}
+
+.inspection-score.warn strong,
+.inspection-summary-row.warn strong {
+  color: #b85f00;
+}
+
+.inspection-score.bad strong,
+.inspection-summary-row.bad strong {
+  color: #c2321f;
+}
+
+.inspection-summary-list {
+  display: grid;
+  gap: 8px;
+}
+
+.inspection-summary-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.inspection-summary-row span {
+  min-width: 0;
+  color: #604235;
+  font-size: 13px;
+}
+
+.review-summary {
+  margin-bottom: 18px;
+}
+
+.inspection-items {
+  display: grid;
+  gap: 12px;
+}
+
+.inspection-item {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.inspection-item-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-checks {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.product-checks label,
+.inspection-item-controls label,
+.custom-finding label {
+  display: grid;
+  gap: 5px;
+  color: #604235;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.product-checks select,
+.inspection-item-controls input,
+.inspection-item-controls select {
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.inspection-item-controls {
+  display: grid;
+  grid-template-columns: 112px 82px minmax(160px, 1fr) minmax(160px, 1fr);
+  gap: 8px;
+}
+
+.custom-finding-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.custom-finding {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
 .review-workspace {
   grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
   align-items: start;
@@ -1160,12 +1305,19 @@ tbody tr.selected,
   .review-grid,
   .upload-grid,
   .review-workspace,
+  .inspection-form-grid,
   .store-card-grid {
     grid-template-columns: 1fr;
   }
 
   .image-panel {
     position: static;
+  }
+
+  .inspection-scorecard,
+  .inspection-form-sections {
+    position: static;
+    grid-column: auto;
   }
 }
 
@@ -1220,6 +1372,9 @@ tbody tr.selected,
   .evidence-card,
   .photo-strip,
   .form-grid,
+  .product-checks,
+  .inspection-item-controls,
+  .custom-finding-grid,
   .issue-editor-top,
   .store-card-metrics {
     grid-template-columns: 1fr;
