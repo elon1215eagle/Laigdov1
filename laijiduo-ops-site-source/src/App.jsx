@@ -633,6 +633,7 @@ function HqDashboard({ reports, products, onSelect }) {
   const dailyRevenueRows = useMemo(() => buildDailyRevenueRows(periodRows.length ? periodRows : reports), [periodRows, reports]);
   const weeklyRevenueRows = useMemo(() => buildWeeklyRevenueRows(periodRows.length ? periodRows : reports, fourWeekRanges), [periodRows, reports, fourWeekRanges]);
   const usageMatrix = useMemo(() => buildUsageMatrix(usageSummary.rows), [usageSummary.rows]);
+  const dataQuality = useMemo(() => buildDataQualitySummary(reports), [reports]);
 
   async function saveMonthlyTarget(report) {
     const monthlyTarget = Number(targetDrafts[report.store_id] || 0);
@@ -658,6 +659,7 @@ function HqDashboard({ reports, products, onSelect }) {
         <Metric label="需追蹤" value={`${reports.filter((report) => report.status === "follow_up").length} 間`} detail="異常或補貨需求" tone="bad" />
         <Metric label="已達標" value={`${reports.filter((report) => totalRevenue(report) >= report.target).length} 間`} detail="營收高於目標" tone="good" />
       </section>
+      <DataQualityPanel summary={dataQuality} onSelect={onSelect} />
       <section className="panel wide">
         <div className="panel-head">
           <div>
@@ -966,6 +968,69 @@ function buildUsageMatrix(rows) {
   };
 }
 
+function buildDataQualitySummary(reports) {
+  const issues = [];
+  reports.forEach((report) => {
+    const revenue = totalRevenue(report);
+    const storeId = report.store_id || report.id;
+    if (report.status === "draft" || !report.id) {
+      issues.push({ storeId, storeName: report.name, level: "bad", type: "缺報", message: "今日尚未完成每日回報" });
+    }
+    if (report.status === "submitted") {
+      issues.push({ storeId, storeName: report.name, level: "warn", type: "待審核", message: "已送出但尚未完成營運審核" });
+    }
+    if (report.status === "follow_up" || report.status === "needs_revision") {
+      issues.push({ storeId, storeName: report.name, level: "bad", type: "待追蹤", message: "此店回報需追蹤或退回修改" });
+    }
+    if (!Number(report.target || 0) || !Number(report.target_monthly_revenue || 0)) {
+      issues.push({ storeId, storeName: report.name, level: "warn", type: "目標未完整", message: "月目標或日目標尚未完整設定" });
+    }
+    if (revenue <= 0 && report.status !== "draft") {
+      issues.push({ storeId, storeName: report.name, level: "bad", type: "營收異常", message: "已回報但全日營收為 0" });
+    }
+    if (Number(report.revenue_1900_to_close || 0) < 0) {
+      issues.push({ storeId, storeName: report.name, level: "bad", type: "營收倒算異常", message: "19:00 至打烊營收小於 0，需重填全日總營收" });
+    }
+    if (Math.abs(Number(report.cash_difference || 0)) >= 500) {
+      issues.push({ storeId, storeName: report.name, level: "warn", type: "現金差異", message: `現金差異 ${report.cash_difference}，需店長說明` });
+    }
+  });
+  return {
+    issues,
+    missing: issues.filter((issue) => issue.type === "缺報").length,
+    critical: issues.filter((issue) => issue.level === "bad").length,
+    warning: issues.filter((issue) => issue.level === "warn").length,
+  };
+}
+
+function DataQualityPanel({ summary, onSelect }) {
+  return (
+    <section className="panel wide data-quality-panel">
+      <div className="panel-head">
+        <div>
+          <h2>資料完整性稽核</h2>
+          <p>總部每日先看這裡，優先處理缺報、未審核、待追蹤與異常數據。</p>
+        </div>
+        <div className="data-quality-stats">
+          <span>缺報 {summary.missing}</span>
+          <span>重大 {summary.critical}</span>
+          <span>提醒 {summary.warning}</span>
+        </div>
+      </div>
+      <div className="quality-list">
+        {summary.issues.slice(0, 8).map((issue, index) => (
+          <button className={`quality-item ${issue.level}`} key={`${issue.storeId}-${issue.type}-${index}`} onClick={() => onSelect(issue.storeId)}>
+            <span>{issue.type}</span>
+            <strong>{issue.storeName}</strong>
+            <em>{issue.message}</em>
+          </button>
+        ))}
+        {!summary.issues.length && <div className="quality-empty">今日資料完整，暫無重大缺漏。</div>}
+      </div>
+    </section>
+  );
+}
+
 function isNamedProductName(name) {
   return Boolean(name && name !== "未命名品項");
 }
@@ -1232,6 +1297,7 @@ function StoreReport({ report, products, onSave }) {
       Number(form.revenue_1400_to_1900 || 0),
   );
   const currentTotal = Number(form.full_day_revenue || 0);
+  const revenueInvalid = currentTotal < Number(form.opened_to_1400_revenue || 0) + Number(form.revenue_1400_to_1900 || 0);
 
   useEffect(() => {
     setForm({
@@ -1278,6 +1344,7 @@ function StoreReport({ report, products, onSave }) {
           <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
         </div>
         <div className="alert-line">營收只需填 14:00、19:00 與全日總營收；19:00 至打烊由系統自動倒算。</div>
+        {revenueInvalid && <div className="alert-line danger">全日總營收不可小於 14:00 與 19:00 加總，請修正後再送出。</div>}
         <div className="segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
           <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
@@ -1309,7 +1376,7 @@ function StoreReport({ report, products, onSave }) {
         ) : (
           <IncomingEditor rows={inventory} onChange={setInventory} />
         )}
-        <button className="submit-button" disabled={saving} onClick={submit}>
+        <button className="submit-button" disabled={saving || revenueInvalid} onClick={submit}>
           {saving ? "送出中..." : "送出每日回報"}
         </button>
       </section>

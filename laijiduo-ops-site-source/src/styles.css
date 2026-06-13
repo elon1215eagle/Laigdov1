@@ -1105,6 +1105,86 @@ tbody tr.selected,
   font-size: 13px;
 }
 
+.alert-line.danger {
+  background: #fde8e2;
+  border-left-color: #c2321f;
+  color: #9f291a;
+}
+
+.data-quality-panel {
+  border-color: #e7c1b0;
+}
+
+.data-quality-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.data-quality-stats span {
+  min-height: 28px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: #fff1e7;
+  color: #9f291a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quality-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.quality-item {
+  display: grid;
+  gap: 5px;
+  min-height: 96px;
+  padding: 12px;
+  text-align: left;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.quality-item span {
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #f3eee9;
+  color: #63483c;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quality-item.bad span {
+  background: #fde8e2;
+  color: #b82e20;
+}
+
+.quality-item.warn span {
+  background: #fff1d8;
+  color: #935000;
+}
+
+.quality-item em {
+  color: #806456;
+  font-size: 13px;
+  font-style: normal;
+  line-height: 1.45;
+}
+
+.quality-empty {
+  grid-column: 1 / -1;
+  padding: 14px;
+  border: 1px solid #d8eadf;
+  border-radius: 8px;
+  background: #f0faf3;
+  color: #237344;
+  font-weight: 800;
+}
+
 .review-summary {
   margin-bottom: 18px;
 }
@@ -1184,6 +1264,71 @@ tbody tr.selected,
   border: 1px solid #eeded5;
   border-radius: 8px;
   background: #fffdfa;
+}
+
+.inspection-analytics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.analytics-filters {
+  display: grid;
+  grid-template-columns: 280px repeat(3, minmax(150px, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.analytics-filters label {
+  display: grid;
+  gap: 6px;
+  color: #604235;
+  font-weight: 800;
+}
+
+.analytics-half {
+  min-width: 0;
+}
+
+.analytics-list {
+  display: grid;
+  gap: 8px;
+}
+
+.analytics-list-row {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 64px;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.analytics-list-row span {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #fff1e7;
+  color: #b62f1d;
+  font-weight: 800;
+}
+
+.analytics-list-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.analytics-list-row em {
+  color: #806456;
+  font-style: normal;
+  text-align: right;
+}
+
+.empty-text {
+  margin: 0;
+  color: #806456;
 }
 
 .signature-pad {
@@ -1374,6 +1519,7 @@ tbody tr.selected,
   .upload-grid,
   .review-workspace,
   .inspection-form-grid,
+  .inspection-analytics,
   .store-card-grid {
     grid-template-columns: 1fr;
   }
@@ -1424,7 +1570,8 @@ tbody tr.selected,
   .kpi-strip,
   .status-board,
   .checkpoint-grid,
-  .summary-grid {
+  .summary-grid,
+  .quality-list {
     grid-template-columns: 1fr;
   }
 
@@ -1444,6 +1591,8 @@ tbody tr.selected,
   .product-checks,
   .inspection-item-controls,
   .custom-finding-grid,
+  .analytics-filters,
+  .analytics-list-row,
   .issue-editor-top,
   .store-card-metrics {
     grid-template-columns: 1fr;

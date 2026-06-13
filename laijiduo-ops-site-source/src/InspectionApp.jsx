@@ -8,6 +8,26 @@ const today = new Intl.DateTimeFormat("en-CA", {
   day: "2-digit",
 }).format(new Date());
 
+function addDays(dateText, days) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getWeekRange(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const day = date.getUTCDay() || 7;
+  const start = addDays(dateText, 1 - day);
+  return { start, end: addDays(start, 6) };
+}
+
+function getMonthRange(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)).toISOString().slice(0, 10);
+  const end = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).toISOString().slice(0, 10);
+  return { start, end };
+}
+
 const stores = [
   { id: "fongshan-wujia", name: "鳳山五甲店", area: "高雄", manager: "未設定" },
   { id: "fongshan-kaixuan", name: "鳳山凱旋店", area: "高雄", manager: "未設定" },
@@ -683,6 +703,87 @@ function exportInspectionPdf(record) {
   window.setTimeout(() => printWindow.print(), 300);
 }
 
+function countBy(rows, keyFn) {
+  const map = new Map();
+  rows.forEach((row) => {
+    const key = keyFn(row);
+    if (!key) return;
+    if (!map.has(key)) map.set(key, { key, count: 0, rows: [] });
+    const item = map.get(key);
+    item.count += 1;
+    item.rows.push(row);
+  });
+  return Array.from(map.values()).sort((a, b) => b.count - a.count || a.key.localeCompare(b.key, "zh-Hant"));
+}
+
+function buildInspectionAnalytics(inspections, filters) {
+  const filtered = inspections
+    .filter((record) => record.date >= filters.from && record.date <= filters.to)
+    .filter((record) => filters.storeId === "all" || record.storeId === filters.storeId)
+    .sort((a, b) => b.date.localeCompare(a.date) || a.storeName.localeCompare(b.storeName, "zh-Hant"));
+  const issues = filtered.flatMap((record) =>
+    (record.issues || []).map((issue) => ({ ...issue, record })),
+  );
+  const storeMap = new Map();
+  stores.forEach((store) => {
+    storeMap.set(store.id, {
+      storeId: store.id,
+      storeName: store.name,
+      records: [],
+      issues: [],
+      avgScore: 0,
+      latestDate: "",
+      commonIssue: "-",
+    });
+  });
+  filtered.forEach((record) => {
+    const storeId = record.storeId || record.storeName;
+    if (!storeMap.has(storeId)) {
+      storeMap.set(storeId, { storeId, storeName: record.storeName, records: [], issues: [], avgScore: 0, latestDate: "", commonIssue: "-" });
+    }
+    const row = storeMap.get(storeId);
+    row.records.push(record);
+    row.latestDate = row.latestDate && row.latestDate > record.date ? row.latestDate : record.date;
+  });
+  issues.forEach((issue) => {
+    const storeId = issue.record.storeId || issue.record.storeName;
+    storeMap.get(storeId)?.issues.push(issue);
+  });
+  const storeRows = Array.from(storeMap.values())
+    .filter((row) => row.records.length)
+    .map((row) => {
+      const avgScore = row.records.reduce((sum, record) => sum + Number(record.score || 0), 0) / row.records.length;
+      const commonIssue = countBy(row.issues, (issue) => issue.category)[0]?.key || "-";
+      return {
+        ...row,
+        avgScore: Math.round(avgScore * 10) / 10,
+        issueCount: row.issues.length,
+        pendingCount: row.issues.filter((issue) => issue.status !== "已改善").length,
+        urgentCount: row.issues.filter((issue) => issue.severity === "緊急").length,
+        commonIssue,
+      };
+    })
+    .sort((a, b) => a.avgScore - b.avgScore || b.issueCount - a.issueCount);
+  const commonIssues = countBy(issues, (issue) => `${issue.category}｜${issue.title}`).slice(0, 10);
+  const improvements = countBy(
+    issues.filter((issue) => issue.suggestion),
+    (issue) => issue.suggestion,
+  ).slice(0, 8);
+  const avgScore = filtered.length
+    ? Math.round((filtered.reduce((sum, record) => sum + Number(record.score || 0), 0) / filtered.length) * 10) / 10
+    : 0;
+  return {
+    filtered,
+    issues,
+    storeRows,
+    commonIssues,
+    improvements,
+    avgScore,
+    pendingCount: issues.filter((issue) => issue.status !== "已改善").length,
+    urgentCount: issues.filter((issue) => issue.severity === "緊急").length,
+  };
+}
+
 export function InspectionApp({ onBack }) {
   const [page, setPage] = useState("stores");
   const [inspections, setInspections] = useState(loadSavedInspections);
@@ -730,6 +831,7 @@ export function InspectionApp({ onBack }) {
           <button className={page === "upload" ? "active" : ""} onClick={() => setPage("upload")}>巡檢表上傳</button>
           <button className={page === "review" ? "active" : ""} onClick={() => setPage("review")}>解析確認</button>
           <button className={page === "tracking" ? "active" : ""} onClick={() => setPage("tracking")}>問題追蹤</button>
+          <button className={page === "analytics" ? "active" : ""} onClick={() => setPage("analytics")}>彙整分析</button>
         </nav>
         <label className="field-label">巡檢紀錄</label>
         <select value={selectedId} onChange={(event) => setSelectedId(event.target.value)}>
@@ -795,6 +897,10 @@ export function InspectionApp({ onBack }) {
             }}
           />
         )}
+        {page === "analytics" && <InspectionAnalyticsPanel inspections={inspections} onSelect={(id) => {
+          setSelectedId(id);
+          setPage("review");
+        }} />}
         {csvExport && <CsvExportPanel csv={csvExport} onClose={() => setCsvExport(null)} />}
       </main>
     </div>
@@ -839,6 +945,7 @@ function pageTitle(page) {
     upload: "巡檢表上傳",
     review: "解析結果確認",
     tracking: "問題追蹤總覽",
+    analytics: "巡檢彙整分析",
   }[page] || "門店管理";
 }
 
@@ -1022,6 +1129,167 @@ function OnlineInspectionForm({ onAdd }) {
         </section>
       </section>
     </form>
+  );
+}
+
+function InspectionAnalyticsPanel({ inspections, onSelect }) {
+  const week = getWeekRange(today);
+  const month = getMonthRange(today);
+  const [mode, setMode] = useState("week");
+  const [from, setFrom] = useState(week.start);
+  const [to, setTo] = useState(week.end);
+  const [storeId, setStoreId] = useState("all");
+
+  function applyMode(nextMode) {
+    setMode(nextMode);
+    if (nextMode === "day") {
+      setFrom(today);
+      setTo(today);
+    }
+    if (nextMode === "week") {
+      setFrom(week.start);
+      setTo(week.end);
+    }
+    if (nextMode === "month") {
+      setFrom(month.start);
+      setTo(month.end);
+    }
+  }
+
+  const analytics = useMemo(
+    () => buildInspectionAnalytics(inspections, { from, to, storeId }),
+    [inspections, from, to, storeId],
+  );
+
+  return (
+    <div className="workspace inspection-analytics">
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>巡檢彙整分析</h2>
+            <p>可按日、週、月或指定區間查詢巡檢結果，快速掌握各店分數、缺失與改善重點。</p>
+          </div>
+        </div>
+        <div className="analytics-filters">
+          <div className="segments">
+            {[
+              ["day", "日"],
+              ["week", "週"],
+              ["month", "月"],
+              ["custom", "自訂"],
+            ].map(([key, label]) => (
+              <button type="button" className={mode === key ? "active" : ""} key={key} onClick={() => applyMode(key)}>{label}</button>
+            ))}
+          </div>
+          <label>起日<input type="date" value={from} onChange={(event) => { setMode("custom"); setFrom(event.target.value); }} /></label>
+          <label>迄日<input type="date" value={to} onChange={(event) => { setMode("custom"); setTo(event.target.value); }} /></label>
+          <label>門店<select value={storeId} onChange={(event) => setStoreId(event.target.value)}>
+            <option value="all">全部門店</option>
+            {stores.map((store) => <option value={store.id} key={store.id}>{store.name}</option>)}
+          </select></label>
+        </div>
+      </section>
+
+      <section className="kpi-strip">
+        <Metric label="巡檢筆數" value={`${analytics.filtered.length} 筆`} detail={`${from} 至 ${to}`} />
+        <Metric label="平均分數" value={`${analytics.avgScore}`} detail="區間內所有巡檢平均" tone={analytics.avgScore >= 85 ? "good" : analytics.avgScore >= 75 ? "warn" : "bad"} />
+        <Metric label="待改善" value={`${analytics.pendingCount} 項`} detail="尚未標記已改善" tone="warn" />
+        <Metric label="緊急事項" value={`${analytics.urgentCount} 項`} detail="需優先追蹤" tone={analytics.urgentCount ? "bad" : "good"} />
+      </section>
+
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>各店巡檢結果與分數排名</h2>
+            <p>排序以低分與問題數優先，方便總部安排複查與改善輔導。</p>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>排名</th><th>門店</th><th>巡檢筆數</th><th>平均分數</th><th>最近巡檢</th><th>待改善</th><th>緊急</th><th>主要缺失類別</th></tr>
+            </thead>
+            <tbody>
+              {analytics.storeRows.map((row, index) => (
+                <tr key={row.storeId}>
+                  <td>{index + 1}</td>
+                  <td><strong>{row.storeName}</strong></td>
+                  <td>{row.records.length}</td>
+                  <td><strong>{row.avgScore}</strong></td>
+                  <td>{row.latestDate}</td>
+                  <td>{row.pendingCount}</td>
+                  <td className={row.urgentCount ? "negative" : ""}>{row.urgentCount}</td>
+                  <td>{row.commonIssue}</td>
+                </tr>
+              ))}
+              {!analytics.storeRows.length && <tr><td colSpan="8">此區間尚無巡檢紀錄。</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel analytics-half">
+        <div className="panel-head"><h2>常見缺失</h2><p>依分類與問題名稱彙整。</p></div>
+        <div className="analytics-list">
+          {analytics.commonIssues.map((item, index) => (
+            <div className="analytics-list-row" key={item.key}>
+              <span>{index + 1}</span>
+              <strong>{item.key}</strong>
+              <em>{item.count} 次</em>
+            </div>
+          ))}
+          {!analytics.commonIssues.length && <p className="empty-text">此區間無缺失資料。</p>}
+        </div>
+      </section>
+
+      <section className="panel analytics-half">
+        <div className="panel-head"><h2>可改進方向</h2><p>依改善建議出現頻率彙整。</p></div>
+        <div className="analytics-list">
+          {analytics.improvements.map((item, index) => (
+            <div className="analytics-list-row" key={item.key}>
+              <span>{index + 1}</span>
+              <strong>{item.key}</strong>
+              <em>{item.count} 次</em>
+            </div>
+          ))}
+          {!analytics.improvements.length && <p className="empty-text">此區間無改善建議資料。</p>}
+        </div>
+      </section>
+
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>巡檢紀錄明細</h2>
+            <p>點選任一筆可回到單一巡檢表檢視、匯出或追蹤。</p>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>日期</th><th>門店</th><th>督導</th><th>店長</th><th>分數</th><th>問題數</th><th>待改善</th><th>狀態</th></tr>
+            </thead>
+            <tbody>
+              {analytics.filtered.map((record) => {
+                const issues = record.issues || [];
+                return (
+                  <tr key={record.id} onClick={() => onSelect(record.id)}>
+                    <td>{record.date}</td>
+                    <td><strong>{record.storeName}</strong></td>
+                    <td>{record.supervisor}</td>
+                    <td>{record.manager}</td>
+                    <td>{record.score}</td>
+                    <td>{issues.length}</td>
+                    <td>{issues.filter((issue) => issue.status !== "已改善").length}</td>
+                    <td><span className={`chip ${record.status === "已完成" ? "good" : "warn"}`}>{record.status}</span></td>
+                  </tr>
+                );
+              })}
+              {!analytics.filtered.length && <tr><td colSpan="8">此區間尚無巡檢紀錄。</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   );
 }
 
