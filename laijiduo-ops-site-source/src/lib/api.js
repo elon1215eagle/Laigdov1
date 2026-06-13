@@ -1,9 +1,23 @@
 import { productsSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 
-const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, is_active";
+const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, is_active";
+const LEGACY_STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, is_active";
 const PRODUCT_FIELDS = "id, name, unit, sort_order, is_active";
 const REPORT_FIELDS = [
+  "id",
+  "store_id",
+  "report_date",
+  "opened_to_1400_revenue",
+  "revenue_1400_to_1900",
+  "revenue_1900_to_close",
+  "cash_difference",
+  "status",
+  "manager_note",
+  "total_revenue",
+  "stores(name, area, store_code, manager_name, target_daily_revenue, target_monthly_revenue)",
+].join(", ");
+const LEGACY_REPORT_FIELDS = [
   "id",
   "store_id",
   "report_date",
@@ -17,6 +31,24 @@ const REPORT_FIELDS = [
   "stores(name, area, store_code, manager_name, target_daily_revenue)",
 ].join(", ");
 const INVENTORY_REPORT_FIELDS = [
+  "report_id",
+  "product_id",
+  "current_stock",
+  "safety_stock",
+  "loss_count",
+  "incoming_count",
+  "stock_unit",
+  "incoming_unit",
+  "current_stock_boxes",
+  "current_stock_packs",
+  "incoming_boxes",
+  "incoming_packs",
+  "incoming_source",
+  "transfer_note",
+  "is_shortage",
+  "products(name, unit, sort_order)",
+].join(", ");
+const LEGACY_INVENTORY_REPORT_FIELDS = [
   "report_id",
   "product_id",
   "current_stock",
@@ -41,7 +73,7 @@ export function statusLabel(status) {
   return {
     draft: "草稿",
     submitted: "待審核",
-    needs_revision: "需修改",
+    needs_revision: "退回修改",
     approved: "已通過",
     follow_up: "需追蹤",
   }[status] || status;
@@ -75,89 +107,132 @@ export async function getSessionProfile() {
   return data;
 }
 
+function productDefaults(product) {
+  return {
+    ...product,
+    current_stock: 0,
+    safety_stock: 0,
+    loss_count: 0,
+    incoming_count: 0,
+    stock_unit: product.unit || "件",
+    incoming_unit: product.unit || "件",
+    current_stock_boxes: 0,
+    current_stock_packs: 0,
+    incoming_boxes: 0,
+    incoming_packs: 0,
+    incoming_source: "廠商進貨",
+    transfer_note: "",
+  };
+}
+
 export async function fetchProducts() {
-  if (!supabase) return productsSeed;
+  if (!supabase) return productsSeed.map(productDefaults);
   const { data, error } = await supabase
     .from("products")
     .select(PRODUCT_FIELDS)
     .eq("is_active", true)
     .order("sort_order");
   if (error) throw error;
-  return data.map((product) => ({
-    ...product,
-    current_stock: 0,
-    safety_stock: 0,
-    loss_count: 0,
-    incoming_count: 0,
-    incoming_source: "廠商進貨",
-    transfer_note: "",
-  }));
+  return data.map(productDefaults);
 }
 
 function normalizeInventoryRow(row) {
-  const note = row.transfer_note || "";
-  const sourceMatch = note.match(/^來源：(廠商進貨|門店調貨)(?:｜(.*))?$/);
   return {
     ...row,
-    incoming_source: row.incoming_source || sourceMatch?.[1] || "廠商進貨",
-    transfer_note: sourceMatch ? sourceMatch[2] || "" : note,
+    stock_unit: row.stock_unit || row.unit || row.products?.unit || "件",
+    incoming_unit: row.incoming_unit || row.unit || row.products?.unit || "件",
+    current_stock_boxes: Number(row.current_stock_boxes || 0),
+    current_stock_packs: Number(row.current_stock_packs || 0),
+    incoming_boxes: Number(row.incoming_boxes || 0),
+    incoming_packs: Number(row.incoming_packs || 0),
+    incoming_source: row.incoming_source || "廠商進貨",
+    transfer_note: row.transfer_note || "",
   };
 }
 
-function fallbackIncomingSourceRows(rows) {
-  return rows.map(({ incoming_source, transfer_note, ...row }) => ({
-    ...row,
-    transfer_note: `來源：${incoming_source || "廠商進貨"}${transfer_note ? `｜${transfer_note}` : ""}`,
-  }));
+function stripNewInventoryFields(rows) {
+  return rows.map((row) => {
+    const {
+      stock_unit,
+      incoming_unit,
+      current_stock_boxes,
+      current_stock_packs,
+      incoming_boxes,
+      incoming_packs,
+      ...legacyRow
+    } = row;
+    return legacyRow;
+  });
 }
 
 export async function fetchStores() {
   if (!supabase) return storesSeed;
-  const { data, error } = await supabase
+  const result = await supabase
     .from("stores")
     .select(STORE_FIELDS)
     .eq("is_active", true)
     .order("store_code");
-  if (error) throw error;
-  return data;
+  if (!result.error) return result.data;
+
+  const legacyResult = await supabase
+    .from("stores")
+    .select(LEGACY_STORE_FIELDS)
+    .eq("is_active", true)
+    .order("store_code");
+  if (legacyResult.error) throw legacyResult.error;
+  return legacyResult.data;
 }
 
-export async function fetchDailyReports(reportDate) {
-  if (!supabase) return storesSeed;
-  const { data, error } = await supabase
-    .from("daily_report_totals")
-    .select(REPORT_FIELDS)
-    .eq("report_date", reportDate)
-    .order("store_id");
-  if (error) throw error;
-  return data.map((report) => ({
+function normalizeReportRow(report) {
+  return {
     ...report,
     name: report.stores?.name,
     area: report.stores?.area,
     store_code: report.stores?.store_code,
     manager_name: report.stores?.manager_name,
     target: report.stores?.target_daily_revenue,
-  }));
+    target_monthly_revenue: report.stores?.target_monthly_revenue,
+  };
+}
+
+export async function fetchDailyReports(reportDate) {
+  if (!supabase) return storesSeed;
+  const result = await supabase
+    .from("daily_report_totals")
+    .select(REPORT_FIELDS)
+    .eq("report_date", reportDate)
+    .order("store_id");
+  if (!result.error) return result.data.map(normalizeReportRow);
+
+  const legacyResult = await supabase
+    .from("daily_report_totals")
+    .select(LEGACY_REPORT_FIELDS)
+    .eq("report_date", reportDate)
+    .order("store_id");
+  if (legacyResult.error) throw legacyResult.error;
+  return legacyResult.data.map(normalizeReportRow);
 }
 
 export async function fetchDailyReportsRange(dateFrom, dateTo) {
   if (!supabase) return [];
-  const { data, error } = await supabase
+  const result = await supabase
     .from("daily_report_totals")
     .select(REPORT_FIELDS)
     .gte("report_date", dateFrom)
     .lte("report_date", dateTo)
     .order("report_date")
     .order("store_id");
-  if (error) throw error;
-  return data.map((report) => ({
-    ...report,
-    name: report.stores?.name,
-    area: report.stores?.area,
-    store_code: report.stores?.store_code,
-    manager_name: report.stores?.manager_name,
-    target: report.stores?.target_daily_revenue,
-  }));
+  if (!result.error) return result.data.map(normalizeReportRow);
+
+  const legacyResult = await supabase
+    .from("daily_report_totals")
+    .select(LEGACY_REPORT_FIELDS)
+    .gte("report_date", dateFrom)
+    .lte("report_date", dateTo)
+    .order("report_date")
+    .order("store_id");
+  if (legacyResult.error) throw legacyResult.error;
+  return legacyResult.data.map(normalizeReportRow);
 }
 
 export async function fetchInventoryCounts(reportId) {
@@ -172,12 +247,18 @@ export async function fetchInventoryCounts(reportId) {
 
 export async function fetchInventoryCountsForReports(reportIds) {
   if (!supabase || !reportIds?.length) return [];
-  const { data, error } = await supabase
+  const result = await supabase
     .from("inventory_counts")
     .select(INVENTORY_REPORT_FIELDS)
     .in("report_id", reportIds);
-  if (error) throw error;
-  return data.map((row) => normalizeInventoryRow({
+  const data = result.error
+    ? (await supabase
+      .from("inventory_counts")
+      .select(LEGACY_INVENTORY_REPORT_FIELDS)
+      .in("report_id", reportIds))
+    : result;
+  if (data.error) throw data.error;
+  return data.data.map((row) => normalizeInventoryRow({
     ...row,
     name: row.products?.name,
     unit: row.products?.unit,
@@ -211,15 +292,32 @@ export async function upsertInventoryCounts(reportId, rows) {
     .upsert(payload, { onConflict: "report_id,product_id" })
     .select();
   if (!error) return data.map(normalizeInventoryRow);
-  if (!String(error.message || "").includes("incoming_source")) throw error;
 
-  const fallbackPayload = fallbackIncomingSourceRows(payload);
+  if (!String(error.message || "").match(/stock_unit|incoming_unit|current_stock_boxes|current_stock_packs|incoming_boxes|incoming_packs/)) {
+    throw error;
+  }
+
   const fallbackResult = await supabase
     .from("inventory_counts")
-    .upsert(fallbackPayload, { onConflict: "report_id,product_id" })
+    .upsert(stripNewInventoryFields(payload), { onConflict: "report_id,product_id" })
     .select();
   if (fallbackResult.error) throw fallbackResult.error;
   return fallbackResult.data.map(normalizeInventoryRow);
+}
+
+export async function updateStoreMonthlyTarget(storeId, monthlyTarget, dailyTarget) {
+  if (!supabase) return { storeId, monthlyTarget, dailyTarget };
+  const { data, error } = await supabase
+    .from("stores")
+    .update({
+      target_monthly_revenue: Number(monthlyTarget || 0),
+      target_daily_revenue: Math.round(Number(dailyTarget || 0)),
+    })
+    .eq("id", storeId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function reviewReport(reportId, action, note, status) {

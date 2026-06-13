@@ -12,6 +12,7 @@ import {
   signOut,
   statusLabel,
   totalRevenue,
+  updateStoreMonthlyTarget,
   upsertDailyReport,
   upsertInventoryCounts,
 } from "./lib/api";
@@ -48,8 +49,65 @@ function getTaipeiBusinessDate(parts = taipeiDateTimeParts) {
 const today = getTaipeiBusinessDate();
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
-const pct = (value) => `${Math.round(value || 0)}%`;
-const usageCount = (row) => Number(row.incoming_count || 0) - Number(row.current_stock || 0) - Number(row.loss_count || 0);
+const numberText = (value, digits = 2) => Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: digits });
+const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
+
+const VARIABLE_UNIT_PRODUCTS = ["雞翅", "雞腿", "雞排", "腿排", "雞米花", "三角骨", "雞脖子", "地瓜"];
+const FIXED_PACK_PRODUCTS = ["米血", "花枝丸", "熱狗", "雞塊", "黑輪"];
+const POWDER_PRODUCTS = ["湯翅粉", "醃粉", "薯脆粉"];
+const PRODUCT_ORDER = [
+  ...VARIABLE_UNIT_PRODUCTS,
+  ...FIXED_PACK_PRODUCTS,
+  "雞皮",
+  "炸油",
+  ...POWDER_PRODUCTS,
+];
+
+function productKind(name = "") {
+  if (VARIABLE_UNIT_PRODUCTS.includes(name)) return "variable";
+  if (FIXED_PACK_PRODUCTS.includes(name)) return "pack";
+  if (name === "雞皮") return "skewer";
+  if (name === "炸油") return "barrel";
+  if (POWDER_PRODUCTS.includes(name)) return "powder";
+  return "unit";
+}
+
+function defaultUnitForProduct(name) {
+  const kind = productKind(name);
+  if (kind === "variable") return "箱";
+  if (kind === "pack" || kind === "powder") return "包";
+  if (kind === "skewer") return "串";
+  if (kind === "barrel") return "桶";
+  return "件";
+}
+
+function displayUnitForProduct(name) {
+  const kind = productKind(name);
+  if (kind === "variable") return "件";
+  if (kind === "pack") return "包";
+  if (kind === "skewer") return "串";
+  if (kind === "barrel") return "桶";
+  if (kind === "powder") return "包";
+  return defaultUnitForProduct(name);
+}
+
+function toManagementQuantity(row, field) {
+  const name = row.name || "";
+  const kind = productKind(name);
+  if (kind === "powder") {
+    const boxes = Number(row[`${field}_boxes`] || 0);
+    const packs = Number(row[`${field}_packs`] || 0);
+    return boxes * 10 + packs;
+  }
+  const count = Number(row[field] || 0);
+  const unit = row[field === "incoming_count" ? "incoming_unit" : "stock_unit"] || defaultUnitForProduct(name);
+  if (kind === "variable") return unit === "包" ? count / 3 : count;
+  return count;
+}
+
+function usageCount(row) {
+  return toManagementQuantity(row, "incoming_count") - toManagementQuantity(row, "current_stock") - Number(row.loss_count || 0);
+}
 
 function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00Z`);
@@ -71,6 +129,19 @@ function getMonthRange(dateText) {
   return { start, end };
 }
 
+function daysInMonth(dateText) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+}
+
+function getFourWeekRanges(dateText) {
+  const current = getWeekRange(dateText);
+  return [3, 2, 1, 0].map((offset) => {
+    const start = addDays(current.start, -7 * offset);
+    return { start, end: addDays(start, 6), label: `${start} 至 ${addDays(start, 6)}` };
+  });
+}
+
 function tone(status) {
   if (status === "approved") return "good";
   if (status === "submitted") return "warn";
@@ -78,6 +149,8 @@ function tone(status) {
 }
 
 function normalizeReport(store, report) {
+  const monthlyTarget = report?.target_monthly_revenue ?? store.target_monthly_revenue ?? 0;
+  const dailyTarget = monthlyTarget ? Math.round(Number(monthlyTarget) / daysInMonth(today)) : store.target || store.target_daily_revenue || 65000;
   return {
     ...store,
     ...report,
@@ -88,7 +161,8 @@ function normalizeReport(store, report) {
     revenue_1900_to_close: report?.revenue_1900_to_close ?? store.revenue_1900_to_close ?? 0,
     status: report?.status || store.status || "draft",
     cash_difference: report?.cash_difference ?? store.cash_difference ?? null,
-    target: store.target || store.target_daily_revenue || 65000,
+    target: dailyTarget,
+    target_monthly_revenue: monthlyTarget,
     manager_name: store.manager_name || "店長",
     inventory_status: store.inventory_status || "正常",
     updated_at_label: store.updated_at_label || "尚未回報",
@@ -201,12 +275,18 @@ export function App() {
 
   async function saveReport(form, inventoryRows) {
     try {
+      const revenue1900ToClose = Math.max(
+        0,
+        Number(form.full_day_revenue || 0) -
+          Number(form.opened_to_1400_revenue || 0) -
+          Number(form.revenue_1400_to_1900 || 0),
+      );
       const payload = {
         store_id: selectedReport.store_id,
         report_date: today,
         opened_to_1400_revenue: Number(form.opened_to_1400_revenue),
         revenue_1400_to_1900: Number(form.revenue_1400_to_1900),
-        revenue_1900_to_close: Number(form.revenue_1900_to_close),
+        revenue_1900_to_close: revenue1900ToClose,
         cash_difference: Number(form.cash_difference || 0),
         manager_note: form.manager_note,
         status: "submitted",
@@ -219,12 +299,18 @@ export function App() {
         inventoryRows.map((row) => ({
           product_id: row.product_id || row.id,
           current_stock: Number(row.current_stock || 0),
-          safety_stock: Number(row.safety_stock || 0),
+          safety_stock: 0,
           loss_count: Number(row.loss_count || 0),
           incoming_count: Number(row.incoming_count || 0),
+          stock_unit: row.stock_unit || defaultUnitForProduct(row.name),
+          incoming_unit: row.incoming_unit || defaultUnitForProduct(row.name),
+          current_stock_boxes: Number(row.current_stock_boxes || 0),
+          current_stock_packs: Number(row.current_stock_packs || 0),
+          incoming_boxes: Number(row.incoming_boxes || 0),
+          incoming_packs: Number(row.incoming_packs || 0),
           incoming_source: row.incoming_source || "廠商進貨",
           transfer_note: row.transfer_note || "",
-          is_shortage: Number(row.current_stock || 0) < Number(row.safety_stock || 0),
+          is_shortage: false,
         })),
       );
       await loadWorkspace(profile, selectedReport.store_id);
@@ -497,14 +583,19 @@ function TopBar({ role, report, onSync, onExport }) {
 function HqDashboard({ reports, products, onSelect }) {
   const [periodRows, setPeriodRows] = useState([]);
   const [usageRows, setUsageRows] = useState([]);
+  const [targetDrafts, setTargetDrafts] = useState({});
+  const [targetMessage, setTargetMessage] = useState("");
+  const [savingTargetId, setSavingTargetId] = useState("");
   const weekRange = useMemo(() => getWeekRange(today), []);
   const monthRange = useMemo(() => getMonthRange(today), []);
+  const fourWeekRanges = useMemo(() => getFourWeekRanges(today), []);
+  const periodStart = [monthRange.start, fourWeekRanges[0].start].sort()[0];
 
   useEffect(() => {
     let active = true;
     async function loadPeriodData() {
       try {
-        const { reports: rows, inventoryRows } = await fetchHqDashboardData(monthRange.start, monthRange.end);
+        const { reports: rows, inventoryRows } = await fetchHqDashboardData(periodStart, today);
         if (!active) return;
         setPeriodRows(rows);
         setUsageRows(inventoryRows);
@@ -519,16 +610,44 @@ function HqDashboard({ reports, products, onSelect }) {
     return () => {
       active = false;
     };
-  }, [monthRange.start, monthRange.end, reports]);
+  }, [periodStart, reports]);
+
+  useEffect(() => {
+    setTargetDrafts(
+      Object.fromEntries(
+        reports.map((report) => [
+          report.store_id,
+          report.target_monthly_revenue || Number(report.target || 0) * daysInMonth(today),
+        ]),
+      ),
+    );
+  }, [reports]);
 
   const summary = useMemo(() => {
     const total = reports.reduce((sum, report) => sum + totalRevenue(report), 0);
     const target = reports.reduce((sum, report) => sum + Number(report.target || 0), 0);
     return { total, target };
   }, [reports]);
-  const sorted = [...reports].sort((a, b) => totalRevenue(b) - totalRevenue(a));
   const revenueSummary = useMemo(() => buildRevenueSummary(periodRows.length ? periodRows : reports), [periodRows, reports]);
   const usageSummary = useMemo(() => buildUsageSummary(reports, products, periodRows, usageRows), [reports, products, periodRows, usageRows]);
+  const dailyRevenueRows = useMemo(() => buildDailyRevenueRows(periodRows.length ? periodRows : reports), [periodRows, reports]);
+  const weeklyRevenueRows = useMemo(() => buildWeeklyRevenueRows(periodRows.length ? periodRows : reports, fourWeekRanges), [periodRows, reports, fourWeekRanges]);
+  const usageMatrix = useMemo(() => buildUsageMatrix(usageSummary.rows), [usageSummary.rows]);
+
+  async function saveMonthlyTarget(report) {
+    const monthlyTarget = Number(targetDrafts[report.store_id] || 0);
+    const dailyTarget = monthlyTarget / daysInMonth(today);
+    setSavingTargetId(report.store_id);
+    setTargetMessage("");
+    try {
+      await updateStoreMonthlyTarget(report.store_id, monthlyTarget, dailyTarget);
+      setTargetMessage(`${report.name} 月目標已更新，日目標 ${money(dailyTarget)}`);
+    } catch (error) {
+      setTargetMessage(`目標更新失敗：${error.message}`);
+    } finally {
+      setSavingTargetId("");
+    }
+  }
 
   return (
     <div className="workspace hq-grid">
@@ -558,8 +677,54 @@ function HqDashboard({ reports, products, onSelect }) {
       <section className="panel wide">
         <div className="panel-head">
           <div>
-            <h2>門店營收排行</h2>
-            <p>依 14:00、19:00、打烊三段營收加總。</p>
+            <h2>本月營業額目標設定</h2>
+            <p>輸入各店本月目標，系統自動換算每日目標，供達成率與週會檢討使用。</p>
+          </div>
+          {targetMessage && <span className="chip warn">{targetMessage}</span>}
+        </div>
+        <div className="table-wrap compact">
+          <table>
+            <thead>
+              <tr>
+                <th>門店</th>
+                <th>本月目標</th>
+                <th>每日目標</th>
+                <th>今日營收</th>
+                <th>今日達成率</th>
+                <th>動作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {reports.map((report) => {
+                const monthlyTarget = Number(targetDrafts[report.store_id] || 0);
+                const dailyTarget = monthlyTarget / daysInMonth(today);
+                return (
+                  <tr key={`target-${report.store_id}`}>
+                    <td><strong>{report.name}</strong><span>{report.manager_name || report.store_code}</span></td>
+                    <td>
+                      <input
+                        className="table-input"
+                        type="number"
+                        value={targetDrafts[report.store_id] || 0}
+                        onChange={(event) => setTargetDrafts({ ...targetDrafts, [report.store_id]: event.target.value })}
+                      />
+                    </td>
+                    <td>{money(dailyTarget)}</td>
+                    <td>{money(totalRevenue(report))}</td>
+                    <td><Progress value={(totalRevenue(report) / Math.max(1, dailyTarget)) * 100} /></td>
+                    <td><button disabled={savingTargetId === report.store_id} onClick={() => saveMonthlyTarget(report)}>儲存</button></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>每日營收情況</h2>
+            <p>依日期列出各店 14:00、19:00、打烊與全日總營收，點選門店可進入明細。</p>
           </div>
         </div>
         <div className="table-wrap">
@@ -567,6 +732,7 @@ function HqDashboard({ reports, products, onSelect }) {
             <thead>
               <tr>
                 <th>門店</th>
+                <th>日期</th>
                 <th>14:00</th>
                 <th>19:00</th>
                 <th>打烊</th>
@@ -578,9 +744,10 @@ function HqDashboard({ reports, products, onSelect }) {
               </tr>
             </thead>
             <tbody>
-              {reports.map((report) => (
-                <tr key={report.store_id} onClick={() => onSelect(report.store_id)}>
+              {dailyRevenueRows.map((report) => (
+                <tr key={`${report.store_id}-${report.report_date}`} onClick={() => onSelect(report.store_id)}>
                   <td><strong>{report.name}</strong><span>{report.manager_name || report.store_code}</span></td>
+                  <td>{report.report_date}</td>
                   <td>{money(report.opened_to_1400_revenue)}</td>
                   <td>{money(report.revenue_1400_to_1900)}</td>
                   <td>{money(report.revenue_1900_to_close)}</td>
@@ -595,45 +762,72 @@ function HqDashboard({ reports, products, onSelect }) {
           </table>
         </div>
       </section>
-      <section className="panel">
-        <div className="panel-head"><h2>前六名</h2><p>營收排行</p></div>
-        <div className="ranking">
-          {sorted.slice(0, 6).map((report, index) => (
-            <button key={report.store_id} onClick={() => onSelect(report.store_id)}>
-              <span>{index + 1}</span>
-              <strong>{report.name}</strong>
-              <div><i style={{ width: `${Math.min(100, (totalRevenue(report) / Math.max(1, totalRevenue(sorted[0]))) * 100)}%` }} /></div>
-              <em>{money(totalRevenue(report))}</em>
-            </button>
-          ))}
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>近四週週營收對比</h2>
+            <p>週一至週日彙總，含 14:00、19:00、打烊、全日營收與較前週增減。</p>
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>週別</th>
+                <th>門店</th>
+                <th>14:00</th>
+                <th>19:00</th>
+                <th>打烊</th>
+                <th>全日營收</th>
+                <th>較前週</th>
+              </tr>
+            </thead>
+            <tbody>
+              {weeklyRevenueRows.map((row) => (
+                <tr key={`${row.storeId}-${row.weekStart}`}>
+                  <td>{row.weekLabel}</td>
+                  <td><strong>{row.storeName}</strong></td>
+                  <td>{money(row.opened_to_1400_revenue)}</td>
+                  <td>{money(row.revenue_1400_to_1900)}</td>
+                  <td>{money(row.revenue_1900_to_close)}</td>
+                  <td><strong>{money(row.total)}</strong></td>
+                  <td className={row.growth < 0 ? "negative" : "positive"}>{row.growthLabel}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
       <section className="panel wide">
         <div className="panel-head">
           <div>
             <h2>各門市產品使用量</h2>
-            <p>每日、一週、當月皆以「進貨 - 現存 - 報廢」計算。</p>
+            <p>以品項為主比較各店使用量；高於同品項平均 20% 標示強，低於平均 20% 標示弱。</p>
           </div>
         </div>
         <div className="table-wrap compact">
           <table>
             <thead>
               <tr>
-                <th>門店</th>
                 <th>品項</th>
-                <th>每日使用量</th>
-                <th>一週使用量</th>
-                <th>當月使用量</th>
+                <th>單位</th>
+                {usageMatrix.stores.map((storeName) => <th key={storeName}>{storeName}</th>)}
+                <th>最高店</th>
+                <th>最低店</th>
               </tr>
             </thead>
             <tbody>
-              {usageSummary.rows.map((row) => (
-                <tr key={`${row.storeId}-${row.productId}`}>
-                  <td><strong>{row.storeName}</strong></td>
-                  <td>{row.productName}</td>
-                  <td>{row.daily}</td>
-                  <td>{row.week}</td>
-                  <td>{row.month}</td>
+              {usageMatrix.products.map((row) => (
+                <tr key={row.productName}>
+                  <td><strong>{row.productName}</strong></td>
+                  <td>{row.unit}</td>
+                  {usageMatrix.stores.map((storeName) => (
+                    <td key={`${row.productName}-${storeName}`} className={row.cells[storeName]?.tone || ""}>
+                      {numberText(row.cells[storeName]?.value || 0)}
+                    </td>
+                  ))}
+                  <td>{row.bestStore || "-"}</td>
+                  <td>{row.weakStore || "-"}</td>
                 </tr>
               ))}
             </tbody>
@@ -657,6 +851,119 @@ function buildRevenueSummary(rows) {
     },
     { daily: 0, week: 0, month: 0 },
   );
+}
+
+function buildDailyRevenueRows(rows) {
+  return [...rows].sort((a, b) => {
+    const dateCompare = String(b.report_date || "").localeCompare(String(a.report_date || ""));
+    if (dateCompare) return dateCompare;
+    return String(a.store_code || a.name || "").localeCompare(String(b.store_code || b.name || ""), "zh-Hant");
+  });
+}
+
+function buildWeeklyRevenueRows(rows, weekRanges) {
+  const byStoreWeek = new Map();
+  const weekByDate = new Map();
+  weekRanges.forEach((week) => {
+    for (let date = week.start; date <= week.end; date = addDays(date, 1)) {
+      weekByDate.set(date, week);
+    }
+  });
+
+  rows.forEach((report) => {
+    const week = weekByDate.get(report.report_date);
+    if (!week) return;
+    const storeId = report.store_id || report.id || report.store_code;
+    const key = `${storeId}-${week.start}`;
+    if (!byStoreWeek.has(key)) {
+      byStoreWeek.set(key, {
+        storeId,
+        storeName: report.name,
+        storeCode: report.store_code,
+        weekStart: week.start,
+        weekLabel: week.label,
+        opened_to_1400_revenue: 0,
+        revenue_1400_to_1900: 0,
+        revenue_1900_to_close: 0,
+        total: 0,
+      });
+    }
+    const item = byStoreWeek.get(key);
+    item.opened_to_1400_revenue += Number(report.opened_to_1400_revenue || 0);
+    item.revenue_1400_to_1900 += Number(report.revenue_1400_to_1900 || 0);
+    item.revenue_1900_to_close += Number(report.revenue_1900_to_close || 0);
+    item.total += totalRevenue(report);
+  });
+
+  const rowsOut = Array.from(byStoreWeek.values()).sort((a, b) => (
+    String(b.weekStart).localeCompare(String(a.weekStart)) ||
+    String(a.storeCode || a.storeName || "").localeCompare(String(b.storeCode || b.storeName || ""), "zh-Hant")
+  ));
+  const previousByStore = new Map();
+  return rowsOut
+    .slice()
+    .sort((a, b) => String(a.weekStart).localeCompare(String(b.weekStart)))
+    .map((row) => {
+      const previous = previousByStore.get(row.storeId);
+      const growth = previous ? ((row.total - previous.total) / Math.max(1, previous.total)) * 100 : null;
+      previousByStore.set(row.storeId, row);
+      return {
+        ...row,
+        growth,
+        growthLabel: growth === null ? "首週" : `${growth >= 0 ? "+" : ""}${pct(growth)}`,
+      };
+    })
+    .sort((a, b) => (
+      String(b.weekStart).localeCompare(String(a.weekStart)) ||
+      String(a.storeCode || a.storeName || "").localeCompare(String(b.storeCode || b.storeName || ""), "zh-Hant")
+    ));
+}
+
+function buildUsageMatrix(rows) {
+  const stores = Array.from(new Set(rows.map((row) => row.storeName))).sort((a, b) => a.localeCompare(b, "zh-Hant"));
+  const byProduct = new Map();
+  rows.forEach((row) => {
+    if (!byProduct.has(row.productName)) {
+      byProduct.set(row.productName, {
+        productName: row.productName,
+        unit: displayUnitForProduct(row.productName),
+        cells: {},
+      });
+    }
+    byProduct.get(row.productName).cells[row.storeName] = Number(row.month || row.week || row.daily || 0);
+  });
+
+  return {
+    stores,
+    products: Array.from(byProduct.values())
+      .sort((a, b) => PRODUCT_ORDER.indexOf(a.productName) - PRODUCT_ORDER.indexOf(b.productName))
+      .map((product) => {
+        const values = stores.map((storeName) => Number(product.cells[storeName] || 0));
+        const activeValues = values.filter((value) => value > 0);
+        const average = activeValues.length ? activeValues.reduce((sum, value) => sum + value, 0) / activeValues.length : 0;
+        let bestStore = "";
+        let weakStore = "";
+        let bestValue = -Infinity;
+        let weakValue = Infinity;
+        const cells = {};
+        stores.forEach((storeName) => {
+          const value = Number(product.cells[storeName] || 0);
+          if (value > bestValue) {
+            bestValue = value;
+            bestStore = storeName;
+          }
+          if (value < weakValue) {
+            weakValue = value;
+            weakStore = storeName;
+          }
+          cells[storeName] = {
+            value,
+            tone: average && value >= average * 1.2 ? "usage-strong" : average && value <= average * 0.8 ? "usage-weak" : "",
+          };
+        });
+        return { ...product, cells, bestStore, weakStore };
+      }),
+  };
 }
 
 function isNamedProductName(name) {
@@ -912,19 +1219,25 @@ function StoreReport({ report, products, onSave }) {
   const [form, setForm] = useState({
     opened_to_1400_revenue: report.opened_to_1400_revenue,
     revenue_1400_to_1900: report.revenue_1400_to_1900,
-    revenue_1900_to_close: report.revenue_1900_to_close,
+    full_day_revenue: totalRevenue(report),
     cash_difference: report.cash_difference || 0,
     manager_note: report.manager_note || "",
   });
   const [inventory, setInventory] = useState(products);
   const [saving, setSaving] = useState(false);
-  const currentTotal = totalRevenue(form);
+  const computedCloseRevenue = Math.max(
+    0,
+    Number(form.full_day_revenue || 0) -
+      Number(form.opened_to_1400_revenue || 0) -
+      Number(form.revenue_1400_to_1900 || 0),
+  );
+  const currentTotal = Number(form.full_day_revenue || 0);
 
   useEffect(() => {
     setForm({
       opened_to_1400_revenue: report.opened_to_1400_revenue,
       revenue_1400_to_1900: report.revenue_1400_to_1900,
-      revenue_1900_to_close: report.revenue_1900_to_close,
+      full_day_revenue: totalRevenue(report),
       cash_difference: report.cash_difference || 0,
       manager_note: report.manager_note || "",
     });
@@ -964,7 +1277,7 @@ function StoreReport({ report, products, onSave }) {
           </div>
           <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
         </div>
-        <div className="alert-line">請確認三段營收、庫存、進貨與現金差異後送出。</div>
+        <div className="alert-line">營收只需填 14:00、19:00 與全日總營收；19:00 至打烊由系統自動倒算。</div>
         <div className="segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
           <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
@@ -974,7 +1287,11 @@ function StoreReport({ report, products, onSave }) {
           <div className="mobile-stack">
             <RevenueInput label="14:00" helper="開店至 14:00" value={form.opened_to_1400_revenue} onChange={(value) => setForm({ ...form, opened_to_1400_revenue: value })} />
             <RevenueInput label="19:00" helper="14:00 至 19:00" value={form.revenue_1400_to_1900} onChange={(value) => setForm({ ...form, revenue_1400_to_1900: value })} />
-            <RevenueInput label="打烊" helper="19:00 至打烊" value={form.revenue_1900_to_close} onChange={(value) => setForm({ ...form, revenue_1900_to_close: value })} />
+            <RevenueInput label="全日總營收" helper="今日收銀總額" value={form.full_day_revenue} onChange={(value) => setForm({ ...form, full_day_revenue: value })} />
+            <div className="input-card calculated-card">
+              <span>19:00 至打烊<small>全日總營收 - 14:00 - 19:00</small></span>
+              <strong>{money(computedCloseRevenue)}</strong>
+            </div>
             <RevenueInput label="現金差異" helper="正數或負數" value={form.cash_difference} onChange={(value) => setForm({ ...form, cash_difference: value })} />
             <label className="note-box">
               <span>店長備註</span>
@@ -1017,20 +1334,30 @@ function RevenueInput({ label, helper, value, onChange }) {
 function InventoryEditor({ rows, onChange }) {
   return (
     <div className="mobile-stack">
-      {rows.map((row, index) => (
-        <div className="stock-row stock-row-wide" key={row.id}>
-          <div>
-            <strong>{row.name}（{row.unit}）</strong>
-            <span>進貨 {row.incoming_count} {row.unit} · 使用量 {usageCount(row)} {row.unit}</span>
+      {rows.map((row, index) => {
+        const kind = productKind(row.name);
+        return (
+          <div className={`stock-row ${kind === "powder" ? "stock-row-powder" : "stock-row-wide"}`} key={row.id}>
+            <div>
+              <strong>{row.name}</strong>
+              <span>進貨 {formatInventoryAmount(row, "incoming")} · 使用量 {numberText(usageCount(row))} {displayUnitForProduct(row.name)}</span>
+            </div>
+            {kind === "powder" ? (
+              <>
+                <NumberField label="現存箱" value={row.current_stock_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_boxes: value })} />
+                <NumberField label="現存包" value={row.current_stock_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_packs: value })} />
+              </>
+            ) : (
+              <>
+                <NumberField label="現存" value={row.current_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock: value })} />
+                <UnitField row={row} field="stock_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { stock_unit: value })} />
+              </>
+            )}
+            <NumberField label="報廢" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
+            <span className="chip good">已填</span>
           </div>
-          <NumberField label="現存" value={row.current_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock: value })} />
-          <NumberField label="安全庫存" value={row.safety_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { safety_stock: value })} />
-          <NumberField label="報廢" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
-          <span className={`chip ${row.current_stock < row.safety_stock ? "bad" : "good"}`}>
-            {row.current_stock < row.safety_stock ? "短缺" : "正常"}
-          </span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1038,32 +1365,45 @@ function InventoryEditor({ rows, onChange }) {
 function IncomingEditor({ rows, onChange }) {
   return (
     <div className="mobile-stack">
-      {rows.map((row, index) => (
-        <div className="stock-row stock-row-incoming" key={row.id}>
-          <div>
-            <strong>{row.name}（{row.unit}）</strong>
-            <span>與庫存品項相同，請填今日進貨數量與來源。</span>
+      {rows.map((row, index) => {
+        const kind = productKind(row.name);
+        return (
+          <div className={`stock-row ${kind === "powder" ? "stock-row-incoming-powder" : "stock-row-incoming"}`} key={row.id}>
+            <div>
+              <strong>{row.name}</strong>
+              <span>請填今日進貨數量、單位與來源。</span>
+            </div>
+            {kind === "powder" ? (
+              <>
+                <NumberField label="進貨箱" value={row.incoming_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_boxes: value })} />
+                <NumberField label="進貨包" value={row.incoming_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_packs: value })} />
+              </>
+            ) : (
+              <>
+                <NumberField label="進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
+                <UnitField row={row} field="incoming_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_unit: value })} />
+              </>
+            )}
+            <label className="mini-field">
+              <span>來源</span>
+              <select
+                value={row.incoming_source || "廠商進貨"}
+                onChange={(event) => updateInventoryRow(rows, onChange, index, row, { incoming_source: event.target.value })}
+              >
+                <option>廠商進貨</option>
+                <option>門店調貨</option>
+              </select>
+            </label>
+            <label className="mini-field">
+              <span>備註</span>
+              <input
+                value={row.transfer_note || ""}
+                onChange={(event) => updateInventoryRow(rows, onChange, index, row, { transfer_note: event.target.value })}
+              />
+            </label>
           </div>
-          <NumberField label="進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
-          <label className="mini-field">
-            <span>來源</span>
-            <select
-              value={row.incoming_source || "廠商進貨"}
-              onChange={(event) => updateInventoryRow(rows, onChange, index, row, { incoming_source: event.target.value })}
-            >
-              <option>廠商進貨</option>
-              <option>門店調貨</option>
-            </select>
-          </label>
-          <label className="mini-field">
-            <span>備註</span>
-            <input
-              value={row.transfer_note || ""}
-              onChange={(event) => updateInventoryRow(rows, onChange, index, row, { transfer_note: event.target.value })}
-            />
-          </label>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
@@ -1072,9 +1412,42 @@ function NumberField({ label, value, onChange }) {
   return (
     <label className="mini-field">
       <span>{label}</span>
-      <input type="number" value={value || 0} onChange={(event) => onChange(Number(event.target.value))} />
+      <input type="number" step="0.01" value={value || 0} onChange={(event) => onChange(Number(event.target.value))} />
     </label>
   );
+}
+
+function UnitField({ row, field, onChange }) {
+  const kind = productKind(row.name);
+  if (kind === "variable") {
+    return (
+      <label className="mini-field">
+        <span>單位</span>
+        <select value={row[field] || "箱"} onChange={(event) => onChange(event.target.value)}>
+          <option>箱</option>
+          <option>包</option>
+        </select>
+      </label>
+    );
+  }
+  return (
+    <label className="mini-field">
+      <span>單位</span>
+      <input value={defaultUnitForProduct(row.name)} disabled />
+    </label>
+  );
+}
+
+function formatInventoryAmount(row, prefix) {
+  const name = row.name || "";
+  if (productKind(name) === "powder") {
+    const boxes = Number(row[`${prefix === "incoming" ? "incoming" : "current_stock"}_boxes`] || 0);
+    const packs = Number(row[`${prefix === "incoming" ? "incoming" : "current_stock"}_packs`] || 0);
+    return `${numberText(boxes)} 箱 / ${numberText(packs)} 包`;
+  }
+  const field = prefix === "incoming" ? "incoming_count" : "current_stock";
+  const unitField = prefix === "incoming" ? "incoming_unit" : "stock_unit";
+  return `${numberText(row[field])} ${row[unitField] || defaultUnitForProduct(name)}`;
 }
 
 function updateInventoryRow(rows, onChange, index, row, patch) {
@@ -1147,18 +1520,18 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
         <div className="table-wrap compact">
           <table>
             <thead>
-              <tr><th>品項</th><th>現存</th><th>安全庫存</th><th>報廢</th><th>進貨</th><th>來源</th><th>今日使用量</th><th>備註</th></tr>
+              <tr><th>品項</th><th>現存</th><th>報廢</th><th>進貨</th><th>來源</th><th>今日使用量</th><th>統計單位</th><th>備註</th></tr>
             </thead>
             <tbody>
               {inventory.map((item) => (
                 <tr key={item.id}>
-                  <td><strong>{item.name}（{item.unit}）</strong></td>
-                  <td>{item.current_stock}</td>
-                  <td>{item.safety_stock}</td>
-                  <td>{item.loss_count}</td>
-                  <td>{item.incoming_count}</td>
+                  <td><strong>{item.name}</strong></td>
+                  <td>{formatInventoryAmount(item, "stock")}</td>
+                  <td>{numberText(item.loss_count)}</td>
+                  <td>{formatInventoryAmount(item, "incoming")}</td>
                   <td>{item.incoming_source || "廠商進貨"}</td>
-                  <td><strong>{usageCount(item)}</strong></td>
+                  <td><strong>{numberText(usageCount(item))}</strong></td>
+                  <td>{displayUnitForProduct(item.name)}</td>
                   <td>{item.transfer_note}</td>
                 </tr>
               ))}

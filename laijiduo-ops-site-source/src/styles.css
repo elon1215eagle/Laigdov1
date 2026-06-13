@@ -422,6 +422,11 @@ textarea {
   color: #247a47;
 }
 
+.positive {
+  color: #247a47;
+  font-weight: 800;
+}
+
 .metric.warn strong {
   color: #b85f00;
 }
@@ -708,6 +713,12 @@ tbody tr.selected,
   font-size: 28px;
 }
 
+.calculated-card strong {
+  color: #c2321f;
+  font-size: 20px;
+  text-align: right;
+}
+
 .stock-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 76px 62px;
@@ -720,7 +731,15 @@ tbody tr.selected,
 }
 
 .stock-row-incoming {
-  grid-template-columns: minmax(0, 1.2fr) 92px 132px minmax(120px, 1fr);
+  grid-template-columns: minmax(0, 1.2fr) 92px 92px 132px minmax(120px, 1fr);
+}
+
+.stock-row-powder {
+  grid-template-columns: minmax(0, 1.2fr) 86px 86px 86px 62px;
+}
+
+.stock-row-incoming-powder {
+  grid-template-columns: minmax(0, 1.2fr) 86px 86px 132px minmax(120px, 1fr);
 }
 
 .mini-field {
@@ -738,6 +757,29 @@ tbody tr.selected,
 .mini-field select {
   min-height: 36px;
   padding: 0 8px;
+}
+
+.mini-field input:disabled {
+  color: #735649;
+  background: #f7eee8;
+  cursor: default;
+}
+
+.table-input {
+  width: 150px;
+  min-height: 34px;
+}
+
+.usage-strong {
+  color: #247a47;
+  background: #eef9f1;
+  font-weight: 800;
+}
+
+.usage-weak {
+  color: #b82e20;
+  background: #fff0ed;
+  font-weight: 800;
 }
 
 .stock-row input {
@@ -1173,6 +1215,8 @@ tbody tr.selected,
   .stock-row,
   .stock-row-wide,
   .stock-row-incoming,
+  .stock-row-powder,
+  .stock-row-incoming-powder,
   .evidence-card,
   .photo-strip,
   .form-grid,
