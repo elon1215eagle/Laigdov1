@@ -119,6 +119,7 @@ const MONTHLY_LEAVE_FIELDS = [
   "employee_name",
   "role_name",
   "leave_days",
+  "leave_type",
   "note",
   "updated_by",
   "created_at",
@@ -502,6 +503,7 @@ export async function upsertMonthlyLeavePlan(payload) {
       {
         ...payload,
         leave_days: normalizeLeaveDays(payload.leave_days),
+        leave_type: payload.leave_type || "排休",
         updated_by: userData.user?.id || null,
       },
       { onConflict: "period_month,staff_id" },
@@ -520,6 +522,7 @@ export async function upsertMonthlyLeavePlans(payloads) {
   const cleanPayloads = payloads.map((payload) => ({
     ...payload,
     leave_days: normalizeLeaveDays(payload.leave_days),
+    leave_type: payload.leave_type || "排休",
     updated_by: userData.user?.id || null,
   }));
   const { data, error } = await supabase

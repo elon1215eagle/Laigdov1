@@ -862,7 +862,7 @@ tbody tr.selected,
 
 .leave-summary {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -991,7 +991,7 @@ tbody tr.selected,
 }
 
 .leave-calendar-table {
-  min-width: 1560px;
+  min-width: 1660px;
   table-layout: fixed;
 }
 
@@ -1075,6 +1075,16 @@ tbody tr.selected,
 
 .leave-note-input {
   width: 130px;
+}
+
+.leave-type-select {
+  width: 76px;
+  min-height: 34px;
+  padding: 0 6px;
+  border: 1px solid #ead6ca;
+  border-radius: 7px;
+  background: #fffdfa;
+  color: #432b20;
 }
 
 .leave-summary-row th,

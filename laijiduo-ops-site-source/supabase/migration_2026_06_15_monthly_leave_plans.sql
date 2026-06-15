@@ -7,11 +7,13 @@ create table if not exists public.monthly_leave_plans (
   employee_name text not null,
   role_name text not null,
   leave_days integer[] not null default '{}',
+  leave_type text not null default '排休',
   note text not null default '',
   updated_by uuid references auth.users(id),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
-  constraint monthly_leave_plans_unique unique (period_month, staff_id)
+  constraint monthly_leave_plans_unique unique (period_month, staff_id),
+  constraint monthly_leave_plans_leave_type_check check (leave_type in ('排休', '特休', '事假', '病假', '其他'))
 );
 
 create index if not exists monthly_leave_plans_period_store_idx
