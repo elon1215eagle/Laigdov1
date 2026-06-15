@@ -293,7 +293,27 @@ textarea {
 
 .side-nav {
   display: grid;
+  gap: 12px;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.nav-group {
+  display: grid;
   gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1e4dc;
+}
+
+.nav-group:last-child {
+  border-bottom: 0;
+}
+
+.nav-group > span {
+  color: #9a7665;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .side-nav button,
@@ -363,6 +383,11 @@ textarea {
 .workspace {
   display: grid;
   gap: 16px;
+}
+
+.module-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .hq-grid {
@@ -486,6 +511,17 @@ td {
   white-space: nowrap;
 }
 
+.module-grid td {
+  max-width: 360px;
+  white-space: normal;
+  line-height: 1.55;
+  vertical-align: top;
+}
+
+.module-grid th {
+  vertical-align: top;
+}
+
 tbody tr {
   transition: background 160ms ease;
 }
@@ -525,6 +561,24 @@ tbody tr.selected,
 .dot.bad {
   background: #fde8e2;
   color: #b82e20;
+}
+
+.chip.neutral {
+  background: #f3eee9;
+  color: #63483c;
+}
+
+.code-chip {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: #fff1e7;
+  color: #9f291a;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .progress {
@@ -973,6 +1027,31 @@ tbody tr.selected,
   background: #fffdfa;
   color: #604235;
   font-weight: 700;
+}
+
+.staff-chip-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.staff-chip {
+  min-height: 70px;
+  padding: 12px;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.staff-chip strong,
+.staff-chip span {
+  display: block;
+}
+
+.staff-chip span {
+  margin-top: 5px;
+  color: #806456;
+  font-size: 13px;
 }
 
 .store-management-grid {
@@ -1520,6 +1599,7 @@ tbody tr.selected,
   .review-workspace,
   .inspection-form-grid,
   .inspection-analytics,
+  .module-grid,
   .store-card-grid {
     grid-template-columns: 1fr;
   }
@@ -1594,7 +1674,8 @@ tbody tr.selected,
   .analytics-filters,
   .analytics-list-row,
   .issue-editor-top,
-  .store-card-metrics {
+  .store-card-metrics,
+  .staff-chip-list {
     grid-template-columns: 1fr;
   }
 

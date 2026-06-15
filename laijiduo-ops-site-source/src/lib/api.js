@@ -1,4 +1,4 @@
-import { productsSeed, storesSeed } from "./mockData";
+import { handoverSeed, performanceSeed, productsSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 
 const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, is_active";
@@ -76,6 +76,40 @@ const INSPECTION_FIELDS = [
   "stores(name, area, store_code, manager_name)",
 ].join(", ");
 const INSPECTION_ISSUE_FIELDS = "id, inspection_id, category, title, description, suggestion, severity, due_date, status, created_at";
+const HANDOVER_FIELDS = [
+  "id",
+  "store_id",
+  "handover_date",
+  "shift_type",
+  "cash_status",
+  "inventory_status",
+  "equipment_status",
+  "cleaning_status",
+  "customer_issue",
+  "pending_tasks",
+  "manager_name",
+  "status",
+  "created_at",
+  "stores(name, area, store_code, manager_name)",
+].join(", ");
+const STAFF_PERFORMANCE_FIELDS = [
+  "id",
+  "store_id",
+  "period_month",
+  "employee_name",
+  "role_name",
+  "late_count",
+  "leave_count",
+  "absence_count",
+  "service_delay_count",
+  "score",
+  "grade",
+  "bonus_adjustment",
+  "status",
+  "note",
+  "created_at",
+  "stores(name, area, store_code)",
+].join(", ");
 
 export function totalRevenue(report) {
   return (
@@ -368,7 +402,7 @@ function normalizeInspectionRow(row, issueRows = []) {
     manager: row.manager_name || row.stores?.manager_name || "",
     score: Number(row.score || 0),
     maxScore: row.form_data ? undefined : 100,
-    status: row.status || "待確認",
+    status: row.status || "已建檔",
     imageNames: [],
     images: [],
     summary: row.summary || "",
@@ -383,9 +417,100 @@ function normalizeInspectionRow(row, issueRows = []) {
       suggestion: issue.suggestion || "",
       severity: issue.severity || "一般",
       dueDate: issue.due_date || "",
-      status: issue.status || "待確認",
+      status: issue.status || "待處理",
     })),
   };
+}
+
+function normalizeHandoverRow(row) {
+  return {
+    ...row,
+    storeName: row.stores?.name || row.storeName || "未命名門店",
+    area: row.stores?.area || "",
+    store_code: row.stores?.store_code || "",
+    manager_name: row.manager_name || row.stores?.manager_name || "",
+  };
+}
+
+function normalizePerformanceRow(row) {
+  return {
+    ...row,
+    storeName: row.stores?.name || row.storeName || "未命名門店",
+    area: row.stores?.area || "",
+    store_code: row.stores?.store_code || "",
+    action: row.action || performanceAction(row.score, row.bonus_adjustment),
+  };
+}
+
+function performanceAction(score, bonusAdjustment = 0) {
+  if (Number(score || 0) >= 90) return "季獎金正常";
+  if (Number(score || 0) < 80) return "需輔導改善";
+  return `季獎金調整 ${Number(bonusAdjustment || 0).toLocaleString("zh-TW")}`;
+}
+
+function isMissingSupabaseTable(error) {
+  const message = String(error?.message || "");
+  return error?.code === "PGRST205" || message.includes("Could not find the table") || message.includes("schema cache");
+}
+
+function migrationRequiredError() {
+  return new Error("資料表尚未建立，請先套用 Supabase migration_2026_06_15_handover_performance.sql");
+}
+
+export async function fetchHandovers(date = new Date().toISOString().slice(0, 10)) {
+  if (!supabase) return handoverSeed;
+  const { data, error } = await supabase
+    .from("store_handovers")
+    .select(HANDOVER_FIELDS)
+    .eq("handover_date", date)
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (isMissingSupabaseTable(error)) return [];
+    throw error;
+  }
+  return data.map(normalizeHandoverRow);
+}
+
+export async function upsertHandover(payload) {
+  if (!supabase) return normalizeHandoverRow({ ...payload, id: payload.id || crypto.randomUUID?.() || Date.now() });
+  const { data, error } = await supabase
+    .from("store_handovers")
+    .upsert(payload, { onConflict: "store_id,handover_date,shift_type" })
+    .select(HANDOVER_FIELDS)
+    .single();
+  if (error) {
+    if (isMissingSupabaseTable(error)) throw migrationRequiredError();
+    throw error;
+  }
+  return normalizeHandoverRow(data);
+}
+
+export async function fetchStaffPerformance(periodMonth = new Date().toISOString().slice(0, 7)) {
+  if (!supabase) return performanceSeed;
+  const { data, error } = await supabase
+    .from("staff_performance")
+    .select(STAFF_PERFORMANCE_FIELDS)
+    .eq("period_month", periodMonth)
+    .order("score", { ascending: true });
+  if (error) {
+    if (isMissingSupabaseTable(error)) return [];
+    throw error;
+  }
+  return data.map(normalizePerformanceRow);
+}
+
+export async function upsertStaffPerformance(payload) {
+  if (!supabase) return normalizePerformanceRow({ ...payload, id: payload.id || crypto.randomUUID?.() || Date.now() });
+  const { data, error } = await supabase
+    .from("staff_performance")
+    .upsert(payload, { onConflict: "store_id,period_month,employee_name" })
+    .select(STAFF_PERFORMANCE_FIELDS)
+    .single();
+  if (error) {
+    if (isMissingSupabaseTable(error)) throw migrationRequiredError();
+    throw error;
+  }
+  return normalizePerformanceRow(data);
 }
 
 export async function fetchStoreInspections() {
@@ -421,10 +546,10 @@ export async function createStoreInspection(record) {
   const payload = {
     store_id: record.storeId,
     inspection_date: record.date,
-    supervisor_name: record.supervisor || "未填寫",
+    supervisor_name: record.supervisor || "總部督導",
     manager_name: record.manager || "",
     score: Number(record.score || 0),
-    status: record.status || "待確認",
+    status: record.status || "已建檔",
     summary: record.summary || "",
     form_data: record.formData || null,
     manager_signature: record.managerSignature || "",
@@ -441,13 +566,13 @@ export async function createStoreInspection(record) {
     .filter((issue) => issue.title || issue.description || issue.suggestion)
     .map((issue) => ({
       inspection_id: data.id,
-      category: issue.category || "其他",
-      title: issue.title || "未命名問題",
+      category: issue.category || "一般",
+      title: issue.title || "未命名缺失",
       description: issue.description || "",
       suggestion: issue.suggestion || "",
       severity: issue.severity || "一般",
       due_date: issue.dueDate || null,
-      status: issue.status || "待確認",
+      status: issue.status || "待處理",
     }));
   if (issuePayload.length) {
     const { error: issueError } = await supabase.from("store_inspection_issues").insert(issuePayload);
@@ -463,10 +588,10 @@ export async function updateStoreInspection(record) {
     .from("store_inspections")
     .update({
       inspection_date: record.date,
-      supervisor_name: record.supervisor || "未填寫",
+      supervisor_name: record.supervisor || "總部督導",
       manager_name: record.manager || "",
       score: Number(record.score || 0),
-      status: record.status || "待確認",
+      status: record.status || "已建檔",
       summary: record.summary || "",
       form_data: record.formData || null,
       manager_signature: record.managerSignature || "",
@@ -480,13 +605,13 @@ export async function updateStoreInspection(record) {
     .filter((issue) => issue.title || issue.description || issue.suggestion)
     .map((issue) => ({
       inspection_id: record.id,
-      category: issue.category || "其他",
-      title: issue.title || "未命名問題",
+      category: issue.category || "一般",
+      title: issue.title || "未命名缺失",
       description: issue.description || "",
       suggestion: issue.suggestion || "",
       severity: issue.severity || "一般",
       due_date: issue.dueDate || null,
-      status: issue.status || "待確認",
+      status: issue.status || "待處理",
     }));
   if (issuePayload.length) {
     const { error: issueError } = await supabase.from("store_inspection_issues").insert(issuePayload);
@@ -494,5 +619,4 @@ export async function updateStoreInspection(record) {
   }
   return record;
 }
-
 export { hasSupabaseConfig };
