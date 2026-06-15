@@ -110,6 +110,20 @@ const STAFF_PERFORMANCE_FIELDS = [
   "created_at",
   "stores(name, area, store_code)",
 ].join(", ");
+const MONTHLY_LEAVE_FIELDS = [
+  "id",
+  "period_month",
+  "store_code",
+  "store_name",
+  "staff_id",
+  "employee_name",
+  "role_name",
+  "leave_days",
+  "note",
+  "updated_by",
+  "created_at",
+  "updated_at",
+].join(", ");
 
 export function totalRevenue(report) {
   return (
@@ -455,6 +469,65 @@ function isMissingSupabaseTable(error) {
 
 function migrationRequiredError() {
   return new Error("資料表尚未建立，請先套用 Supabase migration_2026_06_15_handover_performance.sql");
+}
+
+function normalizeLeaveDays(days) {
+  return Array.from(
+    new Set((days || []).map((day) => Number(day)).filter((day) => Number.isInteger(day) && day >= 1 && day <= 31)),
+  ).sort((a, b) => a - b);
+}
+
+export async function fetchMonthlyLeavePlans(periodMonth) {
+  if (!supabase) return [];
+  const { data, error } = await supabase
+    .from("monthly_leave_plans")
+    .select(MONTHLY_LEAVE_FIELDS)
+    .eq("period_month", periodMonth)
+    .order("store_code")
+    .order("employee_name");
+  if (error) {
+    if (isMissingSupabaseTable(error)) return [];
+    throw error;
+  }
+  return data;
+}
+
+export async function upsertMonthlyLeavePlan(payload) {
+  if (!supabase) return payload;
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const { data, error } = await supabase
+    .from("monthly_leave_plans")
+    .upsert(
+      {
+        ...payload,
+        leave_days: normalizeLeaveDays(payload.leave_days),
+        updated_by: userData.user?.id || null,
+      },
+      { onConflict: "period_month,staff_id" },
+    )
+    .select(MONTHLY_LEAVE_FIELDS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function upsertMonthlyLeavePlans(payloads) {
+  if (!supabase) return payloads;
+  if (!payloads.length) return [];
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const cleanPayloads = payloads.map((payload) => ({
+    ...payload,
+    leave_days: normalizeLeaveDays(payload.leave_days),
+    updated_by: userData.user?.id || null,
+  }));
+  const { data, error } = await supabase
+    .from("monthly_leave_plans")
+    .upsert(cleanPayloads, { onConflict: "period_month,staff_id" })
+    .select(MONTHLY_LEAVE_FIELDS);
+  if (error) throw error;
+  return data;
 }
 
 export async function fetchHandovers(date = new Date().toISOString().slice(0, 10)) {

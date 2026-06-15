@@ -4,6 +4,7 @@ import {
   fetchHandovers,
   fetchHqDashboardData,
   fetchInventoryCounts,
+  fetchMonthlyLeavePlans,
   fetchProducts,
   fetchStaffPerformance,
   fetchStores,
@@ -18,6 +19,8 @@ import {
   upsertDailyReport,
   upsertHandover,
   upsertInventoryCounts,
+  upsertMonthlyLeavePlan,
+  upsertMonthlyLeavePlans,
   upsertStaffPerformance,
 } from "./lib/api";
 import {
@@ -88,7 +91,7 @@ const ROLE_MODULES = {
   admin: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   hq: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   supervisor: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
-  store_manager: ["ops", "handover", "system"],
+  store_manager: ["ops", "handover", "schedule", "system"],
 };
 
 const MODULE_GROUPS = [
@@ -649,6 +652,7 @@ export function App() {
             storeHours={storeHoursSeed}
             staffRoster={staffRosterSeed}
             salaryRows={salaryStructureSeed}
+            onNotify={show}
           />
         )}
         {activeModuleAllowed && activeModule === "tasks" && (
@@ -1926,6 +1930,19 @@ function isLeaveDay(value, day) {
   return parseLeaveDays(value).includes(day);
 }
 
+function buildLeavePlanPayload({ month, person, dates, note = "" }) {
+  return {
+    period_month: month,
+    store_code: canonicalStoreCode(person),
+    store_name: displayStoreName(person),
+    staff_id: person.id,
+    employee_name: person.employeeName,
+    role_name: person.role,
+    leave_days: parseLeaveDays(dates),
+    note,
+  };
+}
+
 function getMonthlyRestDays(role, salaryRows) {
   const salaryRow = salaryRows.find((row) => row.role === role);
   const restDays = Number(salaryRow?.monthly_rest_days || 0);
@@ -1971,10 +1988,11 @@ function buildLeavePlannerCsv({ month, rows, drafts, salaryRows }) {
   return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }
 
-function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
+function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours, onNotify }) {
   const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
   const [storeFilter, setStoreFilter] = useState("all");
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
+  const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
   const [drafts, setDrafts] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(leavePlannerStorageKey) || "{}");
@@ -1986,6 +2004,37 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
   useEffect(() => {
     localStorage.setItem(leavePlannerStorageKey, JSON.stringify(drafts));
   }, [drafts]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadLeavePlans() {
+      if (!hasSupabaseConfig) return;
+      setSyncState("同步中");
+      try {
+        const rows = await fetchMonthlyLeavePlans(leaveMonth);
+        if (!active) return;
+        setDrafts((current) => {
+          const next = Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${leaveMonth}:`)));
+          rows.forEach((row) => {
+            next[leaveDraftKey(row.period_month, row.staff_id)] = {
+              dates: formatLeaveDays(row.period_month, row.leave_days || []),
+              note: row.note || "",
+            };
+          });
+          return next;
+        });
+        setSyncState(rows.length ? "已同步" : "尚無資料");
+      } catch (error) {
+        if (!active) return;
+        setSyncState("同步失敗");
+        onNotify?.(`排假同步失敗：${error.message}`);
+      }
+    }
+    loadLeavePlans();
+    return () => {
+      active = false;
+    };
+  }, [leaveMonth]);
 
   useEffect(() => {
     if (!supportDate.startsWith(leaveMonth)) setSupportDate(`${leaveMonth}-01`);
@@ -2068,18 +2117,38 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
     }));
   };
 
+  const saveDraft = async (person, draft) => {
+    if (!person || !hasSupabaseConfig) return;
+    try {
+      setSyncState("儲存中");
+      await upsertMonthlyLeavePlan(buildLeavePlanPayload({
+        month: leaveMonth,
+        person,
+        dates: draft.dates || "",
+        note: draft.note || "",
+      }));
+      setSyncState("已同步");
+    } catch (error) {
+      setSyncState("同步失敗");
+      onNotify?.(`排假儲存失敗：${error.message}`);
+    }
+  };
+
   const toggleLeaveDay = (staffId, day) => {
     const key = leaveDraftKey(leaveMonth, staffId);
+    const person = staffRoster.find((row) => row.id === staffId);
     setDrafts((current) => {
       const currentDraft = current[key] || {};
       const leaveDays = parseLeaveDays(currentDraft.dates);
       const nextDays = leaveDays.includes(day) ? leaveDays.filter((item) => item !== day) : [...leaveDays, day].sort((a, b) => a - b);
+      const nextDraft = {
+        ...currentDraft,
+        dates: formatLeaveDays(leaveMonth, nextDays),
+      };
+      saveDraft(person, nextDraft);
       return {
         ...current,
-        [key]: {
-          ...currentDraft,
-          dates: formatLeaveDays(leaveMonth, nextDays),
-        },
+        [key]: nextDraft,
       };
     });
   };
@@ -2129,6 +2198,20 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
       });
       return next;
     });
+    if (hasSupabaseConfig) {
+      setSyncState("儲存中");
+      upsertMonthlyLeavePlans(store.staff.map((person) => buildLeavePlanPayload({
+        month: leaveMonth,
+        person,
+        dates: formatLeaveDays(leaveMonth, assignments.get(person.id) || []),
+        note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
+      })))
+        .then(() => setSyncState("已同步"))
+        .catch((error) => {
+          setSyncState("同步失敗");
+          onNotify?.(`一鍵排休儲存失敗：${error.message}`);
+        });
+    }
   };
 
   const clearStore = (store) => {
@@ -2143,6 +2226,20 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
       });
       return next;
     });
+    if (hasSupabaseConfig) {
+      setSyncState("儲存中");
+      upsertMonthlyLeavePlans(store.staff.map((person) => buildLeavePlanPayload({
+        month: leaveMonth,
+        person,
+        dates: "",
+        note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
+      })))
+        .then(() => setSyncState("已同步"))
+        .catch((error) => {
+          setSyncState("同步失敗");
+          onNotify?.(`清空本店儲存失敗：${error.message}`);
+        });
+    }
   };
 
   const clearMonth = () => {
@@ -2187,6 +2284,7 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
           <span><strong>{plannerRows.length - filledCount}</strong> 人未填</span>
           <span><strong>{totalLeaveDays}</strong> 天排休</span>
           <span className={overLimitCount ? "negative" : ""}><strong>{overLimitCount}</strong> 人超休</span>
+          <span><strong>{syncState}</strong></span>
         </div>
       </div>
 
@@ -2214,6 +2312,7 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
             leaveMonth={leaveMonth}
             monthDays={monthDays}
             salaryRows={salaryRows}
+            saveDraft={saveDraft}
             store={store}
             autoArrangeStore={autoArrangeStore}
             clearStore={clearStore}
@@ -2226,7 +2325,7 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours }) {
   );
 }
 
-function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, leaveMonth, monthDays, salaryRows, store, toggleLeaveDay, updateDraft }) {
+function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, leaveMonth, monthDays, salaryRows, saveDraft, store, toggleLeaveDay, updateDraft }) {
   const totalLeaveDays = store.staff.reduce((sum, person) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates), 0);
   const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
 
@@ -2292,6 +2391,7 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, leaveMonth, 
                       className="table-input leave-note-input"
                       value={draft.note || ""}
                       onChange={(event) => updateDraft(person.id, "note", event.target.value)}
+                      onBlur={(event) => saveDraft(person, { ...draft, note: event.target.value })}
                       placeholder="代班、禁休"
                     />
                   </td>
@@ -2344,7 +2444,7 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
   );
 }
 
-function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows }) {
+function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows, onNotify }) {
   const activeRows = scheduleRows.filter((row) => row.status !== "暫停營業");
   const shortageRows = scheduleRows.filter((row) => row.status === "人力不足");
   const closedRows = scheduleRows.filter((row) => row.status === "暫停營業");
@@ -2364,7 +2464,7 @@ function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows }) {
         <Metric label="暫停營業" value={`${closedRows.length} 店`} detail={closedRows[0]?.storeName || "無"} tone={closedRows.length ? "warn" : "good"} />
       </section>
 
-      <MonthlyLeavePlanner staffRoster={staffRoster} salaryRows={salaryRows} storeHours={storeHours} />
+      <MonthlyLeavePlanner staffRoster={staffRoster} salaryRows={salaryRows} storeHours={storeHours} onNotify={onNotify} />
 
       <section className="panel wide">
         <div className="panel-head">
