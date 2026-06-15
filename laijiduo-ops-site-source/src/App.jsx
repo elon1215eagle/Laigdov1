@@ -644,7 +644,12 @@ export function App() {
           <ManagementSystemModule systems={hqSystemSeed} />
         )}
         {activeModuleAllowed && activeModule === "schedule" && (
-          <ScheduleModule scheduleRows={scheduleSeed} storeHours={storeHoursSeed} staffRoster={staffRosterSeed} />
+          <ScheduleModule
+            scheduleRows={scheduleSeed}
+            storeHours={storeHoursSeed}
+            staffRoster={staffRosterSeed}
+            salaryRows={salaryStructureSeed}
+          />
         )}
         {activeModuleAllowed && activeModule === "tasks" && (
           <SupervisorTaskModule tasks={supervisorTaskSeed} />
@@ -1878,9 +1883,9 @@ function ManagementSystemModule({ systems }) {
 }
 
 function taskTone(value = "") {
-  if (["已完成", "足夠", "正常", "已納入制度"].includes(value)) return "good";
-  if (["高", "人力不足", "需輔導", "重大"].includes(value)) return "bad";
-  if (["中", "待處理", "進行中", "試用觀察", "待總部覆核", "改善中", "待招募", "暫停營業"].includes(value)) return "warn";
+  if (["已完成", "足夠", "正常", "已納入制度", "已填"].includes(value)) return "good";
+  if (["高", "人力不足", "需輔導", "重大", "超休"].includes(value)) return "bad";
+  if (["中", "待處理", "進行中", "試用觀察", "待總部覆核", "改善中", "待招募", "暫停營業", "未填", "不足"].includes(value)) return "warn";
   return "neutral";
 }
 
@@ -1888,7 +1893,194 @@ function isOverdue(dateText) {
   return Boolean(dateText && dateText < today);
 }
 
-function ScheduleModule({ scheduleRows, storeHours, staffRoster }) {
+const leavePlannerStorageKey = "laijiduo-monthly-leave-planner";
+
+function countLeaveDays(value = "") {
+  return String(value)
+    .split(/[、,，\s]+/)
+    .map((item) => item.trim())
+    .filter(Boolean).length;
+}
+
+function leaveDraftKey(month, staffId) {
+  return `${month}:${staffId}`;
+}
+
+function getMonthlyRestDays(role, salaryRows) {
+  const salaryRow = salaryRows.find((row) => row.role === role);
+  const restDays = Number(salaryRow?.monthly_rest_days || 0);
+  return Number.isFinite(restDays) && restDays > 0 ? restDays : null;
+}
+
+function getLeaveStatus(dateText, restDays) {
+  const dayCount = countLeaveDays(dateText);
+  if (!dayCount) return "未填";
+  if (restDays && dayCount > restDays) return "超休";
+  if (restDays && dayCount < restDays) return "不足";
+  return "已填";
+}
+
+function buildLeavePlannerCsv({ month, rows, drafts, salaryRows }) {
+  const headers = ["月份", "門店代碼", "門店", "姓名", "職位", "月休基準", "排假日期", "排假天數", "狀態", "備註"];
+  const csvRows = rows.map((row) => {
+    const key = leaveDraftKey(month, row.id);
+    const draft = drafts[key] || {};
+    const restDays = getMonthlyRestDays(row.role, salaryRows);
+    const dates = draft.dates || "";
+    return [
+      month,
+      canonicalStoreCode(row),
+      displayStoreName(row),
+      row.employeeName,
+      row.role,
+      restDays || "",
+      dates,
+      countLeaveDays(dates),
+      getLeaveStatus(dates, restDays),
+      draft.note || "",
+    ];
+  });
+  return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
+}
+
+function MonthlyLeavePlanner({ staffRoster, salaryRows }) {
+  const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
+  const [storeFilter, setStoreFilter] = useState("all");
+  const [drafts, setDrafts] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem(leavePlannerStorageKey) || "{}");
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem(leavePlannerStorageKey, JSON.stringify(drafts));
+  }, [drafts]);
+
+  const plannerRows = useMemo(
+    () =>
+      [...staffRoster]
+        .sort((a, b) => `${displayStoreName(a)}-${a.role}-${a.employeeName}`.localeCompare(`${displayStoreName(b)}-${b.role}-${b.employeeName}`, "zh-Hant"))
+        .filter((row) => storeFilter === "all" || canonicalStoreCode(row) === storeFilter),
+    [staffRoster, storeFilter],
+  );
+  const storeOptions = useMemo(() => {
+    const options = staffRoster.map((row) => ({
+      code: canonicalStoreCode(row),
+      name: displayStoreName(row),
+    }));
+    return options.filter((row, index, rows) => row.code && rows.findIndex((item) => item.code === row.code) === index);
+  }, [staffRoster]);
+  const filledCount = plannerRows.filter((row) => countLeaveDays(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates)).length;
+  const overLimitCount = plannerRows.filter((row) => {
+    const restDays = getMonthlyRestDays(row.role, salaryRows);
+    return getLeaveStatus(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates, restDays) === "超休";
+  }).length;
+
+  const updateDraft = (staffId, field, value) => {
+    const key = leaveDraftKey(leaveMonth, staffId);
+    setDrafts((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        [field]: value,
+      },
+    }));
+  };
+
+  const clearMonth = () => {
+    if (!window.confirm(`確定清空 ${leaveMonth} 的排假填寫資料？`)) return;
+    setDrafts((current) =>
+      Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${leaveMonth}:`))),
+    );
+  };
+
+  return (
+    <section className="panel wide leave-planner">
+      <div className="panel-head">
+        <div>
+          <h2>每月各店排假表</h2>
+          <p>店長填入當月預排休假，總部可依門店、人員與月休基準檢查是否漏填或超休。</p>
+        </div>
+        <div className="panel-actions">
+          <button type="button" onClick={() => downloadTextFile(buildLeavePlannerCsv({ month: leaveMonth, rows: plannerRows, drafts, salaryRows }), `萊吉多${leaveMonth}排假表.csv`)}>
+            匯出排假
+          </button>
+          <button type="button" onClick={clearMonth}>清空本月</button>
+        </div>
+      </div>
+
+      <div className="leave-toolbar">
+        <label>
+          排假月份
+          <input type="month" value={leaveMonth} onChange={(event) => setLeaveMonth(event.target.value)} />
+        </label>
+        <label>
+          門店
+          <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
+            <option value="all">全部門店</option>
+            {storeOptions.map((row) => (
+              <option value={row.code} key={row.code}>{row.code} {row.name}</option>
+            ))}
+          </select>
+        </label>
+        <div className="leave-summary">
+          <span><strong>{plannerRows.length}</strong> 人需確認</span>
+          <span><strong>{filledCount}</strong> 人已填</span>
+          <span><strong>{plannerRows.length - filledCount}</strong> 人未填</span>
+          <span className={overLimitCount ? "negative" : ""}><strong>{overLimitCount}</strong> 人超休</span>
+        </div>
+      </div>
+
+      <div className="table-wrap leave-table">
+        <table>
+          <thead>
+            <tr><th>代碼</th><th>門店</th><th>人員</th><th>職位</th><th>月休</th><th>排假日期</th><th>天數</th><th>狀態</th><th>備註</th></tr>
+          </thead>
+          <tbody>
+            {plannerRows.map((row) => {
+              const key = leaveDraftKey(leaveMonth, row.id);
+              const draft = drafts[key] || {};
+              const restDays = getMonthlyRestDays(row.role, salaryRows);
+              const leaveDays = countLeaveDays(draft.dates);
+              const status = getLeaveStatus(draft.dates, restDays);
+              return (
+                <tr key={row.id}>
+                  <td><span className="code-chip">{canonicalStoreCode(row)}</span></td>
+                  <td><strong>{displayStoreName(row)}</strong></td>
+                  <td>{row.employeeName}</td>
+                  <td>{row.role}</td>
+                  <td>{restDays ? `${restDays} 天` : "依主管核定"}</td>
+                  <td>
+                    <input
+                      className="table-input leave-date-input"
+                      value={draft.dates || ""}
+                      onChange={(event) => updateDraft(row.id, "dates", event.target.value)}
+                      placeholder="例：6/3、6/10、6/17"
+                    />
+                  </td>
+                  <td>{leaveDays} 天</td>
+                  <td><span className={`chip ${taskTone(status)}`}>{status}</span></td>
+                  <td>
+                    <input
+                      className="table-input leave-note-input"
+                      value={draft.note || ""}
+                      onChange={(event) => updateDraft(row.id, "note", event.target.value)}
+                      placeholder="代班、不可排日"
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows }) {
   const activeRows = scheduleRows.filter((row) => row.status !== "暫停營業");
   const shortageRows = scheduleRows.filter((row) => row.status === "人力不足");
   const closedRows = scheduleRows.filter((row) => row.status === "暫停營業");
@@ -1907,6 +2099,8 @@ function ScheduleModule({ scheduleRows, storeHours, staffRoster }) {
         <Metric label="主管覆蓋" value={`${managerCount} 店`} detail="店長或副店長可負責" />
         <Metric label="暫停營業" value={`${closedRows.length} 店`} detail={closedRows[0]?.storeName || "無"} tone={closedRows.length ? "warn" : "good"} />
       </section>
+
+      <MonthlyLeavePlanner staffRoster={staffRoster} salaryRows={salaryRows} />
 
       <section className="panel wide">
         <div className="panel-head">
