@@ -77,9 +77,10 @@ const ROLE_LABELS = {
   coo: "營運長",
   cfo: "財務長",
   general_affairs: "總務",
+  cso: "督導長 / CSO",
   admin: "系統管理員",
   hq: "總部管理",
-  supervisor: "督導",
+  supervisor: "執行督導",
   store_manager: "門店主管",
 };
 
@@ -88,6 +89,7 @@ const ROLE_MODULES = {
   coo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   cfo: ["ops", "anomaly", "system"],
   general_affairs: ["ops", "handover", "schedule", "anomaly", "tasks", "inspection", "system"],
+  cso: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
   admin: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   hq: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   supervisor: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
@@ -134,6 +136,7 @@ const ROLE_VIEW_OPTIONS = {
   hq: ["hq", "store", "review", "inspection"],
   cfo: ["hq"],
   general_affairs: ["hq", "store", "inspection"],
+  cso: ["review", "inspection"],
   supervisor: ["review", "inspection"],
   store_manager: ["store"],
 };
@@ -144,7 +147,7 @@ function profileRole(profile) {
 
 function appViewForRole(roleName) {
   if (roleName === "store_manager") return "store";
-  if (roleName === "supervisor") return "review";
+  if (roleName === "cso" || roleName === "supervisor") return "review";
   return "hq";
 }
 
