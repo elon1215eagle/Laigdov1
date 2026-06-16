@@ -588,6 +588,28 @@ tbody tr.selected,
   font-weight: 900;
 }
 
+.inline-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inline-actions button {
+  min-height: 30px;
+  padding: 0 9px;
+  border: 1px solid #ead6ca;
+  border-radius: 6px;
+  background: #fffdfa;
+  color: #5d3b2f;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inline-actions button:hover {
+  border-color: #d89f87;
+  background: #fff4ec;
+}
+
 .progress {
   position: relative;
   min-width: 112px;

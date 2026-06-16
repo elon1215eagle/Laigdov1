@@ -1,4 +1,4 @@
-import { handoverSeed, performanceSeed, productsSeed, storesSeed } from "./mockData";
+import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 
 const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, is_active";
@@ -124,6 +124,27 @@ const MONTHLY_LEAVE_FIELDS = [
   "updated_by",
   "created_at",
   "updated_at",
+].join(", ");
+const HQ_TASK_FIELDS = [
+  "id",
+  "title",
+  "task_type",
+  "scope_type",
+  "store_id",
+  "assignee_name",
+  "assignee_role",
+  "priority",
+  "status",
+  "due_date",
+  "evidence",
+  "action",
+  "note",
+  "created_by",
+  "updated_by",
+  "completed_at",
+  "created_at",
+  "updated_at",
+  "stores(name, area, store_code, manager_name)",
 ].join(", ");
 
 export function totalRevenue(report) {
@@ -457,6 +478,19 @@ function normalizePerformanceRow(row) {
   };
 }
 
+function normalizeHqTaskRow(row) {
+  return {
+    ...row,
+    storeName: row.stores?.name || row.storeName || (row.scope_type === "總部" ? "總部" : "未指定"),
+    area: row.stores?.area || "",
+    store_code: row.stores?.store_code || "",
+    owner: row.assignee_name || row.owner || "",
+    task_type: row.task_type || "總部交辦",
+    action: row.action || row.title || "",
+    evidence: row.evidence || "",
+  };
+}
+
 function performanceAction(score, bonusAdjustment = 0) {
   if (Number(score || 0) >= 90) return "季獎金正常";
   if (Number(score || 0) < 80) return "需輔導改善";
@@ -587,6 +621,56 @@ export async function upsertStaffPerformance(payload) {
     throw error;
   }
   return normalizePerformanceRow(data);
+}
+
+export async function fetchHqTasks() {
+  if (!supabase) return hqTaskSeed;
+  const { data, error } = await supabase
+    .from("hq_tasks")
+    .select(HQ_TASK_FIELDS)
+    .order("status", { ascending: true })
+    .order("due_date", { ascending: true })
+    .order("created_at", { ascending: false });
+  if (error) {
+    if (isMissingSupabaseTable(error)) return [];
+    throw error;
+  }
+  return data.map(normalizeHqTaskRow);
+}
+
+export async function upsertHqTask(payload) {
+  if (!supabase) return normalizeHqTaskRow({ ...payload, id: payload.id || crypto.randomUUID?.() || Date.now() });
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const userId = userData.user?.id || null;
+  const status = payload.status || "待處理";
+  const cleanPayload = {
+    id: payload.id || undefined,
+    title: payload.title || payload.action || "總部交辦任務",
+    task_type: payload.task_type || "總部交辦",
+    scope_type: payload.scope_type || "門店",
+    store_id: payload.store_id || null,
+    assignee_name: payload.assignee_name || payload.owner || "未指定",
+    assignee_role: payload.assignee_role || "未指定",
+    priority: payload.priority || "中",
+    status,
+    due_date: payload.due_date || null,
+    evidence: payload.evidence || "",
+    action: payload.action || "",
+    note: payload.note || "",
+    completed_at: status === "已完成" ? new Date().toISOString() : null,
+    created_by: payload.created_by || userId,
+    updated_by: userId,
+    updated_at: new Date().toISOString(),
+  };
+  if (!cleanPayload.id) delete cleanPayload.id;
+  const { data, error } = await supabase
+    .from("hq_tasks")
+    .upsert(cleanPayload, { onConflict: "id" })
+    .select(HQ_TASK_FIELDS)
+    .single();
+  if (error) throw error;
+  return normalizeHqTaskRow(data);
 }
 
 export async function fetchStoreInspections() {

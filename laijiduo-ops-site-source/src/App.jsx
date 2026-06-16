@@ -3,6 +3,7 @@ import {
   fetchDailyReports,
   fetchHandovers,
   fetchHqDashboardData,
+  fetchHqTasks,
   fetchInventoryCounts,
   fetchMonthlyLeavePlans,
   fetchProducts,
@@ -18,6 +19,7 @@ import {
   updateStoreMonthlyTarget,
   upsertDailyReport,
   upsertHandover,
+  upsertHqTask,
   upsertInventoryCounts,
   upsertMonthlyLeavePlan,
   upsertMonthlyLeavePlans,
@@ -26,6 +28,7 @@ import {
 import {
   handoverSeed,
   hrChangeSeed,
+  hqTaskSeed,
   hqSystemSeed,
   mockProfile,
   performanceSeed,
@@ -35,7 +38,6 @@ import {
   staffRosterSeed,
   storeHoursSeed,
   storesSeed,
-  supervisorTaskSeed,
 } from "./lib/mockData";
 import { InspectionApp } from "./InspectionApp";
 
@@ -88,7 +90,7 @@ const ROLE_MODULES = {
   ceo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   coo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   cfo: ["ops", "anomaly", "system"],
-  general_affairs: ["ops", "handover", "schedule", "anomaly", "tasks", "inspection", "system"],
+  general_affairs: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "inspection", "system"],
   cso: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
   admin: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   hq: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
@@ -109,7 +111,7 @@ const MODULE_GROUPS = [
     title: "總部管理",
     items: [
       ["anomaly", "異常中心"],
-      ["tasks", "督導任務"],
+      ["tasks", "任務派遣"],
     ],
   },
   {
@@ -299,22 +301,25 @@ export function App() {
   const [reports, setReports] = useState([]);
   const [handovers, setHandovers] = useState([]);
   const [performanceRows, setPerformanceRows] = useState([]);
+  const [hqTasks, setHqTasks] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
 
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId) {
-    const [storeRows, productRows, reportRows, handoverRows, performanceData] = await Promise.all([
+    const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows] = await Promise.all([
       fetchStores(),
       fetchProducts(),
       fetchDailyReports(today),
       fetchHandovers(today),
       fetchStaffPerformance(new Date().toISOString().slice(0, 7)),
+      fetchHqTasks(),
     ]);
     setStores(storeRows);
     setProducts(productRows);
     setHandovers(handoverRows);
     setPerformanceRows(performanceData);
+    setHqTasks(taskRows);
     setSelectedStoreId(nextProfile?.store_id || preferredStoreId || storeRows[0]?.id || "");
 
     const byStore = new Map(reportRows.map((report) => [report.store_id || report.id, report]));
@@ -340,6 +345,7 @@ export function App() {
           setReports(storesSeed.map((store) => normalizeReport(store)));
           setHandovers(handoverSeed);
           setPerformanceRows(performanceSeed);
+          setHqTasks(hqTaskSeed);
         }
       } catch (error) {
         setMessage(error.message);
@@ -409,6 +415,7 @@ export function App() {
       setReports([]);
       setHandovers([]);
       setPerformanceRows([]);
+      setHqTasks([]);
     }
   }
 
@@ -519,6 +526,19 @@ export function App() {
       return true;
     } catch (error) {
       show(`績效儲存失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function saveHqTask(form) {
+    try {
+      await upsertHqTask(form);
+      const nextRows = await fetchHqTasks();
+      setHqTasks(nextRows);
+      show("任務已建立／更新");
+      return true;
+    } catch (error) {
+      show(`任務儲存失敗：${error.message}`);
       return false;
     }
   }
@@ -659,7 +679,7 @@ export function App() {
           />
         )}
         {activeModuleAllowed && activeModule === "tasks" && (
-          <SupervisorTaskModule tasks={supervisorTaskSeed} />
+          <HqTaskDispatchModule tasks={hqTasks} stores={stores} selectedStoreId={selectedStoreId} onSave={saveHqTask} />
         )}
         {activeModuleAllowed && activeModule === "hrFlow" && (
           <HrFlowModule changes={hrChangeSeed} salaryRows={salaryStructureSeed} />
@@ -671,7 +691,7 @@ export function App() {
             performanceRows={performanceRows}
             staffRoster={staffRosterSeed}
             scheduleRows={scheduleSeed}
-            supervisorTasks={supervisorTaskSeed}
+            hqTasks={hqTasks}
             onSelect={setSelectedStoreId}
           />
         )}
@@ -877,7 +897,7 @@ function TopBar({ activeModule, role, profileRole: currentRole, report, onSync, 
     hr: "人資主檔管理",
     system: "總部制度中心",
     schedule: "排班管理",
-    tasks: "督導任務派工",
+    tasks: "總部任務派遣",
     hrFlow: "人資異動流程",
     anomaly: "總部異常中心",
   };
@@ -1816,10 +1836,25 @@ function canonicalStoreByName(name = "") {
 }
 
 function canonicalStoreCode(row = {}) {
+  const hasDisplayStore = row.storeName && row.storeName !== "未指定";
+  if (row.scope_type && !row.store_code && !row.storeCode && !hasDisplayStore && !row.name) {
+    return {
+      總部: "HQ",
+      跨店: "ALL",
+      人資: "HR",
+      財務: "FIN",
+      稽核: "AUD",
+      門店: "STORE",
+    }[row.scope_type] || row.scope_type;
+  }
   return row.store_code || row.storeCode || canonicalStoreByName(row.storeName || row.name)?.store_code || row.store_id || row.id || "";
 }
 
 function displayStoreName(row = {}) {
+  const hasDisplayStore = row.storeName && row.storeName !== "未指定";
+  if (row.scope_type && !hasDisplayStore && !row.name && !row.store_code && !row.storeCode) {
+    return row.scope_type === "跨店" ? "全門店" : row.scope_type;
+  }
   return canonicalStoreByName(row.storeName || row.name)?.name || row.storeName || row.name || "未命名門店";
 }
 
@@ -1890,9 +1925,9 @@ function ManagementSystemModule({ systems }) {
 }
 
 function taskTone(value = "") {
-  if (["已完成", "足夠", "正常", "已納入制度", "已填"].includes(value)) return "good";
+  if (["已完成", "足夠", "正常", "已納入制度", "已填", "低"].includes(value)) return "good";
   if (["高", "人力不足", "需輔導", "重大", "超休", "連勤過長"].includes(value)) return "bad";
-  if (["中", "待處理", "進行中", "試用觀察", "待總部覆核", "改善中", "待招募", "暫停營業", "未填", "不足"].includes(value)) return "warn";
+  if (["中", "待處理", "進行中", "待覆核", "試用觀察", "待總部覆核", "改善中", "待招募", "暫停", "暫停營業", "未填", "不足"].includes(value)) return "warn";
   return "neutral";
 }
 
@@ -2693,47 +2728,147 @@ function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows, onN
   );
 }
 
-function SupervisorTaskModule({ tasks }) {
+function HqTaskDispatchModule({ tasks, stores, selectedStoreId, onSave }) {
+  const [form, setForm] = useState({
+    title: "",
+    task_type: "總部交辦",
+    scope_type: "門店",
+    store_id: selectedStoreId || "",
+    assignee_name: "行政",
+    assignee_role: "總務/行政",
+    priority: "中",
+    status: "待處理",
+    due_date: today,
+    evidence: "",
+    action: "",
+    note: "",
+  });
+  const [saving, setSaving] = useState(false);
   const openRows = tasks.filter((row) => row.status !== "已完成");
   const overdueRows = openRows.filter((row) => isOverdue(row.due_date));
   const highRows = openRows.filter((row) => row.priority === "高");
+  const hqRows = tasks.filter((row) => row.scope_type === "總部" || row.scope_type === "人資" || row.scope_type === "財務");
+
+  useEffect(() => {
+    if (selectedStoreId) setForm((current) => ({ ...current, store_id: selectedStoreId }));
+  }, [selectedStoreId]);
+
+  async function submit() {
+    setSaving(true);
+    const ok = await onSave(form);
+    if (ok) {
+      setForm((current) => ({
+        ...current,
+        title: "",
+        action: "",
+        evidence: "",
+        note: "",
+        status: "待處理",
+        priority: "中",
+        due_date: today,
+      }));
+    }
+    setSaving(false);
+  }
+
+  async function quickStatus(row, status) {
+    await onSave({ ...row, status });
+  }
 
   return (
     <div className="workspace module-grid">
       <section className="kpi-strip">
-        <Metric label="督導任務" value={`${tasks.length} 件`} detail="督導長統籌，執行督導追蹤" />
+        <Metric label="總任務" value={`${tasks.length} 件`} detail="總部派發與追蹤" />
         <Metric label="待處理" value={`${openRows.length} 件`} detail="需列入每日追蹤" tone={openRows.length ? "warn" : "good"} />
         <Metric label="逾期" value={`${overdueRows.length} 件`} detail={overdueRows[0]?.storeName || "無逾期"} tone={overdueRows.length ? "bad" : "good"} />
         <Metric label="高優先" value={`${highRows.length} 件`} detail="營收、人力、績效優先" tone={highRows.length ? "bad" : "good"} />
+        <Metric label="總部內勤" value={`${hqRows.length} 件`} detail="行政、人資、財務、制度" />
         <Metric label="已完成" value={`${tasks.filter((row) => row.status === "已完成").length} 件`} detail="可週會複盤" tone="good" />
+      </section>
+
+      <section className="panel module-form">
+        <div className="panel-head">
+          <div>
+            <h2>新增任務派遣</h2>
+            <p>總部建立任務、指定負責人、期限、優先級與驗收證據。</p>
+          </div>
+        </div>
+        <div className="form-grid">
+          <label className="wide-field">
+            任務標題
+            <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="例如：五甲店排休表覆核" />
+          </label>
+          <SelectField label="任務類型" value={form.task_type} options={["總部交辦", "人力補編", "排班稽核", "人資異動", "營收追蹤", "稽核改善", "展店籌備", "加盟支援"]} onChange={(value) => setForm({ ...form, task_type: value })} />
+          <SelectField label="分類" value={form.scope_type} options={["總部", "門店", "跨店", "人資", "財務", "稽核"]} onChange={(value) => setForm({ ...form, scope_type: value })} />
+          <label>
+            關聯門店
+            <select value={form.store_id || ""} onChange={(event) => setForm({ ...form, store_id: event.target.value })}>
+              <option value="">不指定門店</option>
+              {stores.map((store) => <option key={store.id} value={store.id}>{store.store_code} {store.name}</option>)}
+            </select>
+          </label>
+          <SelectField label="負責角色" value={form.assignee_role} options={["CEO", "COO", "CFO", "CSO", "執行督導", "總務/行政", "人資", "店長", "副店長", "門店人員"]} onChange={(value) => setForm({ ...form, assignee_role: value })} />
+          <label>
+            負責人
+            <input value={form.assignee_name} onChange={(event) => setForm({ ...form, assignee_name: event.target.value })} />
+          </label>
+          <SelectField label="優先級" value={form.priority} options={["高", "中", "低"]} onChange={(value) => setForm({ ...form, priority: value })} />
+          <SelectField label="狀態" value={form.status} options={["待處理", "進行中", "待覆核", "已完成", "暫停"]} onChange={(value) => setForm({ ...form, status: value })} />
+          <label>
+            期限
+            <input type="date" value={form.due_date || ""} onChange={(event) => setForm({ ...form, due_date: event.target.value })} />
+          </label>
+          <label className="wide-field">
+            下一步
+            <textarea value={form.action} onChange={(event) => setForm({ ...form, action: event.target.value })} placeholder="負責人要做什麼、完成標準是什麼" />
+          </label>
+          <label className="wide-field">
+            驗收證據
+            <input value={form.evidence} onChange={(event) => setForm({ ...form, evidence: event.target.value })} placeholder="照片、表單、簽名、回報截圖、文件連結" />
+          </label>
+          <label className="wide-field">
+            備註
+            <textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} />
+          </label>
+        </div>
+        <button className="submit-button static" disabled={saving || !form.title || !form.assignee_name} onClick={submit}>{saving ? "儲存中..." : "建立任務"}</button>
       </section>
 
       <section className="panel wide">
         <div className="panel-head">
           <div>
-            <h2>督導任務派工表</h2>
-            <p>把缺報、交接異常、績效輔導、人力補編轉成可追蹤任務。</p>
+            <h2>總部任務派遣表</h2>
+            <p>把缺報、交接異常、績效輔導、人力補編、行政人資事項轉成可追蹤任務。</p>
           </div>
         </div>
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>任務</th><th>代碼</th><th>門店</th><th>負責人</th><th>期限</th><th>優先</th><th>狀態</th><th>證據</th><th>下一步</th></tr>
+              <tr><th>任務</th><th>分類</th><th>代碼</th><th>門店</th><th>負責人</th><th>期限</th><th>優先</th><th>狀態</th><th>證據</th><th>下一步</th><th>操作</th></tr>
             </thead>
             <tbody>
               {tasks.map((row) => (
                 <tr key={row.id}>
-                  <td><strong>{row.task_type}</strong></td>
+                  <td><strong>{row.title || row.task_type}</strong><span>{row.task_type}</span></td>
+                  <td>{row.scope_type}</td>
                   <td><span className="code-chip">{canonicalStoreCode(row)}</span></td>
                   <td>{displayStoreName(row)}</td>
-                  <td>{row.owner}</td>
+                  <td><strong>{row.assignee_name || row.owner}</strong><span>{row.assignee_role}</span></td>
                   <td className={isOverdue(row.due_date) && row.status !== "已完成" ? "negative" : ""}>{row.due_date}</td>
                   <td><span className={`chip ${taskTone(row.priority)}`}>{row.priority}</span></td>
                   <td><span className={`chip ${taskTone(row.status)}`}>{row.status}</span></td>
                   <td>{row.evidence}</td>
                   <td>{row.action}</td>
+                  <td>
+                    <div className="inline-actions">
+                      <button onClick={() => quickStatus(row, "進行中")}>進行</button>
+                      <button onClick={() => quickStatus(row, "待覆核")}>覆核</button>
+                      <button onClick={() => quickStatus(row, "已完成")}>完成</button>
+                    </div>
+                  </td>
                 </tr>
               ))}
+              {!tasks.length && <tr><td colSpan="11">目前尚無任務，請由總部新增派遣事項。</td></tr>}
             </tbody>
           </table>
         </div>
@@ -2819,7 +2954,7 @@ function HrFlowModule({ changes, salaryRows }) {
   );
 }
 
-function buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, supervisorTasks }) {
+function buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks }) {
   const quality = buildDataQualitySummary(reports, handovers, performanceRows).issues.map((issue, index) => ({
     id: `quality-${index}`,
     type: issue.type,
@@ -2863,24 +2998,24 @@ function buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, sc
       status: row.status,
       message: `${row.shift_name} ${row.start_time}-${row.end_time}：${row.action}`,
     }));
-  const taskIssues = supervisorTasks
+  const taskIssues = hqTasks
     .filter((row) => row.status !== "已完成")
     .map((row) => ({
       id: `task-${row.id}`,
-      type: "督導待辦",
+      type: "總部任務",
       store_code: canonicalStoreCode(row),
       storeName: displayStoreName(row),
       level: row.priority === "高" || isOverdue(row.due_date) ? "重大" : "提醒",
-      owner: row.owner,
+      owner: row.assignee_name || row.owner,
       due_date: row.due_date,
       status: row.status,
-      message: `${row.task_type}：${row.action}`,
+      message: `${row.task_type}：${row.action || row.title}`,
     }));
   return [...quality, ...managerRows, ...scheduleIssues, ...taskIssues];
 }
 
-function AnomalyCenterModule({ reports, handovers, performanceRows, staffRoster, scheduleRows, supervisorTasks, onSelect }) {
-  const rows = buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, supervisorTasks });
+function AnomalyCenterModule({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, onSelect }) {
+  const rows = buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks });
   const criticalRows = rows.filter((row) => row.level === "重大");
   const overdueRows = rows.filter((row) => isOverdue(row.due_date) && row.status !== "已完成");
   const supervisorRows = rows.filter((row) => row.owner.includes("督導"));
