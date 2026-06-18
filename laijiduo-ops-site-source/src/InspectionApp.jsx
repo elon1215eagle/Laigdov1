@@ -1166,8 +1166,13 @@ function OnlineInspectionForm({ stores, onAdd }) {
               <article className="custom-finding" key={index}>
                 <label>項目<input value={item.title} onChange={(event) => patchCustom(index, { title: event.target.value })} placeholder={`自填欄位 ${index + 1}`} /></label>
                 <div className="form-grid">
-                  <label>得分<input type="number" step="0.5" value={item.score} onChange={(event) => patchCustom(index, { score: Number(event.target.value) })} /></label>
-                  <label>滿分<input type="number" step="0.5" value={item.maxScore} onChange={(event) => patchCustom(index, { maxScore: Number(event.target.value) })} /></label>
+                  <label>得分<select value={item.score} onChange={(event) => patchCustom(index, { score: Number(event.target.value) })}>
+                    {scoreOptions(item.maxScore).map((score) => <option key={score} value={score}>{score}</option>)}
+                  </select></label>
+                  <label>滿分<input type="number" step="1" min="0" value={item.maxScore} onChange={(event) => {
+                    const maxScore = Math.max(0, Number.parseInt(event.target.value || "0", 10));
+                    patchCustom(index, { maxScore, score: Math.min(Number(item.score || 0), maxScore) });
+                  }} /></label>
                   <label>狀態<select value={item.status} onChange={(event) => patchCustom(index, { status: event.target.value })}>
                     <option>待確認</option>
                     <option>一般</option>
@@ -1440,6 +1445,11 @@ function SignaturePad({ title, value, onChange }) {
   );
 }
 
+function scoreOptions(maxScore) {
+  const max = Math.max(0, Math.floor(Number(maxScore) || 0));
+  return Array.from({ length: max + 1 }, (_, index) => index);
+}
+
 function InspectionSection({ section, form, onQuickSet, onPatchItem, onPatchProductCheck }) {
   const score = getSectionScore(section, form);
   return (
@@ -1481,7 +1491,9 @@ function InspectionSection({ section, form, onQuickSet, onPatchItem, onPatchProd
                 </label>
                 <label>
                   <span>得分</span>
-                  <input type="number" step="0.5" min="0" max={item.maxScore} value={row.score} onChange={(event) => onPatchItem(section.id, item.id, { score: Number(event.target.value) })} />
+                  <select value={row.score} onChange={(event) => onPatchItem(section.id, item.id, { score: Number(event.target.value) })}>
+                    {scoreOptions(item.maxScore).map((score) => <option key={score} value={score}>{score}</option>)}
+                  </select>
                 </label>
                 <label>
                   <span>說明 / 改善建議</span>
