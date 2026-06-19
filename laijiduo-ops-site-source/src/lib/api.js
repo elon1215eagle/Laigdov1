@@ -146,6 +146,23 @@ const HQ_TASK_FIELDS = [
   "updated_at",
   "stores(name, area, store_code, manager_name)",
 ].join(", ");
+const SECURITY_SETTINGS_FIELDS = [
+  "id",
+  "is_fault_mode",
+  "fault_title",
+  "fault_message",
+  "updated_by",
+  "created_at",
+  "updated_at",
+].join(", ");
+
+export const defaultSecuritySettings = {
+  id: "main",
+  is_fault_mode: false,
+  fault_title: "資料故障",
+  fault_message: "請洽系統管理員",
+};
+
 
 export function totalRevenue(report) {
   return (
@@ -510,6 +527,41 @@ function normalizeLeaveDays(days) {
   return Array.from(
     new Set((days || []).map((day) => Number(day)).filter((day) => Number.isInteger(day) && day >= 1 && day <= 31)),
   ).sort((a, b) => a - b);
+}
+
+export async function fetchSecuritySettings() {
+  if (!supabase) return defaultSecuritySettings;
+  const { data, error } = await supabase
+    .from("app_security_settings")
+    .select(SECURITY_SETTINGS_FIELDS)
+    .eq("id", "main")
+    .maybeSingle();
+  if (error) {
+    if (isMissingSupabaseTable(error)) return defaultSecuritySettings;
+    throw error;
+  }
+  return data || defaultSecuritySettings;
+}
+
+export async function upsertSecuritySettings(payload) {
+  if (!supabase) return { ...defaultSecuritySettings, ...payload };
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const cleanPayload = {
+    id: "main",
+    is_fault_mode: Boolean(payload.is_fault_mode),
+    fault_title: payload.fault_title?.trim() || defaultSecuritySettings.fault_title,
+    fault_message: payload.fault_message?.trim() || defaultSecuritySettings.fault_message,
+    updated_by: userData.user?.id || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("app_security_settings")
+    .upsert(cleanPayload, { onConflict: "id" })
+    .select(SECURITY_SETTINGS_FIELDS)
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function fetchMonthlyLeavePlans(periodMonth) {

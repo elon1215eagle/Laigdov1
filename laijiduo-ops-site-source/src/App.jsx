@@ -1,5 +1,6 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+  defaultSecuritySettings,
   fetchDailyReports,
   fetchHandovers,
   fetchHqDashboardData,
@@ -7,6 +8,7 @@ import {
   fetchInventoryCounts,
   fetchMonthlyLeavePlans,
   fetchProducts,
+  fetchSecuritySettings,
   fetchStaffPerformance,
   fetchStores,
   getSessionProfile,
@@ -23,6 +25,7 @@ import {
   upsertInventoryCounts,
   upsertMonthlyLeavePlan,
   upsertMonthlyLeavePlans,
+  upsertSecuritySettings,
   upsertStaffPerformance,
 } from "./lib/api";
 import {
@@ -87,8 +90,8 @@ const ROLE_LABELS = {
 };
 
 const ROLE_MODULES = {
-  ceo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
-  coo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
+  ceo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
+  coo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
   cfo: ["ops", "anomaly", "system"],
   general_affairs: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "inspection", "system"],
   cso: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
@@ -171,6 +174,10 @@ function canExportRole(roleName) {
 
 function canEditMonthlyTargets(roleName) {
   return ["ceo", "coo", "cfo", "admin", "hq"].includes(roleName);
+}
+
+function canManageSecurity(roleName) {
+  return ["ceo", "coo"].includes(roleName);
 }
 
 const VARIABLE_UNIT_PRODUCTS = ["雞翅", "雞腿", "雞排", "腿排", "雞米花", "三角骨", "雞脖子", "地瓜"];
@@ -305,6 +312,17 @@ export function App() {
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [securitySettings, setSecuritySettings] = useState(defaultSecuritySettings);
+
+  function clearWorkspaceState() {
+    setStores([]);
+    setProducts([]);
+    setReports([]);
+    setHandovers([]);
+    setPerformanceRows([]);
+    setHqTasks([]);
+    setSelectedStoreId("");
+  }
 
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId) {
     const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows] = await Promise.all([
@@ -334,11 +352,18 @@ export function App() {
           setProfile(sessionProfile);
           if (!sessionProfile) return;
 
+          const nextSecuritySettings = await fetchSecuritySettings();
+          setSecuritySettings(nextSecuritySettings);
           setRole(appViewForRole(sessionProfile.role));
           setActiveModule(defaultModuleForRole(sessionProfile.role));
+          if (nextSecuritySettings.is_fault_mode && !canManageSecurity(sessionProfile.role)) {
+            clearWorkspaceState();
+            return;
+          }
           await loadWorkspace(sessionProfile);
         } else {
           setProfile(mockProfile);
+          setSecuritySettings(defaultSecuritySettings);
           setStores(storesSeed);
           setProducts(productsSeed);
           setSelectedStoreId(storesSeed[0]?.id || "");
@@ -394,9 +419,15 @@ export function App() {
     try {
       await signIn(email, password);
       const nextProfile = await getSessionProfile();
+      const nextSecuritySettings = await fetchSecuritySettings();
       setProfile(nextProfile);
+      setSecuritySettings(nextSecuritySettings);
       setRole(appViewForRole(nextProfile.role));
       setActiveModule(defaultModuleForRole(nextProfile.role));
+      if (nextSecuritySettings.is_fault_mode && !canManageSecurity(nextProfile.role)) {
+        clearWorkspaceState();
+        return;
+      }
       await loadWorkspace(nextProfile);
     } catch (error) {
       setMessage(error.message);
@@ -410,12 +441,8 @@ export function App() {
     setProfile(hasSupabaseConfig ? null : mockProfile);
     setRole("entry");
     if (hasSupabaseConfig) {
-      setStores([]);
-      setProducts([]);
-      setReports([]);
-      setHandovers([]);
-      setPerformanceRows([]);
-      setHqTasks([]);
+      clearWorkspaceState();
+      setSecuritySettings(defaultSecuritySettings);
     }
   }
 
@@ -543,6 +570,22 @@ export function App() {
     }
   }
 
+  async function saveSecuritySettings(form) {
+    if (!canManageSecurity(currentRole)) {
+      show("只有 CEO 與 COO 可操作系統安全");
+      return false;
+    }
+    try {
+      const saved = await upsertSecuritySettings(form);
+      setSecuritySettings(saved);
+      show(saved.is_fault_mode ? "系統安全模式已啟動" : "系統安全模式已解除");
+      return true;
+    } catch (error) {
+      show(`系統安全設定失敗：${error.message}`);
+      return false;
+    }
+  }
+
   async function handleReview(action, status) {
     if (!selectedReport?.id) {
       show("此門店尚未送出回報");
@@ -562,6 +605,13 @@ export function App() {
   async function syncWorkspace() {
     setLoading(true);
     try {
+      const nextSecuritySettings = await fetchSecuritySettings();
+      setSecuritySettings(nextSecuritySettings);
+      if (nextSecuritySettings.is_fault_mode && !canManageSecurity(currentRole)) {
+        clearWorkspaceState();
+        show("系統安全模式已啟動");
+        return;
+      }
       await loadWorkspace(profile);
       show("資料已同步");
     } catch (error) {
@@ -589,6 +639,16 @@ export function App() {
 
   if (!profile && hasSupabaseConfig) {
     return <LoginScreen onLogin={handleLogin} message={message} />;
+  }
+
+  if (securitySettings.is_fault_mode && !canManageSecurity(currentRole)) {
+    return (
+      <SystemFaultScreen
+        title={securitySettings.fault_title}
+        message={securitySettings.fault_message}
+        onSignOut={handleSignOut}
+      />
+    );
   }
 
   if (role === "entry") {
@@ -669,6 +729,9 @@ export function App() {
         {activeModuleAllowed && activeModule === "system" && (
           <ManagementSystemModule systems={hqSystemSeed} />
         )}
+        {activeModuleAllowed && activeModule === "security" && (
+          <SecurityModule settings={securitySettings} onSave={saveSecuritySettings} />
+        )}
         {activeModuleAllowed && activeModule === "schedule" && (
           <ScheduleModule
             scheduleRows={scheduleSeed}
@@ -705,6 +768,104 @@ export function App() {
         />
       )}
       {message && <div className="toast show">{message}</div>}
+    </div>
+  );
+}
+
+function SystemFaultScreen({ title, message, onSignOut }) {
+  return (
+    <main className="fault-screen">
+      <section className="fault-card">
+        <div className="brand-mark">萊</div>
+        <h1>{title || defaultSecuritySettings.fault_title}</h1>
+        <p>{message || defaultSecuritySettings.fault_message}</p>
+        <button onClick={onSignOut}>重新登入</button>
+      </section>
+    </main>
+  );
+}
+
+function SecurityModule({ settings, onSave }) {
+  const [form, setForm] = useState({ ...defaultSecuritySettings, ...settings });
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setForm({ ...defaultSecuritySettings, ...settings });
+  }, [settings]);
+
+  async function submit(nextPatch = {}) {
+    setSaving(true);
+    const nextForm = { ...form, ...nextPatch };
+    const ok = await onSave(nextForm);
+    if (ok) setForm(nextForm);
+    setSaving(false);
+  }
+
+  return (
+    <div className="workspace module-grid">
+      <section className="kpi-strip">
+        <Metric
+          label="目前狀態"
+          value={form.is_fault_mode ? "保護中" : "正常"}
+          detail={form.is_fault_mode ? "一般角色只顯示故障訊息" : "所有角色依權限正常使用"}
+          tone={form.is_fault_mode ? "bad" : "good"}
+        />
+        <Metric label="操作權限" value="CEO / COO" detail="其他職級不可操作" />
+        <Metric label="顯示文字" value={form.fault_title || "資料故障"} detail={form.fault_message || "請洽系統管理員"} tone="warn" />
+      </section>
+
+      <section className="panel module-form security-panel">
+        <div className="panel-head">
+          <div>
+            <h2>系統安全模式</h2>
+            <p>緊急情況可遮蔽營收、交接、稽核、人員績效等營運資料；只有 CEO 與 COO 可啟動或解除。</p>
+          </div>
+        </div>
+        <div className="form-grid">
+          <label>
+            安全狀態
+            <select
+              value={form.is_fault_mode ? "on" : "off"}
+              onChange={(event) => setForm({ ...form, is_fault_mode: event.target.value === "on" })}
+            >
+              <option value="off">正常開放</option>
+              <option value="on">啟動資料故障顯示</option>
+            </select>
+          </label>
+          <label>
+            顯示標題
+            <input value={form.fault_title} onChange={(event) => setForm({ ...form, fault_title: event.target.value })} />
+          </label>
+          <label className="wide-field">
+            顯示訊息
+            <input value={form.fault_message} onChange={(event) => setForm({ ...form, fault_message: event.target.value })} />
+          </label>
+        </div>
+        <div className="security-preview">
+          <span>一般角色畫面預覽</span>
+          <strong>{form.fault_title || defaultSecuritySettings.fault_title}</strong>
+          <p>{form.fault_message || defaultSecuritySettings.fault_message}</p>
+        </div>
+        <div className="security-actions">
+          <button onClick={() => submit({ is_fault_mode: false })} disabled={saving}>解除資料故障顯示</button>
+          <button className="danger" onClick={() => submit({ is_fault_mode: true })} disabled={saving}>啟動資料故障顯示</button>
+          <button className="primary" onClick={() => submit()} disabled={saving}>{saving ? "儲存中..." : "儲存設定"}</button>
+        </div>
+      </section>
+
+      <section className="panel">
+        <div className="panel-head">
+          <div>
+            <h2>權限規則</h2>
+            <p>此功能設計為緊急資料遮蔽，不提供店長、督導、行政、總務、財務操作。</p>
+          </div>
+        </div>
+        <div className="flow-list">
+          <span><strong>CEO / COO</strong>：可查看系統安全、啟動、解除與調整顯示文字。</span>
+          <span><strong>其他職級</strong>：安全模式啟動時，不載入營運資料，只看到故障訊息。</span>
+          <span><strong>資料庫限制</strong>：Supabase RLS 僅允許 CEO / COO 寫入安全設定。</span>
+        </div>
+      </section>
     </div>
   );
 }
