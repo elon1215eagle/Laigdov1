@@ -115,6 +115,7 @@ const MODULE_GROUPS = [
     items: [
       ["anomaly", "異常中心"],
       ["tasks", "任務派遣"],
+      ["security", "系統安全"],
     ],
   },
   {
