@@ -177,24 +177,24 @@ create table if not exists public.store_inspection_issues (
   updated_at timestamptz not null default now()
 );
 
-insert into public.stores (store_code, name, area, manager_name, target_daily_revenue) values
-  ('S01', '鳳山五甲店', '南區', '阿瑄店長', 68000),
-  ('S02', '鳳山凱旋店', '南區', '阿斌店長', 62000),
-  ('S03', '鳳山武廟店', '南區', '阿斌店長', 59000),
-  ('S04', '鳳山中山店', '南區', '樂樂店長', 64000),
-  ('S05', '前鎮隆興店', '南區', '威廷代副店', 72000),
-  ('S06', '鳳山南華店', '南區', '阿瑄店長', 76000),
-  ('S07', '三民鼎山店', '南區', '超哥店長', 53000),
-  ('S08', '三民大昌店', '南區', '仕鈞店長', 50000),
-  ('S09', '三民義華店', '南區', '阿銘店長', 66000),
-  ('S10', '屏東潮洲店', '南區', '以得店長', 74000),
-  ('S11', '屏東潮洲店', '南區', '以得店長', 47000)
+insert into public.stores (store_code, name, area, manager_name, target_daily_revenue, is_active) values
+  ('S01', '鳳山五甲店', '南區', '阿暄店長', 68000, true),
+  ('S02', '鳳山凱旋店', '南區', '阿斌店長', 62000, true),
+  ('S03', '鳳山武廟店', '南區', '愛庭副店長', 59000, true),
+  ('S04', '鳳山中山店', '南區', '樂樂店長', 64000, true),
+  ('S05', '鳳山南華店', '南區', '人力不足暫停', 0, false),
+  ('S06', '前鎮隆興店', '南區', '威廷副店長', 72000, true),
+  ('S07', '三民大昌店', '南區', '仕鈞副店長', 76000, true),
+  ('S08', '三民義華店', '南區', '晉銘店長', 53000, true),
+  ('S09', '三民鼎山店', '南區', '超哥店長', 66000, true),
+  ('S10', '屏東潮州店', '南區', '以得店長', 74000, true),
+  ('S11', '屏東潮二店', '南區', '耀呈副店長', 47000, true)
 on conflict (store_code) do update set
   name = excluded.name,
   area = excluded.area,
   manager_name = excluded.manager_name,
   target_daily_revenue = excluded.target_daily_revenue,
-  is_active = true;
+  is_active = excluded.is_active;
 
 insert into public.products (name, unit, sort_order) values
   ('雞翅', '箱', 1),

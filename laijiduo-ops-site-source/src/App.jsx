@@ -2338,7 +2338,7 @@ function buildLeavePlannerCsv({ month, rows, drafts, salaryRows }) {
   return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }
 
-function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, staffRoster, salaryRows, storeHours, onNotify }) {
+function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isStoreScoped = false, staffRoster, salaryRows, storeHours, onNotify }) {
   const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
   const [storeFilter, setStoreFilter] = useState(allowedStoreCode || "all");
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
@@ -2479,9 +2479,13 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
     const dates = drafts[leaveDraftKey(leaveMonth, row.id)]?.dates;
     return countLeaveDays(dates) > 0 && hasSixDayWorkViolation(parseLeaveDays(dates), monthDays);
   }).length;
-  const scopedStoreLabel = isStoreScoped
-    ? (storeGroups[0] ? `${storeGroups[0].code} ${storeGroups[0].name}` : allowedStoreCode || "未綁定門店")
-    : "";
+  const scopedStoreLabel = isStoreScoped && storeGroups[0]
+    ? (
+        storeGroups[0].code !== allowedStoreCode
+          ? `登入門店 ${allowedStoreCode} ${allowedStoreName || ""}，排假表 ${storeGroups[0].code} ${storeGroups[0].name}`
+          : `${storeGroups[0].code} ${storeGroups[0].name}`
+      )
+    : (isStoreScoped ? allowedStoreCode || "未綁定門店" : "");
 
   const updateDraft = (staffId, field, value) => {
     const key = leaveDraftKey(leaveMonth, staffId);
@@ -3024,14 +3028,21 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
 
 function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedStoreId, storeHours, staffRoster, salaryRows, stores, profile, onNotify }) {
   const isStoreScoped = currentRole === "store_manager";
+  const selectedStoreRecord = isStoreScoped
+    ? (
+        findStoreScopedRecord(stores, profile?.store_id) ||
+        findStoreScopedRecord(stores, profile?.store_code) ||
+        findStoreScopedRecord(stores, selectedStoreId) ||
+        selectedReport
+      )
+    : null;
   const selectedStoreCode = isStoreScoped
     ? (
-        resolveStoreCodeFromRef(profile?.store_id, stores, [selectedReport].filter(Boolean)) ||
-        resolveStoreCodeFromRef(profile?.store_code, stores, [selectedReport].filter(Boolean)) ||
-        resolveStoreCodeFromRef(selectedStoreId, stores, [selectedReport].filter(Boolean)) ||
+        canonicalStoreCode(selectedStoreRecord) ||
         canonicalStoreCode(selectedReport)
       )
     : "";
+  const selectedStoreName = isStoreScoped ? displayStoreName(selectedStoreRecord || selectedReport) : "";
   const scopedScheduleRows = isStoreScoped
     ? (selectedStoreCode ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
     : scheduleRows;
@@ -3062,6 +3073,7 @@ function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedSto
 
       <MonthlyLeavePlanner
         allowedStoreCode={selectedStoreCode}
+        allowedStoreName={selectedStoreName}
         isStoreScoped={isStoreScoped}
         staffRoster={staffRoster}
         salaryRows={salaryRows}
