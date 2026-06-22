@@ -277,6 +277,35 @@ function tone(status) {
   return "bad";
 }
 
+function isBlankNumber(value) {
+  return value === "" || value === null || value === undefined;
+}
+
+function numericInputValue(value) {
+  return isBlankNumber(value) ? "" : value;
+}
+
+function numericValue(value) {
+  return isBlankNumber(value) ? 0 : Number(value);
+}
+
+function hasSubmittedReport(report) {
+  return Boolean(report?.id && report?.updated_at_label !== "尚未回報");
+}
+
+function blankInventoryProduct(product) {
+  return {
+    ...product,
+    current_stock: "",
+    loss_count: "",
+    incoming_count: "",
+    current_stock_boxes: "",
+    current_stock_packs: "",
+    incoming_boxes: "",
+    incoming_packs: "",
+  };
+}
+
 function normalizeReport(store, report) {
   const monthlyTarget = report?.target_monthly_revenue ?? store.target_monthly_revenue ?? 0;
   const dailyTarget = monthlyTarget ? Math.round(Number(monthlyTarget) / daysInMonth(today)) : store.target || store.target_daily_revenue || 65000;
@@ -495,17 +524,17 @@ export function App() {
     try {
       const revenue1900ToClose = Math.max(
         0,
-        Number(form.full_day_revenue || 0) -
-          Number(form.opened_to_1400_revenue || 0) -
-          Number(form.revenue_1400_to_1900 || 0),
+        numericValue(form.full_day_revenue) -
+          numericValue(form.opened_to_1400_revenue) -
+          numericValue(form.revenue_1400_to_1900),
       );
       const payload = {
         store_id: selectedReport.store_id,
         report_date: reportDate,
-        opened_to_1400_revenue: Number(form.opened_to_1400_revenue),
-        revenue_1400_to_1900: Number(form.revenue_1400_to_1900),
+        opened_to_1400_revenue: numericValue(form.opened_to_1400_revenue),
+        revenue_1400_to_1900: numericValue(form.revenue_1400_to_1900),
         revenue_1900_to_close: revenue1900ToClose,
-        cash_difference: Number(form.cash_difference || 0),
+        cash_difference: numericValue(form.cash_difference),
         manager_note: form.manager_note,
         status: "submitted",
         submitted_at: new Date().toISOString(),
@@ -516,16 +545,16 @@ export function App() {
         saved.id,
         inventoryRows.map((row) => ({
           product_id: row.product_id || row.id,
-          current_stock: Number(row.current_stock || 0),
+          current_stock: numericValue(row.current_stock),
           safety_stock: 0,
-          loss_count: Number(row.loss_count || 0),
-          incoming_count: Number(row.incoming_count || 0),
+          loss_count: numericValue(row.loss_count),
+          incoming_count: numericValue(row.incoming_count),
           stock_unit: row.stock_unit || defaultUnitForProduct(row.name),
           incoming_unit: row.incoming_unit || defaultUnitForProduct(row.name),
-          current_stock_boxes: Number(row.current_stock_boxes || 0),
-          current_stock_packs: Number(row.current_stock_packs || 0),
-          incoming_boxes: Number(row.incoming_boxes || 0),
-          incoming_packs: Number(row.incoming_packs || 0),
+          current_stock_boxes: numericValue(row.current_stock_boxes),
+          current_stock_packs: numericValue(row.current_stock_packs),
+          incoming_boxes: numericValue(row.incoming_boxes),
+          incoming_packs: numericValue(row.incoming_packs),
           incoming_source: row.incoming_source || "廠商進貨",
           transfer_note: row.transfer_note || "",
           is_shortage: false,
@@ -3709,8 +3738,8 @@ function IntegerField({ label, value, onChange }) {
         type="number"
         step="1"
         inputMode="numeric"
-        value={value || 0}
-        onChange={(event) => onChange(Number.parseInt(event.target.value || "0", 10))}
+        value={numericInputValue(value)}
+        onChange={(event) => onChange(event.target.value === "" ? "" : Number.parseInt(event.target.value, 10))}
       />
     </label>
   );
@@ -3720,32 +3749,33 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
   const [tab, setTab] = useState("sales");
   const [dateDraft, setDateDraft] = useState(reportDate || today);
   const [authCode, setAuthCode] = useState("");
+  const reportSubmitted = hasSubmittedReport(report);
   const [form, setForm] = useState({
-    opened_to_1400_revenue: report.opened_to_1400_revenue,
-    revenue_1400_to_1900: report.revenue_1400_to_1900,
-    full_day_revenue: totalRevenue(report),
-    cash_difference: report.cash_difference || 0,
+    opened_to_1400_revenue: reportSubmitted ? report.opened_to_1400_revenue : "",
+    revenue_1400_to_1900: reportSubmitted ? report.revenue_1400_to_1900 : "",
+    full_day_revenue: reportSubmitted ? totalRevenue(report) : "",
+    cash_difference: reportSubmitted ? (report.cash_difference ?? "") : "",
     manager_note: report.manager_note || "",
   });
-  const [inventory, setInventory] = useState(products);
+  const [inventory, setInventory] = useState(() => products.map(blankInventoryProduct));
   const [saving, setSaving] = useState(false);
   const computedCloseRevenue = Math.max(
     0,
-    Number(form.full_day_revenue || 0) -
-      Number(form.opened_to_1400_revenue || 0) -
-      Number(form.revenue_1400_to_1900 || 0),
+    numericValue(form.full_day_revenue) -
+      numericValue(form.opened_to_1400_revenue) -
+      numericValue(form.revenue_1400_to_1900),
   );
-  const currentTotal = Number(form.full_day_revenue || 0);
-  const revenueInvalid = currentTotal < Number(form.opened_to_1400_revenue || 0) + Number(form.revenue_1400_to_1900 || 0);
+  const currentTotal = numericValue(form.full_day_revenue);
+  const revenueInvalid = currentTotal < numericValue(form.opened_to_1400_revenue) + numericValue(form.revenue_1400_to_1900);
 
   useEffect(() => {
     setDateDraft(reportDate || today);
     setAuthCode("");
     setForm({
-      opened_to_1400_revenue: report.opened_to_1400_revenue,
-      revenue_1400_to_1900: report.revenue_1400_to_1900,
-      full_day_revenue: totalRevenue(report),
-      cash_difference: report.cash_difference || 0,
+      opened_to_1400_revenue: hasSubmittedReport(report) ? report.opened_to_1400_revenue : "",
+      revenue_1400_to_1900: hasSubmittedReport(report) ? report.revenue_1400_to_1900 : "",
+      full_day_revenue: hasSubmittedReport(report) ? totalRevenue(report) : "",
+      cash_difference: hasSubmittedReport(report) ? (report.cash_difference ?? "") : "",
       manager_note: report.manager_note || "",
     });
   }, [report, reportDate]);
@@ -3757,9 +3787,15 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
         const savedRows = await fetchInventoryCounts(report.id);
         if (!active) return;
         const byProduct = new Map(savedRows.map((row) => [row.product_id, row]));
-        setInventory(products.map((product) => ({ ...product, ...byProduct.get(product.id) })));
+        setInventory(products.map((product) => {
+          const savedRow = byProduct.get(product.id);
+          if (savedRow) return { ...product, ...savedRow };
+          return blankInventoryProduct(product);
+        }));
       } catch {
-        if (active) setInventory(products);
+        if (active) {
+          setInventory(products.map(blankInventoryProduct));
+        }
       }
     }
     loadInventory();
@@ -3857,7 +3893,7 @@ function RevenueInput({ label, helper, value, onChange }) {
   return (
     <label className="input-card">
       <span>{label}<small>{helper}</small></span>
-      <input type="number" value={value} onChange={(event) => onChange(Number(event.target.value))} />
+      <input type="number" value={numericInputValue(value)} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -3885,7 +3921,9 @@ function InventoryEditor({ rows, onChange }) {
               </>
             )}
             <NumberField label="報廢" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
-            <span className="chip good">已填</span>
+            <span className={`chip ${isBlankNumber(row.current_stock) && isBlankNumber(row.current_stock_boxes) && isBlankNumber(row.current_stock_packs) ? "neutral" : "good"}`}>
+              {isBlankNumber(row.current_stock) && isBlankNumber(row.current_stock_boxes) && isBlankNumber(row.current_stock_packs) ? "未填" : "已填"}
+            </span>
           </div>
         );
       })}
@@ -3943,7 +3981,7 @@ function NumberField({ label, value, onChange }) {
   return (
     <label className="mini-field">
       <span>{label}</span>
-      <input type="number" step="0.01" value={value || 0} onChange={(event) => onChange(Number(event.target.value))} />
+      <input type="number" step="0.01" value={numericInputValue(value)} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
