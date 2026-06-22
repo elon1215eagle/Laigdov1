@@ -488,6 +488,10 @@ export function App() {
   }
 
   async function saveReport(form, inventoryRows) {
+    if (!selectedReport?.store_id) {
+      show("送出失敗：此帳號尚未綁定門店，請總部確認門店權限");
+      return false;
+    }
     try {
       const revenue1900ToClose = Math.max(
         0,
