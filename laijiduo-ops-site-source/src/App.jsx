@@ -302,6 +302,7 @@ export function App() {
   const [activeModule, setActiveModule] = useState("ops");
   const [inspectionGateOpen, setInspectionGateOpen] = useState(false);
   const [inspectionPassword, setInspectionPassword] = useState("");
+  const [reportDate, setReportDate] = useState(today);
   const [profile, setProfile] = useState(null);
   const [role, setRole] = useState("entry");
   const [stores, setStores] = useState([]);
@@ -325,11 +326,11 @@ export function App() {
     setSelectedStoreId("");
   }
 
-  async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId) {
+  async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId, preferredReportDate = reportDate) {
     const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows] = await Promise.all([
       fetchStores(),
       fetchProducts(),
-      fetchDailyReports(today),
+      fetchDailyReports(preferredReportDate),
       fetchHandovers(today),
       fetchStaffPerformance(new Date().toISOString().slice(0, 7)),
       fetchHqTasks(),
@@ -463,6 +464,26 @@ export function App() {
     setActiveModule(moduleName);
   }
 
+  async function changeReportDate(nextDate, authCode = "") {
+    if (!nextDate) return false;
+    if (nextDate < today && authCode !== "8599") {
+      show("過往日期需輸入認證碼 8599");
+      return false;
+    }
+    setLoading(true);
+    try {
+      setReportDate(nextDate);
+      await loadWorkspace(profile, selectedStoreId, nextDate);
+      show(nextDate < today ? "已解鎖過往日期回報" : "已切換回今日回報");
+      return true;
+    } catch (error) {
+      show(`切換日期失敗：${error.message}`);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function saveReport(form, inventoryRows) {
     try {
       const revenue1900ToClose = Math.max(
@@ -473,7 +494,7 @@ export function App() {
       );
       const payload = {
         store_id: selectedReport.store_id,
-        report_date: today,
+        report_date: reportDate,
         opened_to_1400_revenue: Number(form.opened_to_1400_revenue),
         revenue_1400_to_1900: Number(form.revenue_1400_to_1900),
         revenue_1900_to_close: revenue1900ToClose,
@@ -503,7 +524,7 @@ export function App() {
           is_shortage: false,
         })),
       );
-      await loadWorkspace(profile, selectedReport.store_id);
+      await loadWorkspace(profile, selectedReport.store_id, reportDate);
       show("營運回報與庫存已送出");
       return true;
     } catch (error) {
@@ -681,7 +702,7 @@ export function App() {
         onSignOut={handleSignOut}
       />
       <main className="content">
-        <TopBar activeModule={activeModule} role={role} profileRole={currentRole} report={selectedReport} onSync={syncWorkspace} onExport={exportReports} />
+        <TopBar activeModule={activeModule} reportDate={reportDate} role={role} profileRole={currentRole} report={selectedReport} onSync={syncWorkspace} onExport={exportReports} />
         {!hasSupabaseConfig && (
           <div className="notice">目前使用示範資料。部署後請在 Vercel 設定 Supabase 環境變數，即可切換為正式資料。</div>
         )}
@@ -690,7 +711,7 @@ export function App() {
           <HqDashboard reports={reports} products={products} handovers={handovers} performanceRows={performanceRows} canEditTargets={canEditMonthlyTargets(currentRole)} onSelect={setSelectedStoreId} />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "store" && selectedReport && (
-          <StoreReport report={selectedReport} products={products} onSave={saveReport} />
+          <StoreReport report={selectedReport} reportDate={reportDate} products={products} onDateChange={changeReportDate} onSave={saveReport} />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "review" && selectedReport && (
           <ReviewConsole
@@ -741,6 +762,7 @@ export function App() {
             salaryRows={salaryStructureSeed}
             stores={stores}
             selectedStoreId={selectedStoreId}
+            selectedReport={selectedReport}
             currentRole={currentRole}
             onNotify={show}
           />
@@ -1055,7 +1077,7 @@ function NavGroup({ title, items, activeModule, allowedModules, onSelect }) {
   );
 }
 
-function TopBar({ activeModule, role, profileRole: currentRole, report, onSync, onExport }) {
+function TopBar({ activeModule, reportDate, role, profileRole: currentRole, report, onSync, onExport }) {
   const titleMap = {
     handover: "門市交接管理",
     performance: "人員績效管理",
@@ -1070,7 +1092,7 @@ function TopBar({ activeModule, role, profileRole: currentRole, report, onSync, 
   return (
     <header className="topbar">
       <div>
-        <p>營業日 {today} · {report?.area || "全區"} · {report?.name || "尚未選擇門店"}</p>
+        <p>營業日 {reportDate || today} · {report?.area || "全區"} · {report?.name || "尚未選擇門店"}</p>
         <h1>{title}</h1>
       </div>
       <div className="top-actions">
@@ -2133,6 +2155,13 @@ function isLeaveDay(value, day) {
   return parseLeaveDays(value).includes(day);
 }
 
+function leaveDaySource(draft, day) {
+  if (isLeaveDay(draft.autoDays, day)) return "auto";
+  if (isLeaveDay(draft.manualDays, day)) return "manual";
+  if (isLeaveDay(draft.dates, day)) return "manual";
+  return "";
+}
+
 const leaveTypeOptions = ["排休", "特休", "事假", "病假", "其他"];
 const combinedStoreCodes = new Set(["S02", "S03"]);
 const wujiaStoreCode = "S01";
@@ -2281,6 +2310,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
           rows.forEach((row) => {
             next[leaveDraftKey(row.period_month, row.staff_id)] = {
               dates: formatLeaveDays(row.period_month, row.leave_days || []),
+              manualDays: formatLeaveDays(row.period_month, row.leave_days || []),
+              autoDays: "",
               leaveType: row.leave_type || "排休",
               note: row.note || "",
             };
@@ -2424,10 +2455,18 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
     setDrafts((current) => {
       const currentDraft = current[key] || {};
       const leaveDays = parseLeaveDays(currentDraft.dates);
+      const manualDays = parseLeaveDays(currentDraft.manualDays);
+      const autoDays = parseLeaveDays(currentDraft.autoDays);
       const nextDays = leaveDays.includes(day) ? leaveDays.filter((item) => item !== day) : [...leaveDays, day].sort((a, b) => a - b);
+      const nextManualDays = leaveDays.includes(day)
+        ? manualDays.filter((item) => item !== day)
+        : [...manualDays.filter((item) => item !== day), day].sort((a, b) => a - b);
+      const nextAutoDays = autoDays.filter((item) => item !== day);
       const nextDraft = {
         ...currentDraft,
         dates: formatLeaveDays(leaveMonth, nextDays),
+        manualDays: formatLeaveDays(leaveMonth, nextManualDays),
+        autoDays: formatLeaveDays(leaveMonth, nextAutoDays),
       };
       saveDraft(person, nextDraft);
       return {
@@ -2526,9 +2565,15 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
       const next = { ...current };
       store.staff.forEach((person) => {
         const key = leaveDraftKey(leaveMonth, person.id);
+        const currentDraft = next[key] || {};
+        const finalDays = assignments.get(person.id) || [];
+        const manualDays = parseLeaveDays(currentDraft.manualDays).filter((day) => finalDays.includes(day));
+        const autoDays = finalDays.filter((day) => !manualDays.includes(day));
         next[key] = {
-          ...next[key],
-          dates: formatLeaveDays(leaveMonth, assignments.get(person.id) || []),
+          ...currentDraft,
+          dates: formatLeaveDays(leaveMonth, finalDays),
+          manualDays: formatLeaveDays(leaveMonth, manualDays),
+          autoDays: formatLeaveDays(leaveMonth, autoDays),
         };
       });
       return next;
@@ -2558,6 +2603,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
         next[key] = {
           ...next[key],
           dates: "",
+          manualDays: "",
+          autoDays: "",
         };
       });
       return next;
@@ -2726,11 +2773,12 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, leaveMonth, 
                   </th>
                   {monthDays.map((day) => {
                     const checked = isLeaveDay(draft.dates, day);
+                    const source = checked ? leaveDaySource(draft, day) : "";
                     return (
                       <td className="leave-day-cell" key={day}>
                         <button
                           aria-label={`${person.employeeName} ${day}日${checked ? "取消休假" : "排休"}`}
-                          className={checked ? "leave-dot on" : "leave-dot"}
+                          className={checked ? `leave-dot on ${source}` : "leave-dot"}
                           type="button"
                           onClick={() => toggleLeaveDay(person.id, day)}
                         />
@@ -2811,10 +2859,10 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
   );
 }
 
-function ScheduleModule({ currentRole, scheduleRows, selectedStoreId, storeHours, staffRoster, salaryRows, stores, onNotify }) {
+function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedStoreId, storeHours, staffRoster, salaryRows, stores, onNotify }) {
   const isStoreScoped = currentRole === "store_manager";
   const selectedStore = stores.find((store) => store.id === selectedStoreId || store.store_id === selectedStoreId);
-  const selectedStoreCode = isStoreScoped ? canonicalStoreCode(selectedStore) : "";
+  const selectedStoreCode = isStoreScoped ? (canonicalStoreCode(selectedStore) || canonicalStoreCode(selectedReport)) : "";
   const scopedScheduleRows = isStoreScoped && selectedStoreCode
     ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode)
     : scheduleRows;
@@ -2836,7 +2884,7 @@ function ScheduleModule({ currentRole, scheduleRows, selectedStoreId, storeHours
   return (
     <div className="workspace module-grid">
       <section className="kpi-strip">
-        <Metric label="本週班表" value={`${scheduleRows.length} 筆`} detail="依營業時段自動產生" />
+        <Metric label="本週班表" value={`${scopedScheduleRows.length} 筆`} detail="依營業時段自動產生" />
         <Metric label="營運班別" value={`${activeRows.length} 筆`} detail="排除暫停營業店" tone="good" />
         <Metric label="尖峰缺口" value={`${shortageRows.length} 筆`} detail={shortageRows[0]?.storeName || "目前無缺口"} tone={shortageRows.length ? "bad" : "good"} />
         <Metric label="主管覆蓋" value={`${managerCount} 店`} detail="店長或副店長可負責" />
@@ -3528,8 +3576,10 @@ function IntegerField({ label, value, onChange }) {
   );
 }
 
-function StoreReport({ report, products, onSave }) {
+function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
   const [tab, setTab] = useState("sales");
+  const [dateDraft, setDateDraft] = useState(reportDate || today);
+  const [authCode, setAuthCode] = useState("");
   const [form, setForm] = useState({
     opened_to_1400_revenue: report.opened_to_1400_revenue,
     revenue_1400_to_1900: report.revenue_1400_to_1900,
@@ -3549,6 +3599,8 @@ function StoreReport({ report, products, onSave }) {
   const revenueInvalid = currentTotal < Number(form.opened_to_1400_revenue || 0) + Number(form.revenue_1400_to_1900 || 0);
 
   useEffect(() => {
+    setDateDraft(reportDate || today);
+    setAuthCode("");
     setForm({
       opened_to_1400_revenue: report.opened_to_1400_revenue,
       revenue_1400_to_1900: report.revenue_1400_to_1900,
@@ -3556,7 +3608,7 @@ function StoreReport({ report, products, onSave }) {
       cash_difference: report.cash_difference || 0,
       manager_note: report.manager_note || "",
     });
-  }, [report]);
+  }, [report, reportDate]);
 
   useEffect(() => {
     let active = true;
@@ -3582,6 +3634,13 @@ function StoreReport({ report, products, onSave }) {
     setSaving(false);
   }
 
+  async function applyReportDate() {
+    const ok = await onDateChange(dateDraft, authCode);
+    if (ok) setAuthCode("");
+  }
+
+  const isPastDateDraft = dateDraft < today;
+
   return (
     <div className="workspace mobile-layout">
       <section className="phone-shell">
@@ -3592,7 +3651,23 @@ function StoreReport({ report, products, onSave }) {
           </div>
           <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
         </div>
+        <div className="report-date-card">
+          <label>
+            回報日期
+            <input type="date" max={today} value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} />
+          </label>
+          {isPastDateDraft && (
+            <label>
+              認證碼
+              <input type="password" inputMode="numeric" placeholder="輸入 8599" value={authCode} onChange={(event) => setAuthCode(event.target.value)} />
+            </label>
+          )}
+          <button type="button" onClick={applyReportDate} disabled={dateDraft === reportDate || (isPastDateDraft && authCode !== "8599")}>
+            {isPastDateDraft ? "解鎖並載入" : "載入日期"}
+          </button>
+        </div>
         <div className="alert-line">營收只需填 14:00、19:00 與全日總營收；19:00 至打烊由系統自動倒算。</div>
+        {reportDate < today && <div className="alert-line warn">目前正在修改過往日期 {reportDate}，已通過認證碼。</div>}
         {revenueInvalid && <div className="alert-line danger">全日總營收不可小於 14:00 與 19:00 加總，請修正後再送出。</div>}
         <div className="segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>

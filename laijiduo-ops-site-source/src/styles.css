@@ -754,6 +754,30 @@ tbody tr.selected,
   font-size: 13px;
 }
 
+.report-date-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.report-date-card label {
+  display: grid;
+  gap: 6px;
+  color: #604235;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.report-date-card input {
+  width: 100%;
+  min-width: 0;
+}
+
 .mobile-stack {
   display: grid;
   gap: 12px;
@@ -1079,6 +1103,14 @@ tbody tr.selected,
 
 .leave-dot.on {
   background: #25a65a;
+}
+
+.leave-dot.on.manual {
+  background: #25a65a;
+}
+
+.leave-dot.on.auto {
+  background: #f20f0f;
 }
 
 .leave-dot:hover {
@@ -1494,6 +1526,12 @@ tbody tr.selected,
   background: #fde8e2;
   border-left-color: #c2321f;
   color: #9f291a;
+}
+
+.alert-line.warn {
+  background: #fff7df;
+  border-left-color: #b85f00;
+  color: #71442f;
 }
 
 .data-quality-panel {
