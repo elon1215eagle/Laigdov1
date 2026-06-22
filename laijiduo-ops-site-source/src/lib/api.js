@@ -264,10 +264,17 @@ function stripNewInventoryFields(rows) {
       current_stock_packs,
       incoming_boxes,
       incoming_packs,
+      incoming_source,
+      transfer_note,
       ...legacyRow
     } = row;
     return legacyRow;
   });
+}
+
+function isInventorySchemaCacheError(error) {
+  const message = String(error?.message || "");
+  return /schema cache|column|stock_unit|incoming_unit|current_stock_boxes|current_stock_packs|incoming_boxes|incoming_packs|incoming_source|transfer_note/.test(message);
 }
 
 export async function fetchStores() {
@@ -398,7 +405,7 @@ export async function upsertInventoryCounts(reportId, rows) {
     .select();
   if (!error) return data.map(normalizeInventoryRow);
 
-  if (!String(error.message || "").match(/stock_unit|incoming_unit|current_stock_boxes|current_stock_packs|incoming_boxes|incoming_packs/)) {
+  if (!isInventorySchemaCacheError(error)) {
     throw error;
   }
 
