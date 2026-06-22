@@ -1081,8 +1081,8 @@ function OnlineInspectionForm({ stores, onAdd }) {
       storeId,
       storeName: selectedStore.name,
       date,
-      supervisor: supervisor || "未填寫",
-      manager: manager || selectedStore.manager,
+      supervisor: supervisor.trim(),
+      manager: manager.trim(),
       score: total.score,
       maxScore: total.maxScore,
       status: "已完成",
@@ -1118,8 +1118,8 @@ function OnlineInspectionForm({ stores, onAdd }) {
             </select>
           </label>
           <label>巡檢日期<input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
-          <label>督導姓名<input value={supervisor} onChange={(event) => setSupervisor(event.target.value)} placeholder="例如：郭承廷" /></label>
-          <label>店長姓名<input value={manager} onChange={(event) => setManager(event.target.value)} placeholder={selectedStore.manager} /></label>
+          <label>督導姓名<input value={supervisor} onChange={(event) => setSupervisor(event.target.value)} placeholder="請輸入督導姓名" /></label>
+          <label>店長姓名<input value={manager} onChange={(event) => setManager(event.target.value)} placeholder="請輸入店長姓名" /></label>
         </div>
       </section>
 

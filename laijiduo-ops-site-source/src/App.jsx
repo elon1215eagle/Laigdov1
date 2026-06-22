@@ -3659,7 +3659,7 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
           {isPastDateDraft && (
             <label>
               認證碼
-              <input type="password" inputMode="numeric" placeholder="輸入 8599" value={authCode} onChange={(event) => setAuthCode(event.target.value)} />
+              <input type="password" inputMode="numeric" placeholder="請輸入認證碼" value={authCode} onChange={(event) => setAuthCode(event.target.value)} />
             </label>
           )}
           <button type="button" onClick={applyReportDate} disabled={dateDraft === reportDate || (isPastDateDraft && authCode !== "8599")}>
