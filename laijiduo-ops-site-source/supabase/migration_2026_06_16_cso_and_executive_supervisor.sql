@@ -50,7 +50,7 @@ with new_user as (
     '00000000-0000-0000-0000-000000000000'::uuid,
     'authenticated',
     'authenticated',
-    lower('ES@laogdo.com'),
+    lower('ES@laigdo.com'),
     crypt('laigdo1109', gen_salt('bf', 10)),
     now(),
     '{"provider":"email","providers":["email"]}'::jsonb,
@@ -66,14 +66,14 @@ with new_user as (
     '',
     false,
     false
-  where not exists (select 1 from auth.users where lower(email) = lower('ES@laogdo.com'))
+  where not exists (select 1 from auth.users where lower(email) = lower('ES@laigdo.com'))
   returning id, email
 ), existing_user as (
   select id, email from new_user
   union all
   select id, email
   from auth.users
-  where lower(email) = lower('ES@laogdo.com')
+  where lower(email) = lower('ES@laigdo.com')
     and not exists (select 1 from new_user)
 ), upsert_identity as (
   insert into auth.identities (
@@ -115,4 +115,4 @@ set confirmation_token = '',
     email_change = '',
     raw_user_meta_data = '{"full_name":"執行督導","email_verified":true}'::jsonb,
     updated_at = now()
-where lower(email) = lower('ES@laogdo.com');
+where lower(email) = lower('ES@laigdo.com');
