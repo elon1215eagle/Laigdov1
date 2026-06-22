@@ -840,7 +840,7 @@ export function InspectionApp({ onBack }) {
       const saved = hasSupabaseConfig ? await createStoreInspection(record) : record;
       setInspections((current) => [saved, ...current.filter((item) => item.id !== saved.id)]);
       setSelectedId(saved.id);
-      setSyncMessage(hasSupabaseConfig ? "巡檢資料已儲存至 Supabase" : "巡檢資料已儲存在本機");
+      setSyncMessage(hasSupabaseConfig ? "巡檢資料已儲存完成" : "巡檢資料已儲存完成，本機暫存");
     } catch (error) {
       setInspections((current) => [record, ...current]);
       setSelectedId(record.id);
@@ -856,7 +856,7 @@ export function InspectionApp({ onBack }) {
   async function persistInspection(record) {
     try {
       if (hasSupabaseConfig) await updateStoreInspection(record);
-      setSyncMessage(hasSupabaseConfig ? "巡檢修改已同步 Supabase" : "巡檢修改已儲存在本機");
+      setSyncMessage(hasSupabaseConfig ? "巡檢修改已儲存完成" : "巡檢修改已儲存完成，本機暫存");
     } catch (error) {
       setSyncMessage(`巡檢修改同步失敗：${error.message}`);
     }

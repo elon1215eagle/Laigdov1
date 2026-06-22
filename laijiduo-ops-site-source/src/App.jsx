@@ -453,7 +453,7 @@ export function App() {
 
   function show(text) {
     setMessage(text);
-    window.setTimeout(() => setMessage(""), 2500);
+    window.setTimeout(() => setMessage(""), 2000);
   }
 
   function openModule(moduleName) {
@@ -528,7 +528,7 @@ export function App() {
         })),
       );
       await loadWorkspace(profile, selectedReport.store_id, reportDate);
-      show("營運回報與庫存已送出");
+      show("每日營運回報已上傳完成");
       return true;
     } catch (error) {
       show(`送出失敗：${error.message}`);
@@ -551,7 +551,7 @@ export function App() {
       await upsertHandover(payload);
       const nextRows = await fetchHandovers(today);
       setHandovers(nextRows);
-      show("交接紀錄已儲存");
+      show("交接紀錄已儲存完成");
       return true;
     } catch (error) {
       show(`交接儲存失敗：${error.message}`);
@@ -574,7 +574,7 @@ export function App() {
       await upsertStaffPerformance(payload);
       const nextRows = await fetchStaffPerformance(payload.period_month || new Date().toISOString().slice(0, 7));
       setPerformanceRows(nextRows);
-      show("人員績效已儲存");
+      show("人員績效已儲存完成");
       return true;
     } catch (error) {
       show(`績效儲存失敗：${error.message}`);
@@ -587,7 +587,7 @@ export function App() {
       await upsertHqTask(form);
       const nextRows = await fetchHqTasks();
       setHqTasks(nextRows);
-      show("任務已建立／更新");
+      show("任務已儲存完成");
       return true;
     } catch (error) {
       show(`任務儲存失敗：${error.message}`);
@@ -603,7 +603,7 @@ export function App() {
     try {
       const saved = await upsertSecuritySettings(form);
       setSecuritySettings(saved);
-      show(saved.is_fault_mode ? "系統安全模式已啟動" : "系統安全模式已解除");
+      show(saved.is_fault_mode ? "系統安全設定已儲存完成，資料故障顯示已啟動" : "系統安全設定已儲存完成，資料故障顯示已解除");
       return true;
     } catch (error) {
       show(`系統安全設定失敗：${error.message}`);
@@ -619,7 +619,7 @@ export function App() {
     try {
       await reviewReport(selectedReport.id, action, "", status);
       await loadWorkspace(profile, selectedReport.store_id);
-      show("審核狀態已更新");
+      show("審核狀態已儲存完成");
       return true;
     } catch (error) {
       show(`審核失敗：${error.message}`);
@@ -638,7 +638,7 @@ export function App() {
         return;
       }
       await loadWorkspace(profile);
-      show("資料已同步");
+      show("資料已同步完成");
     } catch (error) {
       show(`同步失敗：${error.message}`);
     } finally {
@@ -654,7 +654,7 @@ export function App() {
       const periodReports = monthReports.length ? monthReports : reports;
       const csv = buildOperationsCsv({ reports, periodReports, inventoryRows, products, weekRange, monthRange });
       downloadTextFile(csv, `萊吉多營運回報-${today}.csv`);
-      show("報表已匯出");
+      show("報表已匯出完成");
     } catch (error) {
       show(`匯出失敗：${error.message}`);
     }
@@ -797,7 +797,7 @@ export function App() {
           onConfirm={confirmInspectionAccess}
         />
       )}
-      {message && <div className="toast show">{message}</div>}
+      {message && <div className="toast show" role="alert" aria-live="assertive">{message}</div>}
     </div>
   );
 }
