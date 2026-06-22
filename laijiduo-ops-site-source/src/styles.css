@@ -897,13 +897,20 @@ tbody tr.selected,
 }
 
 .leave-toolbar input,
-.leave-toolbar select {
+.leave-toolbar select,
+.readonly-field {
   min-height: 40px;
   padding: 0 10px;
   border: 1px solid #ead6ca;
   border-radius: 7px;
   background: #fffdfa;
   color: #432b20;
+}
+
+.readonly-field {
+  display: flex;
+  align-items: center;
+  font-weight: 900;
 }
 
 .leave-summary {

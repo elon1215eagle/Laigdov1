@@ -2310,6 +2310,7 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
   const [storeFilter, setStoreFilter] = useState(allowedStoreCode || "all");
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
   const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
+  const [uploadingCode, setUploadingCode] = useState("");
   const [drafts, setDrafts] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(leavePlannerStorageKey) || "{}");
@@ -2445,6 +2446,9 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
     const dates = drafts[leaveDraftKey(leaveMonth, row.id)]?.dates;
     return countLeaveDays(dates) > 0 && hasSixDayWorkViolation(parseLeaveDays(dates), monthDays);
   }).length;
+  const scopedStoreLabel = isStoreScoped
+    ? (storeGroups[0] ? `${storeGroups[0].code} ${storeGroups[0].name}` : allowedStoreCode || "未綁定門店")
+    : "";
 
   const updateDraft = (staffId, field, value) => {
     const key = leaveDraftKey(leaveMonth, staffId);
@@ -2472,6 +2476,72 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
     } catch (error) {
       setSyncState("同步失敗");
       onNotify?.(`排假儲存失敗：${error.message}`);
+    }
+  };
+
+  const buildStoreUploadPayloads = (store, sourceDrafts = drafts) => store.staff.map((person) => {
+    const draft = sourceDrafts[leaveDraftKey(leaveMonth, person.id)] || {};
+    return buildLeavePlanPayload({
+      month: leaveMonth,
+      person,
+      dates: draft.dates || "",
+      leaveType: draft.leaveType || "排休",
+      note: draft.note || "",
+    });
+  });
+
+  const uploadStore = async (store, sourceDrafts = drafts, successText = "") => {
+    if (!store?.staff?.length) {
+      onNotify?.("此門店目前沒有可上傳的排假人員");
+      return false;
+    }
+    if (!hasSupabaseConfig) {
+      setSyncState("本機模式");
+      onNotify?.(`${store.name} 排假已暫存在本機；正式上傳需連線 Supabase`);
+      return true;
+    }
+    try {
+      setUploadingCode(store.code);
+      setSyncState("上傳中");
+      await upsertMonthlyLeavePlans(buildStoreUploadPayloads(store, sourceDrafts));
+      setSyncState("已同步");
+      onNotify?.(successText || `${store.name} ${leaveMonth} 排假已上傳完成`);
+      return true;
+    } catch (error) {
+      setSyncState("同步失敗");
+      onNotify?.(`${store.name} 排假上傳失敗：${error.message}`);
+      return false;
+    } finally {
+      setUploadingCode("");
+    }
+  };
+
+  const uploadVisibleStores = async () => {
+    if (!storeGroups.length) {
+      onNotify?.("目前沒有可上傳的門店排假表");
+      return false;
+    }
+    if (storeGroups.length === 1) {
+      return uploadStore(storeGroups[0], drafts, `${storeGroups[0].name} ${leaveMonth} 排假已上傳完成`);
+    }
+    if (!hasSupabaseConfig) {
+      setSyncState("本機模式");
+      onNotify?.("目前為本機模式，排假已暫存在此瀏覽器");
+      return true;
+    }
+    try {
+      setUploadingCode("all");
+      setSyncState("上傳中");
+      await upsertMonthlyLeavePlans(storeGroups.flatMap((store) => buildStoreUploadPayloads(store)));
+      setSyncState("已同步");
+      onNotify?.(`${leaveMonth} 目前顯示門店排假已全部上傳完成`);
+      return true;
+    } catch (error) {
+      setSyncState("同步失敗");
+      onNotify?.(`排假上傳失敗：${error.message}`);
+      return false;
+    } finally {
+      setUploadingCode("");
     }
   };
 
@@ -2613,7 +2683,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
         leaveType: drafts[leaveDraftKey(leaveMonth, person.id)]?.leaveType || "排休",
         note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
       })))
-        .then(() => setSyncState("已同步"))
+        .then(() => {
+          setSyncState("已同步");
+          onNotify?.(`${store.name} 一鍵排休已儲存`);
+        })
         .catch((error) => {
           setSyncState("同步失敗");
           onNotify?.(`一鍵排休儲存失敗：${error.message}`);
@@ -2644,7 +2717,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
         leaveType: drafts[leaveDraftKey(leaveMonth, person.id)]?.leaveType || "排休",
         note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
       })))
-        .then(() => setSyncState("已同步"))
+        .then(() => {
+          setSyncState("已同步");
+          onNotify?.(`${store.name} 排假已清空並上傳`);
+        })
         .catch((error) => {
           setSyncState("同步失敗");
           onNotify?.(`清空本店儲存失敗：${error.message}`);
@@ -2666,7 +2742,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
         leaveType: "排休",
         note: "",
       })))
-        .then(() => setSyncState("已同步"))
+        .then(() => {
+          setSyncState("已同步");
+          onNotify?.(`${leaveMonth} 排假已清空並上傳`);
+        })
         .catch((error) => {
           setSyncState("同步失敗");
           onNotify?.(`清空本月儲存失敗：${error.message}`);
@@ -2682,10 +2761,13 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
           <p>依門店分表排假；最多連續工作 6 天，先點預定休假，再由一鍵排休補足月休與人力需求。</p>
         </div>
         <div className="panel-actions">
+          <button className="primary" type="button" onClick={uploadVisibleStores} disabled={!storeGroups.length || uploadingCode === "all"}>
+            {uploadingCode === "all" ? "上傳中..." : "上傳目前排假"}
+          </button>
           <button type="button" onClick={() => downloadTextFile(buildLeavePlannerCsv({ month: leaveMonth, rows: plannerRows, drafts, salaryRows }), `萊吉多${leaveMonth}排假表.csv`)}>
             匯出排假
           </button>
-          <button type="button" onClick={clearMonth}>清空本月</button>
+          {!isStoreScoped && <button type="button" onClick={clearMonth}>清空本月</button>}
         </div>
       </div>
 
@@ -2694,15 +2776,22 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
           排假月份
           <input type="month" value={leaveMonth} onChange={(event) => setLeaveMonth(event.target.value)} />
         </label>
-        <label>
-          門店
-          <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} disabled={isStoreScoped}>
-            {!isStoreScoped && <option value="all">全部門店</option>}
-            {allStoreGroups.map((row) => (
-              <option value={row.code} key={row.code}>{row.code} {row.name}</option>
-            ))}
-          </select>
-        </label>
+        {isStoreScoped ? (
+          <label>
+            門店
+            <div className="readonly-field">{scopedStoreLabel}</div>
+          </label>
+        ) : (
+          <label>
+            門店
+            <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
+              <option value="all">全部門店</option>
+              {allStoreGroups.map((row) => (
+                <option value={row.code} key={row.code}>{row.code} {row.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="leave-summary">
           <span><strong>{plannerRows.length}</strong> 人需確認</span>
           <span><strong>{filledCount}</strong> 人已填</span>
@@ -2752,8 +2841,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
             store={store}
             autoArrangeStore={autoArrangeStore}
             clearStore={clearStore}
+            isUploading={uploadingCode === store.code}
             toggleLeaveDay={toggleLeaveDay}
             updateDraft={updateDraft}
+            uploadStore={uploadStore}
           />
         ))}
       </div>
@@ -2761,7 +2852,7 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
   );
 }
 
-function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, leaveMonth, monthDays, salaryRows, saveDraft, store, toggleLeaveDay, updateDraft }) {
+function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, store, toggleLeaveDay, updateDraft, uploadStore }) {
   const totalLeaveDays = store.staff.reduce((sum, person) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates), 0);
   const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
 
@@ -2773,6 +2864,9 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, leaveMonth, 
           <p>{store.staff.length} 人計入排班，門店每日需求 {store.demand} 人，每日最多可排休 {maxOffPerDay} 人，本月已排休 {totalLeaveDays} 天。{store.ruleNote}</p>
         </div>
         <div className="panel-actions">
+          <button className="primary" type="button" onClick={() => uploadStore(store)} disabled={isUploading}>
+            {isUploading ? "上傳中..." : "上傳本店排假"}
+          </button>
           <button type="button" onClick={() => autoArrangeStore(store)} disabled={!maxOffPerDay}>一鍵平均排休</button>
           <button type="button" onClick={() => clearStore(store)}>清空本店</button>
         </div>
