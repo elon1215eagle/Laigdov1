@@ -1,6 +1,6 @@
 ﻿do $$
 begin
-  create type public.franchise_app_role as enum ('franchise_admin', 'franchise_owner');
+  create type public.franchise_app_role as enum ('franchise_admin', 'franchise_owner', 'franchise_investor');
 exception when duplicate_object then null;
 end $$;
 
@@ -95,7 +95,7 @@ create policy "franchise stores visible by role"
 on public.franchise_stores for select
 to authenticated
 using (
-  public.current_franchise_role() = 'franchise_admin'
+  public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
   or id = public.current_franchise_store_id()
 );
 
@@ -112,7 +112,7 @@ on public.franchise_profiles for select
 to authenticated
 using (
   id = auth.uid()
-  or public.current_franchise_role() = 'franchise_admin'
+  or public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
 );
 
 drop policy if exists "franchise admin manages profiles" on public.franchise_profiles;
@@ -127,7 +127,7 @@ create policy "franchise report read by role"
 on public.franchise_daily_reports for select
 to authenticated
 using (
-  public.current_franchise_role() = 'franchise_admin'
+  public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
   or franchise_store_id = public.current_franchise_store_id()
 );
 
@@ -136,11 +136,11 @@ create policy "franchise report write own"
 on public.franchise_daily_reports for all
 to authenticated
 using (
-  public.current_franchise_role() = 'franchise_admin'
+  public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
   or franchise_store_id = public.current_franchise_store_id()
 )
 with check (
-  public.current_franchise_role() = 'franchise_admin'
+  public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
   or franchise_store_id = public.current_franchise_store_id()
 );
 
@@ -149,7 +149,7 @@ create policy "franchise expenses read by role"
 on public.franchise_expenses for select
 to authenticated
 using (
-  public.current_franchise_role() = 'franchise_admin'
+  public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
   or franchise_store_id = public.current_franchise_store_id()
 );
 
@@ -158,11 +158,11 @@ create policy "franchise expenses write own"
 on public.franchise_expenses for all
 to authenticated
 using (
-  public.current_franchise_role() = 'franchise_admin'
+  public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
   or franchise_store_id = public.current_franchise_store_id()
 )
 with check (
-  public.current_franchise_role() = 'franchise_admin'
+  public.current_franchise_role() in ('franchise_admin', 'franchise_investor')
   or franchise_store_id = public.current_franchise_store_id()
 );
 
@@ -172,3 +172,4 @@ grant select, insert, update, delete on table public.franchise_daily_reports to 
 grant select, insert, update, delete on table public.franchise_expenses to authenticated;
 grant execute on function public.current_franchise_role() to authenticated;
 grant execute on function public.current_franchise_store_id() to authenticated;
+

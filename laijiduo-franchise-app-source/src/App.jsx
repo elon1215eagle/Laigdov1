@@ -53,6 +53,12 @@ function monthRange(month) {
   return { start, end };
 }
 
+function roleLabel(role) {
+  if (role === "franchise_admin") return "總部";
+  if (role === "franchise_investor") return "股東";
+  return "加盟店";
+}
+
 export function App() {
   const [profile, setProfile] = useState(null);
   const [stores, setStores] = useState([]);
@@ -64,6 +70,8 @@ export function App() {
   const [expenses, setExpenses] = useState([]);
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+
+  const canWrite = profile?.role !== "franchise_investor";
 
   function notify(text) {
     setMessage(text);
@@ -95,6 +103,7 @@ export function App() {
       try {
         const sessionProfile = hasSupabaseConfig ? await getSessionProfile() : demoProfile;
         setProfile(sessionProfile);
+        if (sessionProfile?.role === "franchise_investor") setActiveTab("summary");
         if (sessionProfile) await refresh(sessionProfile);
       } catch (error) {
         notify(`載入失敗：${error.message}`);
@@ -111,6 +120,7 @@ export function App() {
       await signIn(email, password);
       const sessionProfile = await getSessionProfile();
       setProfile(sessionProfile);
+      setActiveTab(sessionProfile?.role === "franchise_investor" ? "summary" : "sales");
       await refresh(sessionProfile);
       notify("登入完成");
     } catch (error) {
@@ -138,6 +148,10 @@ export function App() {
   }
 
   async function saveDailyReport(form) {
+    if (!canWrite) {
+      notify("此帳號為唯讀權限，不能送出營收。");
+      return false;
+    }
     if (!selectedStoreId) {
       notify("此帳號尚未綁定加盟店，請聯繫總部設定。");
       return false;
@@ -164,6 +178,10 @@ export function App() {
   }
 
   async function saveExpense(form) {
+    if (!canWrite) {
+      notify("此帳號為唯讀權限，不能儲存支出。");
+      return false;
+    }
     if (!selectedStoreId) {
       notify("此帳號尚未綁定加盟店，請聯繫總部設定。");
       return false;
@@ -205,12 +223,12 @@ export function App() {
           </div>
         </div>
         <nav>
-          <button className={activeTab === "sales" ? "active" : ""} onClick={() => setActiveTab("sales")}>營收回報</button>
-          <button className={activeTab === "expenses" ? "active" : ""} onClick={() => setActiveTab("expenses")}>支出登錄</button>
+          {canWrite && <button className={activeTab === "sales" ? "active" : ""} onClick={() => setActiveTab("sales")}>營收回報</button>}
+          {canWrite && <button className={activeTab === "expenses" ? "active" : ""} onClick={() => setActiveTab("expenses")}>支出登錄</button>}
           <button className={activeTab === "summary" ? "active" : ""} onClick={() => setActiveTab("summary")}>月彙總</button>
         </nav>
         <div className="user-box">
-          <span>{profile.full_name || "加盟店帳號"}</span>
+          <span>{roleLabel(profile.role)}｜{profile.full_name || "加盟店帳號"}</span>
           <strong>{selectedStore?.name || "尚未綁定門店"}</strong>
           <button onClick={handleSignOut}>登出</button>
         </div>
@@ -244,8 +262,8 @@ export function App() {
           <Metric label="已回報天數" value={`${summary.reports.length} 天`} />
         </section>
 
-        {activeTab === "sales" && <DailySalesForm reportDate={reportDate} setReportDate={setReportDate} onSave={saveDailyReport} />}
-        {activeTab === "expenses" && <ExpenseForm onSave={saveExpense} />}
+        {activeTab === "sales" && canWrite && <DailySalesForm reportDate={reportDate} setReportDate={setReportDate} onSave={saveDailyReport} />}
+        {activeTab === "expenses" && canWrite && <ExpenseForm onSave={saveExpense} />}
         {activeTab === "summary" && <SummaryView expenses={expenses} reports={summary.reports} totals={totals} />}
       </main>
       {message && <div className="toast" role="alert">{message}</div>}
@@ -371,7 +389,7 @@ function SummaryView({ reports, expenses, totals }) {
       <div className="panel-head">
         <div>
           <h2>月彙總</h2>
-          <p>彙整本月營收、支出與淨額，提供總部追蹤加盟店營運狀況。</p>
+          <p>彙整本月營收、支出與淨額，提供總部與股東追蹤加盟店營運狀況。</p>
         </div>
       </div>
       <div className="table-wrap">
