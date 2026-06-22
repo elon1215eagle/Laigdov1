@@ -2277,7 +2277,10 @@ function firstSixDayWorkViolationWindow(leaveDays, monthDays) {
   return null;
 }
 
-function buildLeavePlanPayload({ month, person, dates, leaveType = "排休", note = "" }) {
+function buildLeavePlanPayload({ month, person, dates, manualDates, autoDates, leaveType = "排休", note = "" }) {
+  const parsedDates = parseLeaveDays(dates);
+  const parsedManualDays = manualDates === undefined ? parsedDates : parseLeaveDays(manualDates);
+  const parsedAutoDays = autoDates === undefined ? [] : parseLeaveDays(autoDates);
   return {
     period_month: month,
     store_code: canonicalStoreCode(person),
@@ -2285,7 +2288,9 @@ function buildLeavePlanPayload({ month, person, dates, leaveType = "排休", not
     staff_id: person.id,
     employee_name: person.employeeName,
     role_name: person.role,
-    leave_days: parseLeaveDays(dates),
+    leave_days: parsedDates,
+    manual_leave_days: parsedManualDays.filter((day) => parsedDates.includes(day)),
+    auto_leave_days: parsedAutoDays.filter((day) => parsedDates.includes(day)),
     leave_type: leaveType,
     note,
   };
@@ -2369,8 +2374,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
           rows.forEach((row) => {
             next[leaveDraftKey(row.period_month, row.staff_id)] = {
               dates: formatLeaveDays(row.period_month, row.leave_days || []),
-              manualDays: formatLeaveDays(row.period_month, row.leave_days || []),
-              autoDays: "",
+              manualDays: formatLeaveDays(row.period_month, row.manual_leave_days || row.leave_days || []),
+              autoDays: formatLeaveDays(row.period_month, row.auto_leave_days || []),
               leaveType: row.leave_type || "排休",
               note: row.note || "",
             };
@@ -2506,6 +2511,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
         month: leaveMonth,
         person,
         dates: draft.dates || "",
+        manualDates: draft.manualDays || draft.dates || "",
+        autoDates: draft.autoDays || "",
         leaveType: draft.leaveType || "排休",
         note: draft.note || "",
       }));
@@ -2522,6 +2529,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
       month: leaveMonth,
       person,
       dates: draft.dates || "",
+      manualDates: draft.manualDays || draft.dates || "",
+      autoDates: draft.autoDays || "",
       leaveType: draft.leaveType || "排休",
       note: draft.note || "",
     });
@@ -2717,6 +2726,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
         month: leaveMonth,
         person,
         dates: formatLeaveDays(leaveMonth, assignments.get(person.id) || []),
+        manualDates: drafts[leaveDraftKey(leaveMonth, person.id)]?.manualDays || "",
+        autoDates: formatLeaveDays(leaveMonth, (assignments.get(person.id) || []).filter((day) => !parseLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.manualDays).includes(day))),
         leaveType: drafts[leaveDraftKey(leaveMonth, person.id)]?.leaveType || "排休",
         note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
       })))
@@ -2751,6 +2762,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
         month: leaveMonth,
         person,
         dates: "",
+        manualDates: "",
+        autoDates: "",
         leaveType: drafts[leaveDraftKey(leaveMonth, person.id)]?.leaveType || "排休",
         note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
       })))
@@ -2776,6 +2789,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
         month: leaveMonth,
         person,
         dates: "",
+        manualDates: "",
+        autoDates: "",
         leaveType: "排休",
         note: "",
       })))

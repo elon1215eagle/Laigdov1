@@ -119,6 +119,8 @@ const MONTHLY_LEAVE_FIELDS = [
   "employee_name",
   "role_name",
   "leave_days",
+  "manual_leave_days",
+  "auto_leave_days",
   "leave_type",
   "note",
   "updated_by",
@@ -589,6 +591,8 @@ export async function upsertMonthlyLeavePlan(payload) {
       {
         ...payload,
         leave_days: normalizeLeaveDays(payload.leave_days),
+        manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
+        auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
         leave_type: payload.leave_type || "排休",
         updated_by: userData.user?.id || null,
       },
@@ -608,6 +612,8 @@ export async function upsertMonthlyLeavePlans(payloads) {
   const cleanPayloads = payloads.map((payload) => ({
     ...payload,
     leave_days: normalizeLeaveDays(payload.leave_days),
+    manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
+    auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
     leave_type: payload.leave_type || "排休",
     updated_by: userData.user?.id || null,
   }));

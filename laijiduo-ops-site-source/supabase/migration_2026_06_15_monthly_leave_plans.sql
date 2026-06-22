@@ -7,6 +7,8 @@ create table if not exists public.monthly_leave_plans (
   employee_name text not null,
   role_name text not null,
   leave_days integer[] not null default '{}',
+  manual_leave_days integer[] not null default '{}',
+  auto_leave_days integer[] not null default '{}',
   leave_type text not null default '排休',
   note text not null default '',
   updated_by uuid references auth.users(id),
