@@ -1078,11 +1078,11 @@ tbody tr.selected,
 }
 
 .leave-dot.on {
-  background: #f20f0f;
+  background: #25a65a;
 }
 
 .leave-dot:hover {
-  outline: 2px solid #f5b3a9;
+  outline: 2px solid #a8dfbd;
 }
 
 .leave-total {

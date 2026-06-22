@@ -739,6 +739,9 @@ export function App() {
             storeHours={storeHoursSeed}
             staffRoster={staffRosterSeed}
             salaryRows={salaryStructureSeed}
+            stores={stores}
+            selectedStoreId={selectedStoreId}
+            currentRole={currentRole}
             onNotify={show}
           />
         )}
@@ -2248,9 +2251,9 @@ function buildLeavePlannerCsv({ month, rows, drafts, salaryRows }) {
   return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }
 
-function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours, onNotify }) {
+function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, staffRoster, salaryRows, storeHours, onNotify }) {
   const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
-  const [storeFilter, setStoreFilter] = useState("all");
+  const [storeFilter, setStoreFilter] = useState(allowedStoreCode || "all");
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
   const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
   const [drafts, setDrafts] = useState(() => {
@@ -2301,6 +2304,10 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours, onNotify }) 
     if (!supportDate.startsWith(leaveMonth)) setSupportDate(`${leaveMonth}-01`);
   }, [leaveMonth, supportDate]);
 
+  useEffect(() => {
+    if (isStoreScoped && allowedStoreCode) setStoreFilter(allowedStoreCode);
+  }, [allowedStoreCode, isStoreScoped]);
+
   const monthDays = useMemo(() => Array.from({ length: daysInMonth(`${leaveMonth}-01`) }, (_, index) => index + 1), [leaveMonth]);
   const scheduleStaff = useMemo(
     () =>
@@ -2336,13 +2343,26 @@ function MonthlyLeavePlanner({ staffRoster, salaryRows, storeHours, onNotify }) 
     },
     [scheduleStaff, storeDemandMap, storeOptions],
   );
+  const allowedGroupCode = useMemo(() => {
+    if (!allowedStoreCode) return "";
+    const selectedOption = storeOptions.find((store) => store.code === allowedStoreCode);
+    return scheduleGroupForStore({
+      code: allowedStoreCode,
+      name: selectedOption?.name || "",
+      demand: storeDemandMap.get(allowedStoreCode) || 0,
+    }).code;
+  }, [allowedStoreCode, storeDemandMap, storeOptions]);
   const storeGroups = useMemo(
-    () => allStoreGroups.filter((store) => storeFilter === "all" || store.code === storeFilter),
-    [allStoreGroups, storeFilter],
+    () => allStoreGroups.filter((store) => {
+      if (isStoreScoped && allowedGroupCode) return store.code === allowedGroupCode;
+      return storeFilter === "all" || store.code === storeFilter;
+    }),
+    [allStoreGroups, allowedGroupCode, isStoreScoped, storeFilter],
   );
   const plannerRows = useMemo(() => storeGroups.flatMap((store) => store.staff), [storeGroups]);
   const supportDay = Number(supportDate.slice(8, 10));
-  const supportRows = allStoreGroups
+  const supportSourceGroups = isStoreScoped ? storeGroups : allStoreGroups;
+  const supportRows = supportSourceGroups
     .map((store) => {
       const offCount = store.staff.filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, supportDay)).length;
       const workingCount = store.staff.length - offCount;
@@ -2791,12 +2811,24 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
   );
 }
 
-function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows, onNotify }) {
-  const activeRows = scheduleRows.filter((row) => row.status !== "暫停營業");
-  const shortageRows = scheduleRows.filter((row) => row.status === "人力不足");
-  const closedRows = scheduleRows.filter((row) => row.status === "暫停營業");
+function ScheduleModule({ currentRole, scheduleRows, selectedStoreId, storeHours, staffRoster, salaryRows, stores, onNotify }) {
+  const isStoreScoped = currentRole === "store_manager";
+  const selectedStore = stores.find((store) => store.id === selectedStoreId || store.store_id === selectedStoreId);
+  const selectedStoreCode = isStoreScoped ? canonicalStoreCode(selectedStore) : "";
+  const scopedScheduleRows = isStoreScoped && selectedStoreCode
+    ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode)
+    : scheduleRows;
+  const scopedStoreHours = isStoreScoped && selectedStoreCode
+    ? storeHours.filter((row) => canonicalStoreCode(row) === selectedStoreCode)
+    : storeHours;
+  const scopedStaffRoster = isStoreScoped && selectedStoreCode
+    ? staffRoster.filter((row) => canonicalStoreCode(row) === selectedStoreCode)
+    : staffRoster;
+  const activeRows = scopedScheduleRows.filter((row) => row.status !== "暫停營業");
+  const shortageRows = scopedScheduleRows.filter((row) => row.status === "人力不足");
+  const closedRows = scopedScheduleRows.filter((row) => row.status === "暫停營業");
   const managerCount = new Set(
-    staffRoster
+    scopedStaffRoster
       .filter((row) => row.role === "店長" || row.role === "副店長")
       .map((row) => row.storeName),
   ).size;
@@ -2811,7 +2843,14 @@ function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows, onN
         <Metric label="暫停營業" value={`${closedRows.length} 店`} detail={closedRows[0]?.storeName || "無"} tone={closedRows.length ? "warn" : "good"} />
       </section>
 
-      <MonthlyLeavePlanner staffRoster={staffRoster} salaryRows={salaryRows} storeHours={storeHours} onNotify={onNotify} />
+      <MonthlyLeavePlanner
+        allowedStoreCode={selectedStoreCode}
+        isStoreScoped={isStoreScoped}
+        staffRoster={staffRoster}
+        salaryRows={salaryRows}
+        storeHours={storeHours}
+        onNotify={onNotify}
+      />
 
       <section className="panel wide">
         <div className="panel-head">
@@ -2826,7 +2865,7 @@ function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows, onN
               <tr><th>代碼</th><th>門店</th><th>班別</th><th>時段</th><th>需求</th><th>已排</th><th>負責主管</th><th>狀態</th><th>處理動作</th></tr>
             </thead>
             <tbody>
-              {scheduleRows.map((row) => (
+              {scopedScheduleRows.map((row) => (
                 <tr key={row.id}>
                   <td><span className="code-chip">{canonicalStoreCode(row)}</span></td>
                   <td><strong>{displayStoreName(row)}</strong></td>
@@ -2872,7 +2911,7 @@ function ScheduleModule({ scheduleRows, storeHours, staffRoster, salaryRows, onN
               <tr><th>代碼</th><th>門店</th><th>營業時間</th><th>中午尖峰</th><th>晚上尖峰</th><th>值班人數</th></tr>
             </thead>
             <tbody>
-              {storeHours.map((row) => (
+              {scopedStoreHours.map((row) => (
                 <tr key={row.storeName}>
                   <td><span className="code-chip">{canonicalStoreCode(row)}</span></td>
                   <td><strong>{displayStoreName(row)}</strong></td>
