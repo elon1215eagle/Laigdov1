@@ -340,7 +340,10 @@ export function App() {
     setHandovers(handoverRows);
     setPerformanceRows(performanceData);
     setHqTasks(taskRows);
-    setSelectedStoreId(nextProfile?.store_id || preferredStoreId || storeRows[0]?.id || "");
+    const nextStoreId = nextProfile?.role === "store_manager"
+      ? (nextProfile?.store_id || nextProfile?.store_code || "")
+      : (nextProfile?.store_id || nextProfile?.store_code || preferredStoreId || storeRows[0]?.id || "");
+    setSelectedStoreId(nextStoreId);
 
     const byStore = new Map(reportRows.map((report) => [report.store_id || report.id, report]));
     setReports(storeRows.map((store) => normalizeReport(store, byStore.get(store.id))));
@@ -383,8 +386,8 @@ export function App() {
     boot();
   }, []);
 
-  const selectedReport = reports.find((report) => report.store_id === selectedStoreId || report.id === selectedStoreId) || reports[0];
   const currentRole = profileRole(profile);
+  const selectedReport = findStoreScopedRecord(reports, selectedStoreId) || (currentRole === "store_manager" ? null : reports[0]);
   const activeModuleAllowed = canAccessModule(currentRole, activeModule);
 
   useEffect(() => {
@@ -761,6 +764,7 @@ export function App() {
             staffRoster={staffRosterSeed}
             salaryRows={salaryStructureSeed}
             stores={stores}
+            profile={profile}
             selectedStoreId={selectedStoreId}
             selectedReport={selectedReport}
             currentRole={currentRole}
@@ -2037,6 +2041,27 @@ function canonicalStoreCode(row = {}) {
   return row.store_code || row.storeCode || canonicalStoreByName(row.storeName || row.name)?.store_code || row.store_id || row.id || "";
 }
 
+function findStoreScopedRecord(rows = [], storeRef = "") {
+  if (!storeRef) return null;
+  return rows.find((row) => (
+    row.id === storeRef ||
+    row.store_id === storeRef ||
+    row.store_code === storeRef ||
+    row.storeCode === storeRef ||
+    canonicalStoreCode(row) === storeRef
+  )) || null;
+}
+
+function resolveStoreCodeFromRef(storeRef = "", stores = [], reports = []) {
+  if (!storeRef) return "";
+  const store = findStoreScopedRecord(stores, storeRef);
+  if (store) return canonicalStoreCode(store);
+  const report = findStoreScopedRecord(reports, storeRef);
+  if (report) return canonicalStoreCode(report);
+  const canonical = canonicalStoreCode({ store_code: storeRef });
+  return canonicalStoreRows.some((store) => store.store_code === canonical) ? canonical : "";
+}
+
 function displayStoreName(row = {}) {
   const hasDisplayStore = row.storeName && row.storeName !== "未指定";
   if (row.scope_type && !hasDisplayStore && !row.name && !row.store_code && !row.storeCode) {
@@ -2335,10 +2360,6 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
     if (!supportDate.startsWith(leaveMonth)) setSupportDate(`${leaveMonth}-01`);
   }, [leaveMonth, supportDate]);
 
-  useEffect(() => {
-    if (isStoreScoped && allowedStoreCode) setStoreFilter(allowedStoreCode);
-  }, [allowedStoreCode, isStoreScoped]);
-
   const monthDays = useMemo(() => Array.from({ length: daysInMonth(`${leaveMonth}-01`) }, (_, index) => index + 1), [leaveMonth]);
   const scheduleStaff = useMemo(
     () =>
@@ -2383,9 +2404,14 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
       demand: storeDemandMap.get(allowedStoreCode) || 0,
     }).code;
   }, [allowedStoreCode, storeDemandMap, storeOptions]);
+
+  useEffect(() => {
+    if (isStoreScoped && allowedGroupCode) setStoreFilter(allowedGroupCode);
+  }, [allowedGroupCode, isStoreScoped]);
+
   const storeGroups = useMemo(
     () => allStoreGroups.filter((store) => {
-      if (isStoreScoped && allowedGroupCode) return store.code === allowedGroupCode;
+      if (isStoreScoped) return allowedGroupCode ? store.code === allowedGroupCode : false;
       return storeFilter === "all" || store.code === storeFilter;
     }),
     [allStoreGroups, allowedGroupCode, isStoreScoped, storeFilter],
@@ -2670,8 +2696,8 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
         </label>
         <label>
           門店
-          <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
-            <option value="all">全部門店</option>
+          <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)} disabled={isStoreScoped}>
+            {!isStoreScoped && <option value="all">全部門店</option>}
             {allStoreGroups.map((row) => (
               <option value={row.code} key={row.code}>{row.code} {row.name}</option>
             ))}
@@ -2705,6 +2731,16 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", isStoreScoped = false, sta
       </div>
 
       <div className="store-leave-stack">
+        {!storeGroups.length && (
+          <section className="panel empty-module">
+            <div className="panel-head">
+              <div>
+                <h2>尚未找到可排假門店</h2>
+                <p>目前帳號未對應到門店代碼，請由總部確認 profiles 的 store_id 或 store_code 是否已連到正確門店。</p>
+              </div>
+            </div>
+          </section>
+        )}
         {storeGroups.map((store) => (
           <StoreLeaveCalendar
             drafts={drafts}
@@ -2859,18 +2895,24 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
   );
 }
 
-function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedStoreId, storeHours, staffRoster, salaryRows, stores, onNotify }) {
+function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedStoreId, storeHours, staffRoster, salaryRows, stores, profile, onNotify }) {
   const isStoreScoped = currentRole === "store_manager";
-  const selectedStore = stores.find((store) => store.id === selectedStoreId || store.store_id === selectedStoreId);
-  const selectedStoreCode = isStoreScoped ? (canonicalStoreCode(selectedStore) || canonicalStoreCode(selectedReport)) : "";
-  const scopedScheduleRows = isStoreScoped && selectedStoreCode
-    ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode)
+  const selectedStoreCode = isStoreScoped
+    ? (
+        resolveStoreCodeFromRef(profile?.store_id, stores, [selectedReport].filter(Boolean)) ||
+        resolveStoreCodeFromRef(profile?.store_code, stores, [selectedReport].filter(Boolean)) ||
+        resolveStoreCodeFromRef(selectedStoreId, stores, [selectedReport].filter(Boolean)) ||
+        canonicalStoreCode(selectedReport)
+      )
+    : "";
+  const scopedScheduleRows = isStoreScoped
+    ? (selectedStoreCode ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
     : scheduleRows;
-  const scopedStoreHours = isStoreScoped && selectedStoreCode
-    ? storeHours.filter((row) => canonicalStoreCode(row) === selectedStoreCode)
+  const scopedStoreHours = isStoreScoped
+    ? (selectedStoreCode ? storeHours.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
     : storeHours;
-  const scopedStaffRoster = isStoreScoped && selectedStoreCode
-    ? staffRoster.filter((row) => canonicalStoreCode(row) === selectedStoreCode)
+  const scopedStaffRoster = isStoreScoped
+    ? (selectedStoreCode ? staffRoster.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
     : staffRoster;
   const activeRows = scopedScheduleRows.filter((row) => row.status !== "暫停營業");
   const shortageRows = scopedScheduleRows.filter((row) => row.status === "人力不足");
