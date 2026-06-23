@@ -114,6 +114,36 @@ export async function fetchExpenses({ storeId, from, to }) {
   return data || [];
 }
 
+export async function fetchDailyReport({ storeId, date }) {
+  if (!supabase) {
+    return demoReports.find((row) => row.franchise_store_id === storeId && row.report_date === date) || null;
+  }
+  if (!storeId || !date) return null;
+  const { data, error } = await supabase
+    .from("franchise_daily_reports")
+    .select("*")
+    .eq("franchise_store_id", storeId)
+    .eq("report_date", date)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+export async function fetchDailyExpenses({ storeId, date }) {
+  if (!supabase) {
+    return demoExpenses.filter((row) => row.franchise_store_id === storeId && row.expense_date === date);
+  }
+  if (!storeId || !date) return [];
+  const { data, error } = await supabase
+    .from("franchise_expenses")
+    .select("*")
+    .eq("franchise_store_id", storeId)
+    .eq("expense_date", date)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function upsertDailyReport(payload) {
   const closeRevenue = Math.max(
     0,
@@ -164,4 +194,45 @@ export async function createExpense(payload) {
     .single();
   if (error) throw error;
   return data;
+}
+
+export async function deleteExpense(expenseId) {
+  if (!supabase) {
+    const existingIndex = demoExpenses.findIndex((row) => row.id === expenseId);
+    if (existingIndex >= 0) demoExpenses.splice(existingIndex, 1);
+    return;
+  }
+  const { error } = await supabase
+    .from("franchise_expenses")
+    .delete()
+    .eq("id", expenseId);
+  if (error) throw error;
+}
+
+export async function clearDailyData({ storeId, date }) {
+  if (!supabase) {
+    for (let index = demoReports.length - 1; index >= 0; index -= 1) {
+      const row = demoReports[index];
+      if (row.franchise_store_id === storeId && row.report_date === date) demoReports.splice(index, 1);
+    }
+    for (let index = demoExpenses.length - 1; index >= 0; index -= 1) {
+      const row = demoExpenses[index];
+      if (row.franchise_store_id === storeId && row.expense_date === date) demoExpenses.splice(index, 1);
+    }
+    return;
+  }
+  if (!storeId || !date) return;
+  const { error: expenseError } = await supabase
+    .from("franchise_expenses")
+    .delete()
+    .eq("franchise_store_id", storeId)
+    .eq("expense_date", date);
+  if (expenseError) throw expenseError;
+
+  const { error: reportError } = await supabase
+    .from("franchise_daily_reports")
+    .delete()
+    .eq("franchise_store_id", storeId)
+    .eq("report_date", date);
+  if (reportError) throw reportError;
 }

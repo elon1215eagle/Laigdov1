@@ -259,6 +259,53 @@ textarea {
   background: #fee2e2;
 }
 
+.admin-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.admin-section {
+  display: grid;
+  gap: 14px;
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid #ead6ca;
+}
+
+.admin-section h3,
+.danger-zone h3 {
+  margin: 0;
+  color: #3a2922;
+}
+
+.admin-table {
+  margin-top: 4px;
+}
+
+.danger-zone {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+  padding: 16px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff1f1;
+}
+
+.danger-zone p {
+  margin: 0;
+  color: #7f1d1d;
+  font-weight: 800;
+}
+
+.danger-button {
+  color: #fff;
+  background: #ba342c;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -333,7 +380,8 @@ tfoot td {
   }
 
   .topbar,
-  .toolbar {
+  .toolbar,
+  .admin-toolbar {
     display: grid;
     width: 100%;
   }
