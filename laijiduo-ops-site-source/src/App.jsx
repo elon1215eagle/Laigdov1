@@ -2372,6 +2372,82 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     count: staffRoster.filter((row) => row.role === salary.role || (salary.role === "送貨人員" && row.role === "送貨人員")).length,
   }));
 
+  const editableStaffRoles = ["ceo", "coo", "cfo", "admin", "hq", "cso", "general_affairs"];
+  const canEditStaff = editableStaffRoles.includes(currentRole);
+  const storeOptions = useMemo(() => {
+    const fromStores = stores.map((store) => ({ store_code: canonicalStoreCode(store), name: store.name }));
+    const fromHours = storeHours.map((store) => ({ store_code: canonicalStoreCode(store), name: store.storeName }));
+    return [...fromStores, ...fromHours]
+      .filter((store) => store.store_code && store.name)
+      .filter((store, index, rows) => rows.findIndex((item) => item.store_code === store.store_code) === index)
+      .sort((a, b) => a.store_code.localeCompare(b.store_code));
+  }, [stores, storeHours]);
+  const roleOptions = useMemo(() => {
+    const roles = [...salaryRows.map((row) => row.role), "店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職後勤", "送貨人員"];
+    return roles.filter(Boolean).filter((roleName, index, rows) => rows.indexOf(roleName) === index);
+  }, [salaryRows]);
+  const defaultStoreCode = canonicalStoreCode(selectedStore) || canonicalStoreCode({ storeName: selectedStoreName }) || storeOptions[0]?.store_code || "";
+  const defaultStoreName = storeOptions.find((store) => store.store_code === defaultStoreCode)?.name || selectedStoreName || storeOptions[0]?.name || "";
+  const [staffForm, setStaffForm] = useState({
+    id: "",
+    store_code: defaultStoreCode,
+    store_name: defaultStoreName,
+    employee_name: "",
+    role_name: roleOptions[0] || "",
+    sort_order: 999,
+    is_active: true,
+  });
+
+  useEffect(() => {
+    if (staffForm.store_code || !defaultStoreCode) return;
+    setStaffForm((current) => ({ ...current, store_code: defaultStoreCode, store_name: defaultStoreName }));
+  }, [defaultStoreCode, defaultStoreName, staffForm.store_code]);
+
+  const selectedFormStore = storeOptions.find((store) => store.store_code === staffForm.store_code);
+
+  function resetStaffForm() {
+    setStaffForm({
+      id: "",
+      store_code: defaultStoreCode,
+      store_name: defaultStoreName,
+      employee_name: "",
+      role_name: roleOptions[0] || "",
+      sort_order: 999,
+      is_active: true,
+    });
+  }
+
+  function editStaff(row) {
+    const code = canonicalStoreCode(row);
+    const store = storeOptions.find((item) => item.store_code === code);
+    setStaffForm({
+      id: row.id,
+      store_code: code,
+      store_name: store?.name || displayStoreName(row),
+      employee_name: row.employeeName,
+      role_name: row.role,
+      sort_order: row.sort_order || 999,
+      is_active: row.is_active !== false,
+    });
+  }
+
+  async function submitStaffForm(event) {
+    event.preventDefault();
+    const saved = await onSaveStaffMember?.({
+      ...staffForm,
+      store_name: selectedFormStore?.name || staffForm.store_name,
+      employee_name: staffForm.employee_name.trim(),
+      role_name: staffForm.role_name.trim(),
+    });
+    if (saved) resetStaffForm();
+  }
+
+  async function deleteStaff(row) {
+    if (!window.confirm("確定停用 " + row.employeeName + "？停用後排假表不會再列入此人員。")) return;
+    await onDeleteStaffMember?.(row);
+    if (staffForm.id === row.id) resetStaffForm();
+  }
+
   return (
     <div className="workspace module-grid">
       <section className="kpi-strip">
@@ -4258,80 +4334,6 @@ function SelectField({ label, value, options, onChange }) {
 }
 
 function IntegerField({ label, value, onChange }) {
-  const canEditStaff = ["ceo", "coo", "admin", "hq", "general_affairs"].includes(currentRole);
-  const storeOptions = useMemo(() => {
-    const fromStores = stores.map((store) => ({ store_code: canonicalStoreCode(store), name: store.name }));
-    const fromHours = storeHours.map((store) => ({ store_code: canonicalStoreCode(store), name: store.storeName }));
-    return [...fromStores, ...fromHours]
-      .filter((store) => store.store_code && store.name)
-      .filter((store, index, rows) => rows.findIndex((item) => item.store_code === store.store_code) === index);
-  }, [stores, storeHours]);
-  const roleOptions = useMemo(() => {
-    const roles = [...salaryRows.map((row) => row.role), "店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職後勤", "送貨人員"];
-    return roles.filter(Boolean).filter((roleName, index, rows) => rows.indexOf(roleName) === index);
-  }, [salaryRows]);
-  const defaultStoreCode = canonicalStoreCode(selectedStore) || canonicalStoreCode({ storeName: selectedStoreName }) || storeOptions[0]?.store_code || "";
-  const defaultStoreName = storeOptions.find((store) => store.store_code === defaultStoreCode)?.name || selectedStoreName || storeOptions[0]?.name || "";
-  const [staffForm, setStaffForm] = useState({
-    id: "",
-    store_code: defaultStoreCode,
-    store_name: defaultStoreName,
-    employee_name: "",
-    role_name: roleOptions[0] || "",
-    sort_order: 999,
-    is_active: true,
-  });
-
-  useEffect(() => {
-    if (staffForm.store_code || !defaultStoreCode) return;
-    setStaffForm((current) => ({ ...current, store_code: defaultStoreCode, store_name: defaultStoreName }));
-  }, [defaultStoreCode, defaultStoreName, staffForm.store_code]);
-
-  const selectedFormStore = storeOptions.find((store) => store.store_code === staffForm.store_code);
-
-  function resetStaffForm() {
-    setStaffForm({
-      id: "",
-      store_code: defaultStoreCode,
-      store_name: defaultStoreName,
-      employee_name: "",
-      role_name: roleOptions[0] || "",
-      sort_order: 999,
-      is_active: true,
-    });
-  }
-
-  function editStaff(row) {
-    const code = canonicalStoreCode(row);
-    const store = storeOptions.find((item) => item.store_code === code);
-    setStaffForm({
-      id: row.id,
-      store_code: code,
-      store_name: store?.name || displayStoreName(row),
-      employee_name: row.employeeName,
-      role_name: row.role,
-      sort_order: row.sort_order || 999,
-      is_active: row.is_active !== false,
-    });
-  }
-
-  async function submitStaffForm(event) {
-    event.preventDefault();
-    const saved = await onSaveStaffMember?.({
-      ...staffForm,
-      store_name: selectedFormStore?.name || staffForm.store_name,
-      employee_name: staffForm.employee_name.trim(),
-      role_name: staffForm.role_name.trim(),
-    });
-    if (saved) resetStaffForm();
-  }
-
-  async function deleteStaff(row) {
-    if (!window.confirm(`確定停用 ${row.employeeName}？停用後排假表不會再列入此人員。`)) return;
-    await onDeleteStaffMember?.(row);
-    if (staffForm.id === row.id) resetStaffForm();
-  }
-
   return (
     <label>
       {label}

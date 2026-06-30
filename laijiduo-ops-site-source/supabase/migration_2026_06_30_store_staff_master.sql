@@ -42,8 +42,8 @@ drop policy if exists "manage store staff by headquarters" on public.store_staff
 create policy "manage store staff by headquarters"
 on public.store_staff for all
 to authenticated
-using (public.current_profile_role()::text in ('ceo', 'coo', 'admin', 'hq', 'general_affairs'))
-with check (public.current_profile_role()::text in ('ceo', 'coo', 'admin', 'hq', 'general_affairs'));
+using (public.current_profile_role()::text in ('ceo', 'coo', 'cfo', 'admin', 'hq', 'cso', 'general_affairs'))
+with check (public.current_profile_role()::text in ('ceo', 'coo', 'cfo', 'admin', 'hq', 'cso', 'general_affairs'));
 
 grant select, insert, update, delete on table public.store_staff to authenticated;
 grant select, insert, update, delete on table public.store_staff to service_role;
