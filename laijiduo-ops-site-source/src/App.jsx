@@ -1,15 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   defaultSecuritySettings,
+  deleteDailyReport,
+  deleteDailyReports,
   fetchDailyReports,
   fetchHandovers,
   fetchHqDashboardData,
   fetchHqTasks,
   fetchInventoryCounts,
   fetchMonthlyLeavePlans,
+  fetchPreviousInventoryCounts,
   fetchProducts,
   fetchSecuritySettings,
   fetchStaffPerformance,
+  fetchStoreStaff,
   fetchStores,
   getSessionProfile,
   hasSupabaseConfig,
@@ -27,6 +31,8 @@ import {
   upsertMonthlyLeavePlans,
   upsertSecuritySettings,
   upsertStaffPerformance,
+  upsertStoreStaffMember,
+  deleteStoreStaffMember,
 } from "./lib/api";
 import {
   handoverSeed,
@@ -181,6 +187,10 @@ function canManageSecurity(roleName) {
   return ["ceo", "coo"].includes(roleName);
 }
 
+function canManageDailyReportData(roleName) {
+  return ["ceo", "coo", "admin", "hq"].includes(roleName);
+}
+
 const VARIABLE_UNIT_PRODUCTS = ["雞翅", "雞腿", "雞排", "腿排", "雞米花", "三角骨", "雞脖子", "地瓜"];
 const FIXED_PACK_PRODUCTS = ["米血", "花枝丸", "熱狗", "雞塊", "黑輪"];
 const POWDER_PRODUCTS = ["湯翅粉", "醃粉", "薯脆粉"];
@@ -229,13 +239,14 @@ function toManagementQuantity(row, field) {
     return boxes * 10 + packs;
   }
   const count = Number(row[field] || 0);
-  const unit = row[field === "incoming_count" ? "incoming_unit" : "stock_unit"] || defaultUnitForProduct(name);
+  const unitField = field === "incoming_count" ? "incoming_unit" : field === "previous_stock" ? "previous_stock_unit" : "stock_unit";
+  const unit = row[unitField] || defaultUnitForProduct(name);
   if (kind === "variable") return unit === "包" ? count / 3 : count;
   return count;
 }
 
 function usageCount(row) {
-  return toManagementQuantity(row, "incoming_count") - toManagementQuantity(row, "current_stock") - Number(row.loss_count || 0);
+  return toManagementQuantity(row, "previous_stock") - toManagementQuantity(row, "current_stock");
 }
 
 function addDays(dateText, days) {
@@ -296,6 +307,9 @@ function hasSubmittedReport(report) {
 function blankInventoryProduct(product) {
   return {
     ...product,
+    previous_stock: "",
+    previous_stock_boxes: "",
+    previous_stock_packs: "",
     current_stock: "",
     loss_count: "",
     incoming_count: "",
@@ -340,6 +354,7 @@ export function App() {
   const [handovers, setHandovers] = useState([]);
   const [performanceRows, setPerformanceRows] = useState([]);
   const [hqTasks, setHqTasks] = useState([]);
+  const [staffRoster, setStaffRoster] = useState([]);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -352,23 +367,26 @@ export function App() {
     setHandovers([]);
     setPerformanceRows([]);
     setHqTasks([]);
+    setStaffRoster([]);
     setSelectedStoreId("");
   }
 
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId, preferredReportDate = reportDate) {
-    const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows] = await Promise.all([
+    const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows, staffRows] = await Promise.all([
       fetchStores(),
       fetchProducts(),
       fetchDailyReports(preferredReportDate),
       fetchHandovers(today),
       fetchStaffPerformance(new Date().toISOString().slice(0, 7)),
       fetchHqTasks(),
+      fetchStoreStaff(),
     ]);
     setStores(storeRows);
     setProducts(productRows);
     setHandovers(handoverRows);
     setPerformanceRows(performanceData);
     setHqTasks(taskRows);
+    setStaffRoster(staffRows);
     const nextStoreId = nextProfile?.role === "store_manager"
       ? (nextProfile?.store_id || nextProfile?.store_code || "")
       : (nextProfile?.store_id || nextProfile?.store_code || preferredStoreId || storeRows[0]?.id || "");
@@ -405,6 +423,7 @@ export function App() {
           setHandovers(handoverSeed);
           setPerformanceRows(performanceSeed);
           setHqTasks(hqTaskSeed);
+          setStaffRoster(staffRosterSeed);
         }
       } catch (error) {
         setMessage(error.message);
@@ -471,13 +490,16 @@ export function App() {
   }
 
   async function handleSignOut() {
-    await signOut();
-    setProfile(hasSupabaseConfig ? null : mockProfile);
-    setRole("entry");
-    if (hasSupabaseConfig) {
-      clearWorkspaceState();
-      setSecuritySettings(defaultSecuritySettings);
+    try {
+      await signOut();
+    } catch (error) {
+      console.warn("Sign out failed, forcing local logout.", error);
     }
+    setProfile(null);
+    setRole("entry");
+    clearWorkspaceState();
+    setSecuritySettings(defaultSecuritySettings);
+    setMessage("");
   }
 
   function show(text) {
@@ -569,6 +591,107 @@ export function App() {
     }
   }
 
+  async function saveHqDailyReport(report, form, inventoryRows) {
+    if (!canManageDailyReportData(currentRole)) {
+      show("此帳號沒有總部修改每日資料權限");
+      return false;
+    }
+    if (!report?.store_id) {
+      show("請先選擇要修改的門店紀錄");
+      return false;
+    }
+    try {
+      const revenue1900ToClose = Math.max(
+        0,
+        numericValue(form.full_day_revenue) -
+          numericValue(form.opened_to_1400_revenue) -
+          numericValue(form.revenue_1400_to_1900),
+      );
+      const payload = {
+        store_id: report.store_id,
+        report_date: report.report_date || reportDate,
+        opened_to_1400_revenue: numericValue(form.opened_to_1400_revenue),
+        revenue_1400_to_1900: numericValue(form.revenue_1400_to_1900),
+        revenue_1900_to_close: revenue1900ToClose,
+        cash_difference: numericValue(form.cash_difference),
+        manager_note: form.manager_note || "",
+        status: "submitted",
+        submitted_at: new Date().toISOString(),
+        submitted_by: profile?.id,
+      };
+      const saved = await upsertDailyReport(payload);
+      await upsertInventoryCounts(
+        saved.id,
+        inventoryRows.map((row) => ({
+          product_id: row.product_id || row.id,
+          current_stock: numericValue(row.current_stock),
+          safety_stock: 0,
+          loss_count: numericValue(row.loss_count),
+          incoming_count: numericValue(row.incoming_count),
+          stock_unit: row.stock_unit || defaultUnitForProduct(row.name),
+          incoming_unit: row.incoming_unit || defaultUnitForProduct(row.name),
+          current_stock_boxes: numericValue(row.current_stock_boxes),
+          current_stock_packs: numericValue(row.current_stock_packs),
+          incoming_boxes: numericValue(row.incoming_boxes),
+          incoming_packs: numericValue(row.incoming_packs),
+          incoming_source: row.incoming_source || "廠商進貨",
+          transfer_note: row.transfer_note || "",
+          is_shortage: false,
+        })),
+      );
+      await loadWorkspace(profile, report.store_id, reportDate);
+      show("總部資料已儲存");
+      return true;
+    } catch (error) {
+      show(`總部資料儲存失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function clearHqDailyReport(report) {
+    if (!canManageDailyReportData(currentRole)) {
+      show("此帳號沒有總部清除每日資料權限");
+      return false;
+    }
+    if (!report?.id) {
+      show("此筆尚無回報資料可清除");
+      return false;
+    }
+    if (!window.confirm(`確定清除 ${report.name} ${report.report_date} 的每日營運回報與庫存紀錄？`)) return false;
+    try {
+      await deleteDailyReport(report.id);
+      await loadWorkspace(profile, report.store_id, reportDate);
+      show("每日營運資料已清除");
+      return true;
+    } catch (error) {
+      show(`清除失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function clearHqDailyReports(reportRows) {
+    if (!canManageDailyReportData(currentRole)) {
+      show("此帳號沒有總部清除每日資料權限");
+      return false;
+    }
+    const targets = (reportRows || []).filter((row) => row.id);
+    if (!targets.length) {
+      show("目前查詢範圍沒有可清除的回報資料");
+      return false;
+    }
+    const storeNames = Array.from(new Set(targets.map((row) => row.name))).slice(0, 5).join("、");
+    if (!window.confirm(`確定一鍵清除目前查詢範圍的 ${targets.length} 筆每日營運回報？包含：${storeNames}${targets.length > 5 ? "..." : ""}`)) return false;
+    try {
+      await deleteDailyReports(targets.map((row) => row.id));
+      await loadWorkspace(profile, selectedStoreId, reportDate);
+      show(`已一鍵清除 ${targets.length} 筆每日營運資料`);
+      return true;
+    } catch (error) {
+      show(`一鍵清除失敗：${error.message}`);
+      return false;
+    }
+  }
+
   async function saveHandover(form) {
     if (!selectedReport?.store_id) {
       show("請先選擇門店");
@@ -644,18 +767,45 @@ export function App() {
     }
   }
 
-  async function handleReview(action, status) {
-    if (!selectedReport?.id) {
-      show("此門店尚未送出回報");
+  async function handleReview(action, status, targetReport = selectedReport) {
+    if (!targetReport?.id) {
+      show("此門店尚未送出回報，無法審核");
       return false;
     }
     try {
-      await reviewReport(selectedReport.id, action, "", status);
-      await loadWorkspace(profile, selectedReport.store_id);
-      show("審核狀態已儲存完成");
+      await reviewReport(targetReport.id, action, "", status);
+      await loadWorkspace(profile, targetReport.store_id, targetReport.report_date || reportDate);
+      show("營運審核已完成");
       return true;
     } catch (error) {
-      show(`審核失敗：${error.message}`);
+      show(`營運審核失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function saveStaffMember(form) {
+    try {
+      await upsertStoreStaffMember(form);
+      const nextRows = await fetchStoreStaff();
+      setStaffRoster(nextRows);
+      show("人員主檔已更新，排假表已同步使用最新名單");
+      return true;
+    } catch (error) {
+      show(`人員主檔儲存失敗：${error.message}`);
+      return false;
+    }
+  }
+
+  async function removeStaffMember(staffMember) {
+    if (!staffMember?.id && !staffMember) return false;
+    try {
+      await deleteStoreStaffMember(staffMember);
+      const nextRows = await fetchStoreStaff();
+      setStaffRoster(nextRows);
+      show("人員已停用，排假表已同步更新");
+      return true;
+    } catch (error) {
+      show(`人員停用失敗：${error.message}`);
       return false;
     }
   }
@@ -695,7 +845,7 @@ export function App() {
 
   if (loading) return <main className="loading">載入中...</main>;
 
-  if (!profile && hasSupabaseConfig) {
+  if (!profile) {
     return <LoginScreen onLogin={handleLogin} message={message} />;
   }
 
@@ -744,7 +894,19 @@ export function App() {
         )}
         {!activeModuleAllowed && <AccessDeniedModule roleName={currentRole} />}
         {activeModuleAllowed && activeModule === "ops" && role === "hq" && (
-          <HqDashboard reports={reports} products={products} handovers={handovers} performanceRows={performanceRows} canEditTargets={canEditMonthlyTargets(currentRole)} onSelect={setSelectedStoreId} />
+          <HqDashboard
+            reports={reports}
+            products={products}
+            handovers={handovers}
+            performanceRows={performanceRows}
+            canEditTargets={canEditMonthlyTargets(currentRole)}
+            canManageReports={canManageDailyReportData(currentRole)}
+            onSelect={setSelectedStoreId}
+            onSaveReport={saveHqDailyReport}
+            onDeleteReport={clearHqDailyReport}
+            onBulkDeleteReports={clearHqDailyReports}
+            onNotify={show}
+          />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "store" && selectedReport && (
           <StoreReport report={selectedReport} reportDate={reportDate} products={products} onDateChange={changeReportDate} onSave={saveReport} />
@@ -781,7 +943,10 @@ export function App() {
             selectedStoreId={selectedStoreId}
             salaryRows={salaryStructureSeed}
             storeHours={storeHoursSeed}
-            staffRoster={staffRosterSeed}
+            staffRoster={staffRoster}
+            currentRole={currentRole}
+            onSaveStaffMember={saveStaffMember}
+            onDeleteStaffMember={removeStaffMember}
           />
         )}
         {activeModuleAllowed && activeModule === "system" && (
@@ -794,7 +959,7 @@ export function App() {
           <ScheduleModule
             scheduleRows={scheduleSeed}
             storeHours={storeHoursSeed}
-            staffRoster={staffRosterSeed}
+            staffRoster={staffRoster}
             salaryRows={salaryStructureSeed}
             stores={stores}
             profile={profile}
@@ -815,7 +980,7 @@ export function App() {
             reports={reports}
             handovers={handovers}
             performanceRows={performanceRows}
-            staffRoster={staffRosterSeed}
+            staffRoster={staffRoster}
             scheduleRows={scheduleSeed}
             hqTasks={hqTasks}
             onSelect={setSelectedStoreId}
@@ -1094,7 +1259,7 @@ function Sidebar({
         <strong>{ROLE_LABELS[currentRole] || currentRole}</strong>
         <p>正式部署後，角色與可查看門店會由 Supabase Auth 與 profiles 資料表控制。</p>
       </div>
-      <button onClick={onSignOut}>登出 / 回入口</button>
+      <button onClick={onSignOut}>登出 / 回登入頁</button>
     </aside>
   );
 }
@@ -1153,12 +1318,13 @@ function AccessDeniedModule({ roleName }) {
   );
 }
 
-function HqDashboard({ reports, products, handovers, performanceRows, canEditTargets, onSelect }) {
+function HqDashboard({ reports, products, handovers, performanceRows, canEditTargets, canManageReports, onSelect, onSaveReport, onDeleteReport, onBulkDeleteReports, onNotify }) {
   const [periodRows, setPeriodRows] = useState([]);
   const [usageRows, setUsageRows] = useState([]);
   const [targetDrafts, setTargetDrafts] = useState({});
   const [targetMessage, setTargetMessage] = useState("");
   const [savingTargetId, setSavingTargetId] = useState("");
+  const [refreshToken, setRefreshToken] = useState(0);
   const weekRange = useMemo(() => getWeekRange(today), []);
   const monthRange = useMemo(() => getMonthRange(today), []);
   const fourWeekRanges = useMemo(() => getFourWeekRanges(today), []);
@@ -1183,7 +1349,7 @@ function HqDashboard({ reports, products, handovers, performanceRows, canEditTar
     return () => {
       active = false;
     };
-  }, [periodStart, reports]);
+  }, [periodStart, reports, refreshToken]);
 
   useEffect(() => {
     setTargetDrafts(
@@ -1248,11 +1414,22 @@ function HqDashboard({ reports, products, handovers, performanceRows, canEditTar
           <Metric label="每日營收" value={money(revenueSummary.daily)} detail={`營業日 ${today}`} tone="hot" />
           <Metric label="一週營收" value={money(revenueSummary.week)} detail={`${weekRange.start} 至 ${weekRange.end}`} />
           <Metric label="當月營收" value={money(revenueSummary.month)} detail={`${monthRange.start} 至 ${monthRange.end}`} />
-          <Metric label="每日使用量" value={`${usageSummary.daily} 件`} detail="進貨-現存-報廢" tone="warn" />
+          <Metric label="每日使用量" value={`${usageSummary.daily} 件`} detail="昨日庫存 - 今日庫存" tone="warn" />
           <Metric label="一週使用量" value={`${usageSummary.week} 件`} detail="週一至週日" />
           <Metric label="當月使用量" value={`${usageSummary.month} 件`} detail="本月累計" />
         </div>
       </section>
+      <HqReportRecords
+        reports={periodRows.length ? periodRows : reports}
+        products={products}
+        canManageReports={canManageReports}
+        onSelect={onSelect}
+        onSaveReport={onSaveReport}
+        onDeleteReport={onDeleteReport}
+        onBulkDeleteReports={onBulkDeleteReports}
+        onNotify={onNotify}
+        onRefresh={() => setRefreshToken((value) => value + 1)}
+      />
       <section className="panel wide">
         <div className="panel-head">
           <div>
@@ -1415,6 +1592,247 @@ function HqDashboard({ reports, products, handovers, performanceRows, canEditTar
         </div>
       </section>
     </div>
+  );
+}
+
+function mergeInventoryRows(products, savedRows, previousRows) {
+  const savedByProduct = new Map(savedRows.map((row) => [row.product_id, row]));
+  const previousByProduct = new Map(previousRows.map((row) => [row.product_id, row]));
+  return products.map((product) => {
+    const saved = savedByProduct.get(product.id);
+    const previous = previousByProduct.get(product.id);
+    return {
+      ...product,
+      ...blankInventoryProduct(product),
+      ...saved,
+      previous_stock: previous?.current_stock ?? "",
+      previous_stock_boxes: previous?.current_stock_boxes ?? "",
+      previous_stock_packs: previous?.current_stock_packs ?? "",
+      previous_stock_unit: previous?.stock_unit || previous?.unit || product.unit || defaultUnitForProduct(product.name),
+    };
+  });
+}
+
+function HqReportRecords({ reports, products, canManageReports, onSelect, onSaveReport, onDeleteReport, onBulkDeleteReports, onNotify, onRefresh }) {
+  const defaultMonth = getMonthRange(today);
+  const [dateFrom, setDateFrom] = useState(defaultMonth.start);
+  const [dateTo, setDateTo] = useState(today);
+  const [storeFilter, setStoreFilter] = useState("all");
+  const [records, setRecords] = useState(reports);
+  const [selected, setSelected] = useState(null);
+  const [form, setForm] = useState(null);
+  const [inventory, setInventory] = useState([]);
+  const [tab, setTab] = useState("sales");
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setRecords(reports);
+  }, [reports]);
+
+  async function loadRecords() {
+    setLoading(true);
+    try {
+      const { reports: rows } = await fetchHqDashboardData(dateFrom, dateTo);
+      setRecords(rows);
+      onNotify?.("各門店回報紀錄已更新");
+    } catch (error) {
+      onNotify?.(`回報紀錄讀取失敗：${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openEdit(report) {
+    if (!report?.id) {
+      onNotify?.("此門店尚無回報資料可修改");
+      return;
+    }
+    setSelected(report);
+    setTab("sales");
+    setForm({
+      opened_to_1400_revenue: report.opened_to_1400_revenue ?? "",
+      revenue_1400_to_1900: report.revenue_1400_to_1900 ?? "",
+      full_day_revenue: totalRevenue(report) || "",
+      cash_difference: report.cash_difference ?? "",
+      manager_note: report.manager_note || "",
+    });
+    setInventory(products.map(blankInventoryProduct));
+    try {
+      const [savedRows, previousRows] = await Promise.all([
+        fetchInventoryCounts(report.id),
+        fetchPreviousInventoryCounts(report.store_id, report.report_date),
+      ]);
+      setInventory(mergeInventoryRows(products, savedRows, previousRows));
+    } catch (error) {
+      onNotify?.(`庫存資料讀取失敗：${error.message}`);
+    }
+  }
+
+  async function saveSelected() {
+    if (!selected || !form) return;
+    setSaving(true);
+    try {
+      const ok = await onSaveReport(selected, form, inventory);
+      if (ok) {
+        setSelected(null);
+        await loadRecords();
+        onRefresh?.();
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function clearSelected(report) {
+    const ok = await onDeleteReport(report);
+    if (ok) {
+      setRecords((currentRows) => currentRows.filter((row) => row.id !== report.id));
+      if (selected?.id === report.id) {
+        setSelected(null);
+        setForm(null);
+        setInventory([]);
+      }
+      onRefresh?.();
+    }
+  }
+
+  async function clearVisibleRecords() {
+    if (!canManageReports) {
+      onNotify?.("此帳號沒有總部清除每日資料權限");
+      return;
+    }
+    const targetIds = new Set(visibleRows.map((row) => row.id).filter(Boolean));
+    const ok = await onBulkDeleteReports?.(visibleRows);
+    if (ok) {
+      setRecords((currentRows) => currentRows.filter((row) => !targetIds.has(row.id)));
+      if (selected?.id && targetIds.has(selected.id)) {
+        setSelected(null);
+        setForm(null);
+        setInventory([]);
+      }
+      onRefresh?.();
+    }
+  }
+
+  const storeOptions = Array.from(new Map(records.map((row) => [row.store_id, row.name])).entries());
+  const visibleRows = buildDailyRevenueRows(records)
+    .filter((row) => storeFilter === "all" || row.store_id === storeFilter);
+  const computedCloseRevenue = form
+    ? Math.max(0, numericValue(form.full_day_revenue) - numericValue(form.opened_to_1400_revenue) - numericValue(form.revenue_1400_to_1900))
+    : 0;
+  const revenueInvalid = form
+    ? numericValue(form.full_day_revenue) < numericValue(form.opened_to_1400_revenue) + numericValue(form.revenue_1400_to_1900)
+    : false;
+
+  return (
+    <section className="panel wide hq-report-records">
+      <div className="panel-head">
+        <div>
+          <h2>各門店回報紀錄</h2>
+          <p>總部可查詢各門店每日營收、庫存、調貨紀錄，並依權限修改或清除單日資料。</p>
+        </div>
+        <span className="chip neutral">使用量 = 昨日庫存 - 今日庫存</span>
+      </div>
+      <div className="record-toolbar">
+        <label>
+          起日
+          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+        </label>
+        <label>
+          迄日
+          <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+        </label>
+        <label>
+          門店
+          <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
+            <option value="all">全部門店</option>
+            {storeOptions.map(([storeId, storeName]) => <option key={storeId} value={storeId}>{storeName}</option>)}
+          </select>
+        </label>
+        <button className="primary" onClick={loadRecords} disabled={loading}>{loading ? "讀取中..." : "查詢紀錄"}</button>
+        <button className="danger" onClick={clearVisibleRecords} disabled={!canManageReports || !visibleRows.some((row) => row.id)}>一鍵清除</button>
+      </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>門店</th>
+              <th>14:00</th>
+              <th>19:00</th>
+              <th>打烊</th>
+              <th>總營收</th>
+              <th>現金差異</th>
+              <th>狀態</th>
+              <th>總部操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((report) => (
+              <tr key={`${report.store_id}-${report.report_date}`} onClick={() => onSelect?.(report.store_id)}>
+                <td>{report.report_date}</td>
+                <td><strong>{report.name}</strong><span>{report.store_code || report.manager_name}</span></td>
+                <td>{money(report.opened_to_1400_revenue)}</td>
+                <td>{money(report.revenue_1400_to_1900)}</td>
+                <td>{money(report.revenue_1900_to_close)}</td>
+                <td><strong>{money(totalRevenue(report))}</strong></td>
+                <td className={report.cash_difference < 0 ? "negative" : ""}>{report.cash_difference ?? "-"}</td>
+                <td><span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span></td>
+                <td className="row-actions">
+                  <button type="button" disabled={!canManageReports || !report.id} onClick={(event) => { event.stopPropagation(); openEdit(report); }}>修改</button>
+                  <button type="button" className="danger" disabled={!canManageReports || !report.id} onClick={(event) => { event.stopPropagation(); clearSelected(report); }}>清除</button>
+                </td>
+              </tr>
+            ))}
+            {!visibleRows.length && <tr><td colSpan="9">目前查無回報紀錄</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {selected && form && (
+        <div className="modal-backdrop">
+          <section className="report-edit-dialog">
+            <div className="panel-head">
+              <div>
+                <h2>{selected.name} {selected.report_date}</h2>
+                <p>庫存為當日盤點後剩餘數，調貨/進貨僅作來源紀錄，使用量由昨日庫存減今日庫存。</p>
+              </div>
+              <button type="button" onClick={() => setSelected(null)}>關閉</button>
+            </div>
+            <div className="segments">
+              <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
+              <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
+              <button className={tab === "incoming" ? "active" : ""} onClick={() => setTab("incoming")}>調貨/進貨</button>
+            </div>
+            {tab === "sales" ? (
+              <div className="mobile-stack">
+                <RevenueInput label="14:00" helper="開店至 14:00" value={form.opened_to_1400_revenue} onChange={(value) => setForm({ ...form, opened_to_1400_revenue: value })} />
+                <RevenueInput label="19:00" helper="14:00 至 19:00" value={form.revenue_1400_to_1900} onChange={(value) => setForm({ ...form, revenue_1400_to_1900: value })} />
+                <RevenueInput label="全日總營收" helper="當日打烊總營收" value={form.full_day_revenue} onChange={(value) => setForm({ ...form, full_day_revenue: value })} />
+                <div className="input-card calculated-card">
+                  <span>19:00 後至打烊<small>全日總營收 - 14:00 - 19:00</small></span>
+                  <strong>{money(computedCloseRevenue)}</strong>
+                </div>
+                <RevenueInput label="現金差異" helper="盤點現金差異" value={form.cash_difference} onChange={(value) => setForm({ ...form, cash_difference: value })} />
+                <label className="note-box">
+                  <span>門店備註</span>
+                  <textarea value={form.manager_note} onChange={(event) => setForm({ ...form, manager_note: event.target.value })} />
+                </label>
+                {revenueInvalid && <div className="alert-line danger">全日總營收不可小於 14:00 與 19:00 加總。</div>}
+              </div>
+            ) : tab === "inventory" ? (
+              <InventoryEditor rows={inventory} onChange={setInventory} />
+            ) : (
+              <IncomingEditor rows={inventory} onChange={setInventory} />
+            )}
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setSelected(null)}>取消</button>
+              <button type="button" className="primary" disabled={saving || revenueInvalid} onClick={saveSelected}>{saving ? "儲存中..." : "儲存修改"}</button>
+            </div>
+          </section>
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -1666,7 +2084,7 @@ function buildOperationsCsv({ reports, periodReports, inventoryRows, products, w
   const weeklyRevenueRows = aggregateRevenueByStore(weeklyReports).map((row) => aggregateRevenueRow("每週", `${weekRange.start} 至 ${weekRange.end}`, row));
   const monthlyRevenueRows = aggregateRevenueByStore(monthlyReports).map((row) => aggregateRevenueRow("每月", `${monthRange.start} 至 ${monthRange.end}`, row));
 
-  const usageHeaders = ["期間", "日期範圍", "日期", "門店", "品項", "進貨", "進貨來源", "現存庫存", "報廢", "消耗", "備註"];
+  const usageHeaders = ["期間", "日期範圍", "日期", "門店", "品項", "調貨/進貨", "來源", "昨日庫存", "今日盤點庫存", "報廢", "使用量", "備註"];
   const dailyUsageRows = buildUsageDetailRows({
     label: "每日",
     rangeLabel: today,
@@ -1777,7 +2195,8 @@ function buildUsageDetailRows({ label, rangeLabel, reports, inventoryRows, produ
         productName,
         Number(row.incoming_count || 0),
         row.incoming_source || "廠商進貨",
-        Number(row.current_stock || 0),
+        toManagementQuantity(row, "previous_stock"),
+        toManagementQuantity(row, "current_stock"),
         Number(row.loss_count || 0),
         usageCount(row),
         row.transfer_note || "",
@@ -1797,6 +2216,7 @@ function buildUsageDetailRows({ label, rangeLabel, reports, inventoryRows, produ
         incoming: 0,
         sourceSet: new Set(),
         currentStock: 0,
+        previousStock: 0,
         loss: 0,
         usage: 0,
         noteSet: new Set(),
@@ -1806,11 +2226,12 @@ function buildUsageDetailRows({ label, rangeLabel, reports, inventoryRows, produ
     item.incoming += Number(row.incoming_count || 0);
     item.loss += Number(row.loss_count || 0);
     item.usage += usageCount(row);
+    item.previousStock += toManagementQuantity(row, "previous_stock");
     if (row.incoming_source) item.sourceSet.add(row.incoming_source);
     if (row.transfer_note) item.noteSet.add(row.transfer_note);
     if (!item.latestDate || report.report_date >= item.latestDate) {
       item.latestDate = report.report_date;
-      item.currentStock = Number(row.current_stock || 0);
+      item.currentStock = toManagementQuantity(row, "current_stock");
     }
   });
 
@@ -1822,6 +2243,7 @@ function buildUsageDetailRows({ label, rangeLabel, reports, inventoryRows, produ
     item.productName,
     item.incoming,
     Array.from(item.sourceSet).join(" / ") || "廠商進貨",
+    item.previousStock,
     item.currentStock,
     item.loss,
     item.usage,
@@ -1937,7 +2359,7 @@ function applyPerformanceCalculation(form, patch = {}) {
   };
 }
 
-function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster }) {
+function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster, currentRole, onSaveStaffMember, onDeleteStaffMember }) {
   const selectedStore = stores.find((store) => store.store_id === selectedStoreId || store.id === selectedStoreId);
   const normalizedSelectedName = normalizeStoreName(selectedStore?.name);
   const selectedStoreName = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizedSelectedName)?.storeName || storeHours[0]?.storeName || "";
@@ -1960,7 +2382,85 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
         <Metric label="高峰需人力" value={`${storeHours.reduce((sum, row) => sum + Number(row.duty_staff || 0), 0)} 人`} detail="各店值班人員合計" />
       </section>
 
-      <section className="panel wide">
+            <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>總部人員主檔維護</h2>
+            <p>總部可直接編輯各店人員姓名與職稱；儲存後會同步成為排假表的人員來源。</p>
+          </div>
+          <div className="panel-actions">
+            <button type="button" onClick={resetStaffForm}>新增人員</button>
+          </div>
+        </div>
+        {canEditStaff ? (
+          <form className="staff-admin-grid" onSubmit={submitStaffForm}>
+            <label>
+              門店
+              <select
+                value={staffForm.store_code}
+                onChange={(event) => {
+                  const store = storeOptions.find((item) => item.store_code === event.target.value);
+                  setStaffForm({ ...staffForm, store_code: event.target.value, store_name: store?.name || "" });
+                }}
+              >
+                {storeOptions.map((store) => (
+                  <option key={store.store_code} value={store.store_code}>{store.store_code} {store.name}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              人員姓名
+              <input value={staffForm.employee_name} onChange={(event) => setStaffForm({ ...staffForm, employee_name: event.target.value })} placeholder="輸入姓名" />
+            </label>
+            <label>
+              職稱
+              <select value={staffForm.role_name} onChange={(event) => setStaffForm({ ...staffForm, role_name: event.target.value })}>
+                {roleOptions.map((roleName) => <option key={roleName} value={roleName}>{roleName}</option>)}
+              </select>
+            </label>
+            <label>
+              排序
+              <input type="number" min="1" value={staffForm.sort_order} onChange={(event) => setStaffForm({ ...staffForm, sort_order: event.target.value })} />
+            </label>
+            <div className="staff-admin-actions">
+              <button className="primary" type="submit">{staffForm.id ? "儲存修改" : "新增到門店"}</button>
+              {staffForm.id && <button type="button" onClick={resetStaffForm}>取消編輯</button>}
+            </div>
+          </form>
+        ) : (
+          <p className="empty-text">此帳號可查看人員主檔；新增、修改與停用需由總部授權角色操作。</p>
+        )}
+        <div className="table-wrap compact">
+          <table>
+            <thead>
+              <tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>排序</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              {staffRoster
+                .slice()
+                .sort((a, b) => `${canonicalStoreCode(a)}-${a.sort_order || 999}-${a.employeeName}`.localeCompare(`${canonicalStoreCode(b)}-${b.sort_order || 999}-${b.employeeName}`, "zh-Hant"))
+                .map((row) => (
+                  <tr key={row.id}>
+                    <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
+                    <td>{row.employeeName}</td>
+                    <td>{row.role}</td>
+                    <td>{row.sort_order || "-"}</td>
+                    <td>
+                      {canEditStaff ? (
+                        <div className="inline-actions">
+                          <button type="button" onClick={() => editStaff(row)}>編輯</button>
+                          <button type="button" onClick={() => deleteStaff(row)}>停用</button>
+                        </div>
+                      ) : "-"}
+                    </td>
+                  </tr>
+                ))}
+              {!staffRoster.length && <tr><td colSpan="5">尚無人員資料，請由總部新增。</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+<section className="panel wide">
         <div className="panel-head">
           <div>
             <h2>各店營業與尖峰時間</h2>
@@ -3758,6 +4258,80 @@ function SelectField({ label, value, options, onChange }) {
 }
 
 function IntegerField({ label, value, onChange }) {
+  const canEditStaff = ["ceo", "coo", "admin", "hq", "general_affairs"].includes(currentRole);
+  const storeOptions = useMemo(() => {
+    const fromStores = stores.map((store) => ({ store_code: canonicalStoreCode(store), name: store.name }));
+    const fromHours = storeHours.map((store) => ({ store_code: canonicalStoreCode(store), name: store.storeName }));
+    return [...fromStores, ...fromHours]
+      .filter((store) => store.store_code && store.name)
+      .filter((store, index, rows) => rows.findIndex((item) => item.store_code === store.store_code) === index);
+  }, [stores, storeHours]);
+  const roleOptions = useMemo(() => {
+    const roles = [...salaryRows.map((row) => row.role), "店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職後勤", "送貨人員"];
+    return roles.filter(Boolean).filter((roleName, index, rows) => rows.indexOf(roleName) === index);
+  }, [salaryRows]);
+  const defaultStoreCode = canonicalStoreCode(selectedStore) || canonicalStoreCode({ storeName: selectedStoreName }) || storeOptions[0]?.store_code || "";
+  const defaultStoreName = storeOptions.find((store) => store.store_code === defaultStoreCode)?.name || selectedStoreName || storeOptions[0]?.name || "";
+  const [staffForm, setStaffForm] = useState({
+    id: "",
+    store_code: defaultStoreCode,
+    store_name: defaultStoreName,
+    employee_name: "",
+    role_name: roleOptions[0] || "",
+    sort_order: 999,
+    is_active: true,
+  });
+
+  useEffect(() => {
+    if (staffForm.store_code || !defaultStoreCode) return;
+    setStaffForm((current) => ({ ...current, store_code: defaultStoreCode, store_name: defaultStoreName }));
+  }, [defaultStoreCode, defaultStoreName, staffForm.store_code]);
+
+  const selectedFormStore = storeOptions.find((store) => store.store_code === staffForm.store_code);
+
+  function resetStaffForm() {
+    setStaffForm({
+      id: "",
+      store_code: defaultStoreCode,
+      store_name: defaultStoreName,
+      employee_name: "",
+      role_name: roleOptions[0] || "",
+      sort_order: 999,
+      is_active: true,
+    });
+  }
+
+  function editStaff(row) {
+    const code = canonicalStoreCode(row);
+    const store = storeOptions.find((item) => item.store_code === code);
+    setStaffForm({
+      id: row.id,
+      store_code: code,
+      store_name: store?.name || displayStoreName(row),
+      employee_name: row.employeeName,
+      role_name: row.role,
+      sort_order: row.sort_order || 999,
+      is_active: row.is_active !== false,
+    });
+  }
+
+  async function submitStaffForm(event) {
+    event.preventDefault();
+    const saved = await onSaveStaffMember?.({
+      ...staffForm,
+      store_name: selectedFormStore?.name || staffForm.store_name,
+      employee_name: staffForm.employee_name.trim(),
+      role_name: staffForm.role_name.trim(),
+    });
+    if (saved) resetStaffForm();
+  }
+
+  async function deleteStaff(row) {
+    if (!window.confirm(`確定停用 ${row.employeeName}？停用後排假表不會再列入此人員。`)) return;
+    await onDeleteStaffMember?.(row);
+    if (staffForm.id === row.id) resetStaffForm();
+  }
+
   return (
     <label>
       {label}
@@ -3811,14 +4385,12 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
     let active = true;
     async function loadInventory() {
       try {
-        const savedRows = await fetchInventoryCounts(report.id);
+        const [savedRows, previousRows] = await Promise.all([
+          fetchInventoryCounts(report.id),
+          fetchPreviousInventoryCounts(report.store_id, reportDate),
+        ]);
         if (!active) return;
-        const byProduct = new Map(savedRows.map((row) => [row.product_id, row]));
-        setInventory(products.map((product) => {
-          const savedRow = byProduct.get(product.id);
-          if (savedRow) return { ...product, ...savedRow };
-          return blankInventoryProduct(product);
-        }));
+        setInventory(mergeInventoryRows(products, savedRows, previousRows));
       } catch {
         if (active) {
           setInventory(products.map(blankInventoryProduct));
@@ -3829,7 +4401,7 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
     return () => {
       active = false;
     };
-  }, [products, report.id]);
+  }, [products, report.id, report.store_id, reportDate]);
 
   async function submit() {
     setSaving(true);
@@ -3934,7 +4506,7 @@ function InventoryEditor({ rows, onChange }) {
           <div className={`stock-row ${kind === "powder" ? "stock-row-powder" : "stock-row-wide"}`} key={row.id}>
             <div>
               <strong>{row.name}</strong>
-              <span>進貨 {formatInventoryAmount(row, "incoming")} · 使用量 {numberText(usageCount(row))} {displayUnitForProduct(row.name)}</span>
+              <span>昨日 {formatInventoryAmount(row, "previous")} · 今日盤點 {formatInventoryAmount(row, "stock")} · 使用量 {numberText(usageCount(row))} {displayUnitForProduct(row.name)}</span>
             </div>
             {kind === "powder" ? (
               <>
@@ -3967,7 +4539,7 @@ function IncomingEditor({ rows, onChange }) {
           <div className={`stock-row ${kind === "powder" ? "stock-row-incoming-powder" : "stock-row-incoming"}`} key={row.id}>
             <div>
               <strong>{row.name}</strong>
-              <span>請填今日進貨數量、單位與來源。</span>
+              <span>請登錄當日廠商進貨或店間調貨；這是調貨紀錄，不列入使用量。</span>
             </div>
             {kind === "powder" ? (
               <>
@@ -3976,7 +4548,7 @@ function IncomingEditor({ rows, onChange }) {
               </>
             ) : (
               <>
-                <NumberField label="進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
+                <NumberField label="調貨/進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
                 <UnitField row={row} field="incoming_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_unit: value })} />
               </>
             )}
@@ -4008,7 +4580,7 @@ function NumberField({ label, value, onChange }) {
   return (
     <label className="mini-field">
       <span>{label}</span>
-      <input type="number" step="0.01" value={numericInputValue(value)} onChange={(event) => onChange(event.target.value)} />
+      <input type="number" step="0.1" inputMode="decimal" value={numericInputValue(value)} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
@@ -4037,15 +4609,15 @@ function UnitField({ row, field, onChange }) {
 function formatInventoryAmount(row, prefix) {
   const name = row.name || "";
   if (productKind(name) === "powder") {
-    const boxes = Number(row[`${prefix === "incoming" ? "incoming" : "current_stock"}_boxes`] || 0);
-    const packs = Number(row[`${prefix === "incoming" ? "incoming" : "current_stock"}_packs`] || 0);
+    const key = prefix === "incoming" ? "incoming" : prefix === "previous" ? "previous_stock" : "current_stock";
+    const boxes = Number(row[`${key}_boxes`] || 0);
+    const packs = Number(row[`${key}_packs`] || 0);
     return `${numberText(boxes)} 箱 / ${numberText(packs)} 包`;
   }
-  const field = prefix === "incoming" ? "incoming_count" : "current_stock";
-  const unitField = prefix === "incoming" ? "incoming_unit" : "stock_unit";
+  const field = prefix === "incoming" ? "incoming_count" : prefix === "previous" ? "previous_stock" : "current_stock";
+  const unitField = prefix === "incoming" ? "incoming_unit" : prefix === "previous" ? "previous_stock_unit" : "stock_unit";
   return `${numberText(row[field])} ${row[unitField] || defaultUnitForProduct(name)}`;
 }
-
 function updateInventoryRow(rows, onChange, index, row, patch) {
   const next = [...rows];
   next[index] = { ...row, ...patch };
@@ -4053,75 +4625,145 @@ function updateInventoryRow(rows, onChange, index, row, patch) {
 }
 
 function ReviewConsole({ reports, report, products, onSelect, onReview }) {
-  const [inventory, setInventory] = useState(products);
+  const defaultMonth = getMonthRange(today);
+  const [dateFrom, setDateFrom] = useState(defaultMonth.start);
+  const [dateTo, setDateTo] = useState(today);
+  const [storeFilter, setStoreFilter] = useState("all");
+  const [records, setRecords] = useState(reports);
+  const [selectedReviewReport, setSelectedReviewReport] = useState(report);
+  const [inventory, setInventory] = useState(products.map(blankInventoryProduct));
+  const [loading, setLoading] = useState(false);
   const [reviewing, setReviewing] = useState(false);
+  const reviewableRows = buildDailyRevenueRows(records).filter(hasSubmittedReport);
+  const visibleRows = reviewableRows.filter((item) => storeFilter === "all" || item.store_id === storeFilter);
+  const activeReport = selectedReviewReport?.id ? selectedReviewReport : visibleRows[0] || report;
+
+  useEffect(() => {
+    setRecords(reports);
+    const nextReport = reports.find((item) => item.store_id === report?.store_id && hasSubmittedReport(item)) || reports.find(hasSubmittedReport) || report;
+    setSelectedReviewReport(nextReport);
+  }, [reports, report]);
 
   useEffect(() => {
     let active = true;
     async function loadInventory() {
+      if (!activeReport?.id) {
+        setInventory(products.map(blankInventoryProduct));
+        return;
+      }
       try {
-        const savedRows = await fetchInventoryCounts(report.id);
+        const [savedRows, previousRows] = await Promise.all([
+          fetchInventoryCounts(activeReport.id),
+          fetchPreviousInventoryCounts(activeReport.store_id, activeReport.report_date),
+        ]);
         if (!active) return;
-        const byProduct = new Map(savedRows.map((row) => [row.product_id, row]));
-        setInventory(products.map((product) => ({ ...product, ...byProduct.get(product.id) })));
+        setInventory(mergeInventoryRows(products, savedRows, previousRows));
       } catch {
-        if (active) setInventory(products);
+        if (active) setInventory(products.map(blankInventoryProduct));
       }
     }
     loadInventory();
     return () => {
       active = false;
     };
-  }, [products, report.id]);
+  }, [products, activeReport?.id, activeReport?.store_id, activeReport?.report_date]);
+
+  async function loadReviewRecords() {
+    setLoading(true);
+    try {
+      const { reports: rows } = await fetchHqDashboardData(dateFrom, dateTo);
+      const submittedRows = rows.filter(hasSubmittedReport);
+      setRecords(submittedRows);
+      setSelectedReviewReport(submittedRows[0] || null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function review(action, status) {
+    if (!activeReport?.id) return;
     setReviewing(true);
-    await onReview(action, status);
+    const ok = await onReview(action, status, activeReport);
+    if (ok) {
+      const nextRows = records.map((item) => item.id === activeReport.id ? { ...item, status } : item);
+      setRecords(nextRows);
+      setSelectedReviewReport({ ...activeReport, status });
+    }
     setReviewing(false);
   }
+
+  const storeOptions = Array.from(new Map(reviewableRows.map((row) => [row.store_id, row.name])).entries());
+  const statusCounts = {
+    draft: records.filter((item) => !item.id || item.status === "draft").length,
+    submitted: records.filter((item) => item.status === "submitted").length,
+    followUp: records.filter((item) => item.status === "follow_up" || item.status === "needs_revision").length,
+    approved: records.filter((item) => item.status === "approved").length,
+  };
 
   return (
     <div className="workspace review-grid">
       <section className="status-board">
-        <Metric label="草稿" value={reports.filter((item) => item.status === "draft").length} detail="尚未送出" tone="bad" />
-        <Metric label="待審核" value={reports.filter((item) => item.status === "submitted").length} detail="等待確認" tone="warn" />
-        <Metric label="需追蹤" value={reports.filter((item) => item.status === "follow_up").length} detail="異常門店" tone="bad" />
-        <Metric label="已通過" value={reports.filter((item) => item.status === "approved").length} detail="完成審核" tone="good" />
+        <Metric label="未回報" value={statusCounts.draft} detail="尚無可審資料" tone="bad" />
+        <Metric label="待審核" value={statusCounts.submitted} detail="已送出待確認" tone="warn" />
+        <Metric label="需追蹤" value={statusCounts.followUp} detail="退回或補件" tone="bad" />
+        <Metric label="已通過" value={statusCounts.approved} detail="審核完成" tone="good" />
+      </section>
+      <section className="panel wide review-filter-panel">
+        <div className="panel-head">
+          <div>
+            <h2>營運審核查詢</h2>
+            <p>可查各店過往回報紀錄，選擇紀錄後進行通過、退回修正或列入追蹤。</p>
+          </div>
+        </div>
+        <div className="record-toolbar">
+          <label>起日<input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} /></label>
+          <label>迄日<input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} /></label>
+          <label>
+            門店
+            <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
+              <option value="all">全部門店</option>
+              {storeOptions.map(([storeId, storeName]) => <option key={storeId} value={storeId}>{storeName}</option>)}
+            </select>
+          </label>
+          <button className="primary" disabled={loading} onClick={loadReviewRecords}>{loading ? "查詢中..." : "查詢審核紀錄"}</button>
+        </div>
       </section>
       <section className="panel store-queue">
-        <div className="panel-head"><h2>門店佇列</h2><p>點選查看明細</p></div>
-        {reports.map((item) => (
-          <button className={item.store_id === report.store_id ? "selected queue-item" : "queue-item"} key={item.store_id} onClick={() => onSelect(item.store_id)}>
+        <div className="panel-head"><h2>回報紀錄</h2><p>點選查看明細</p></div>
+        {visibleRows.map((item) => (
+          <button className={item.id === activeReport?.id ? "selected queue-item" : "queue-item"} key={item.id} onClick={() => { setSelectedReviewReport(item); onSelect(item.store_id); }}>
             <span className={`dot ${tone(item.status)}`} />
             <strong>{item.name}</strong>
-            <em>{item.updated_at_label}</em>
+            <em>{item.report_date}</em>
             <small>{statusLabel(item.status)}</small>
           </button>
         ))}
+        {!visibleRows.length && <div className="empty-text">目前查無可審核回報，請調整日期或門店。</div>}
       </section>
       <section className="panel review-main">
         <div className="panel-head">
           <div>
-            <h2>{report.name}</h2>
-            <p>{report.manager_name} · {report.area} · 總營收 {money(totalRevenue(report))}</p>
+            <h2>{activeReport?.name || "尚未選擇回報"}</h2>
+            <p>{activeReport?.report_date || "-"} · {activeReport?.manager_name || "未填店長"} · 總營收 {money(totalRevenue(activeReport || {}))}</p>
           </div>
-          <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
+          <span className={`chip ${tone(activeReport?.status)}`}>{statusLabel(activeReport?.status)}</span>
         </div>
         <div className="checkpoint-grid">
-          <Metric label="14:00" value={money(report.opened_to_1400_revenue)} detail="開店至 14:00" />
-          <Metric label="19:00" value={money(report.revenue_1400_to_1900)} detail="14:00 至 19:00" />
-          <Metric label="打烊" value={money(report.revenue_1900_to_close)} detail="19:00 至打烊" />
-          <Metric label="總營收" value={money(totalRevenue(report))} detail={`達成 ${pct((totalRevenue(report) / report.target) * 100)}`} tone="hot" />
+          <Metric label="14:00" value={money(activeReport?.opened_to_1400_revenue)} detail="開店至 14:00" />
+          <Metric label="19:00" value={money(activeReport?.revenue_1400_to_1900)} detail="14:00 至 19:00" />
+          <Metric label="打烊" value={money(activeReport?.revenue_1900_to_close)} detail="19:00 至打烊" />
+          <Metric label="總營收" value={money(totalRevenue(activeReport || {}))} detail={`達成 ${pct((totalRevenue(activeReport || {}) / Math.max(1, Number(activeReport?.target || 0))) * 100)}`} tone="hot" />
         </div>
         <div className="table-wrap compact">
           <table>
             <thead>
-              <tr><th>品項</th><th>現存</th><th>報廢</th><th>進貨</th><th>來源</th><th>今日使用量</th><th>統計單位</th><th>備註</th></tr>
+              <tr><th>品項</th><th>昨日庫存</th><th>今日盤點</th><th>報廢</th><th>調貨/進貨</th><th>來源</th><th>使用量</th><th>統計單位</th><th>備註</th></tr>
             </thead>
             <tbody>
               {inventory.map((item) => (
                 <tr key={item.id}>
                   <td><strong>{item.name}</strong></td>
+                  <td>{formatInventoryAmount(item, "previous")}</td>
                   <td>{formatInventoryAmount(item, "stock")}</td>
                   <td>{numberText(item.loss_count)}</td>
                   <td>{formatInventoryAmount(item, "incoming")}</td>
@@ -4131,20 +4773,20 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
                   <td>{item.transfer_note}</td>
                 </tr>
               ))}
+              {!activeReport?.id && <tr><td colSpan="9">請先選擇一筆已送出的回報。</td></tr>}
             </tbody>
           </table>
         </div>
       </section>
       <section className="panel action-rail">
-        <div className="panel-head"><h2>審核動作</h2><p>更新回報狀態</p></div>
-        <button disabled={reviewing} className="primary" onClick={() => review("approve", "approved")}>通過</button>
-        <button disabled={reviewing} onClick={() => review("request_revision", "needs_revision")}>退回修改</button>
-        <button disabled={reviewing} onClick={() => review("assign_transfer", "follow_up")}>指派追蹤</button>
+        <div className="panel-head"><h2>審核動作</h2><p>請依回報資料與異常狀態處理</p></div>
+        <button disabled={reviewing || !activeReport?.id} className="primary" onClick={() => review("approve", "approved")}>通過</button>
+        <button disabled={reviewing || !activeReport?.id} onClick={() => review("request_revision", "needs_revision")}>退回修正</button>
+        <button disabled={reviewing || !activeReport?.id} onClick={() => review("assign_follow_up", "follow_up")}>列入追蹤</button>
       </section>
     </div>
   );
 }
-
 function Info({ title, text }) {
   return (
     <div className="info-card">

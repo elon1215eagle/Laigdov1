@@ -578,6 +578,45 @@ tbody tr.selected,
   color: #63483c;
 }
 
+.record-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) auto auto;
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.record-toolbar label {
+  display: grid;
+  gap: 6px;
+  color: #604235;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.row-actions button {
+  min-width: 64px;
+}
+
+.report-edit-dialog {
+  width: min(920px, calc(100vw - 32px));
+  max-height: calc(100vh - 40px);
+  overflow: auto;
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border: 1px solid #ecd8cc;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(44, 33, 28, 0.22);
+}
+
 .code-chip {
   display: inline-grid;
   place-items: center;
@@ -1335,6 +1374,29 @@ tbody tr.selected,
   font-weight: 800;
 }
 
+.staff-admin-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr 120px auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.staff-admin-grid label {
+  display: grid;
+  gap: 8px;
+  color: #604235;
+  font-weight: 800;
+}
+
+.staff-admin-actions,
+.inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
 .file-drop {
   grid-column: 1 / -1;
   min-height: 150px;
@@ -2030,6 +2092,7 @@ tbody tr.selected,
   .analytics-list-row,
   .issue-editor-top,
   .store-card-metrics,
+  .staff-admin-grid,
   .staff-chip-list {
     grid-template-columns: 1fr;
   }
@@ -2042,7 +2105,8 @@ tbody tr.selected,
   .leave-toolbar,
   .leave-summary,
   .support-panel,
-  .support-list {
+  .support-list,
+  .record-toolbar {
     grid-template-columns: 1fr;
   }
 

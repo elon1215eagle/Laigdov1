@@ -1,4 +1,4 @@
-import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, storesSeed } from "./mockData";
+import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, staffRosterSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 
 const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, is_active";
@@ -109,6 +109,17 @@ const STAFF_PERFORMANCE_FIELDS = [
   "note",
   "created_at",
   "stores(name, area, store_code)",
+].join(", ");
+const STORE_STAFF_FIELDS = [
+  "id",
+  "store_code",
+  "store_name",
+  "employee_name",
+  "role_name",
+  "sort_order",
+  "is_active",
+  "created_at",
+  "updated_at",
 ].join(", ");
 const MONTHLY_LEAVE_FIELDS = [
   "id",
@@ -357,6 +368,53 @@ export async function fetchInventoryCounts(reportId) {
   return data.map(normalizeInventoryRow);
 }
 
+function addDays(dateText, days) {
+  const date = new Date(`${dateText}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function previousStockFields(row) {
+  return {
+    previous_stock: Number(row?.current_stock || 0),
+    previous_stock_boxes: Number(row?.current_stock_boxes || 0),
+    previous_stock_packs: Number(row?.current_stock_packs || 0),
+    previous_stock_unit: row?.stock_unit || row?.unit || row?.products?.unit || "",
+  };
+}
+
+function enrichInventoryWithPrevious(reports, inventoryRows) {
+  const reportsById = new Map(reports.map((report) => [report.id, report]));
+  const sortedRows = inventoryRows
+    .map((row) => ({ ...row, report: reportsById.get(row.report_id) }))
+    .filter((row) => row.report)
+    .sort((a, b) => (
+      String(a.report.store_id).localeCompare(String(b.report.store_id)) ||
+      String(a.product_id).localeCompare(String(b.product_id)) ||
+      String(a.report.report_date).localeCompare(String(b.report.report_date))
+    ));
+  const latestByStoreProduct = new Map();
+  return sortedRows.map((row) => {
+    const key = `${row.report.store_id}-${row.product_id}`;
+    const previous = latestByStoreProduct.get(key);
+    latestByStoreProduct.set(key, row);
+    const { report, ...cleanRow } = row;
+    return {
+      ...cleanRow,
+      ...(previous ? previousStockFields(previous) : previousStockFields(null)),
+    };
+  });
+}
+
+export async function fetchPreviousInventoryCounts(storeId, reportDate) {
+  if (!supabase || !storeId || !reportDate) return [];
+  const previousDate = addDays(reportDate, -1);
+  const reports = await fetchDailyReports(previousDate);
+  const previousReport = reports.find((report) => report.store_id === storeId);
+  if (!previousReport?.id) return [];
+  return fetchInventoryCounts(previousReport.id);
+}
+
 export async function fetchInventoryCountsForReports(reportIds) {
   if (!supabase || !reportIds?.length) return [];
   const result = await supabase
@@ -379,10 +437,20 @@ export async function fetchInventoryCountsForReports(reportIds) {
 }
 
 export async function fetchHqDashboardData(dateFrom, dateTo) {
-  const reports = await fetchDailyReportsRange(dateFrom, dateTo);
-  const reportIds = reports.map((report) => report.id).filter(Boolean);
-  const inventoryRows = await fetchInventoryCountsForReports(reportIds);
-  return { reports, inventoryRows };
+  const contextStart = addDays(dateFrom, -1);
+  const contextReports = await fetchDailyReportsRange(contextStart, dateTo);
+  const reportIds = contextReports.map((report) => report.id).filter(Boolean);
+  const contextInventoryRows = await fetchInventoryCountsForReports(reportIds);
+  const enrichedRows = enrichInventoryWithPrevious(contextReports, contextInventoryRows);
+  const visibleReportIds = new Set(
+    contextReports
+      .filter((report) => report.report_date >= dateFrom && report.report_date <= dateTo)
+      .map((report) => report.id),
+  );
+  return {
+    reports: contextReports.filter((report) => report.report_date >= dateFrom && report.report_date <= dateTo),
+    inventoryRows: enrichedRows.filter((row) => visibleReportIds.has(row.report_id)),
+  };
 }
 
 export async function upsertDailyReport(payload) {
@@ -393,6 +461,34 @@ export async function upsertDailyReport(payload) {
     .select()
     .single();
   if (error) throw error;
+  return data;
+}
+
+export async function deleteDailyReport(reportId) {
+  if (!supabase || !reportId) return;
+  const { data, error } = await supabase
+    .from("daily_reports")
+    .delete()
+    .eq("id", reportId)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("資料庫未刪除任何資料，請確認帳號權限或資料狀態");
+  return data;
+}
+
+export async function deleteDailyReports(reportIds) {
+  const ids = reportIds?.filter(Boolean) || [];
+  if (!supabase || !ids.length) return;
+  const { data, error } = await supabase
+    .from("daily_reports")
+    .delete()
+    .in("id", ids)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length) throw new Error("資料庫未刪除任何資料，請確認帳號權限或資料狀態");
+  if (data.length !== ids.length) {
+    throw new Error(`資料庫僅刪除 ${data.length} 筆，與預期 ${ids.length} 筆不一致，請重新查詢後再操作`);
+  }
   return data;
 }
 
@@ -501,6 +597,19 @@ function normalizePerformanceRow(row) {
     area: row.stores?.area || "",
     store_code: row.stores?.store_code || "",
     action: row.action || performanceAction(row.score, row.bonus_adjustment),
+  };
+}
+
+function normalizeStoreStaffRow(row, index = 0) {
+  return {
+    ...row,
+    id: row.id || `staff-${index + 1}`,
+    storeName: row.store_name || row.storeName || "",
+    store_code: row.store_code || row.storeCode || "",
+    employeeName: row.employee_name || row.employeeName || "",
+    role: row.role_name || row.role || "",
+    sort_order: Number(row.sort_order || index + 1),
+    is_active: row.is_active !== false,
   };
 }
 
@@ -672,6 +781,76 @@ export async function fetchStaffPerformance(periodMonth = new Date().toISOString
     throw error;
   }
   return data.map(normalizePerformanceRow);
+}
+
+export async function fetchStoreStaff() {
+  if (!supabase) return staffRosterSeed;
+  const { data, error } = await supabase
+    .from("store_staff")
+    .select(STORE_STAFF_FIELDS)
+    .order("store_code")
+    .order("sort_order")
+    .order("employee_name");
+  if (error) {
+    if (isMissingSupabaseTable(error)) return staffRosterSeed;
+    throw error;
+  }
+  const savedRows = (data || []).map(normalizeStoreStaffRow);
+  const savedById = new Map(savedRows.map((row) => [row.id, row]));
+  const inactiveIds = new Set(savedRows.filter((row) => row.is_active === false).map((row) => row.id));
+  const seedRows = staffRosterSeed
+    .filter((row) => !inactiveIds.has(row.id))
+    .map((row, index) => savedById.get(row.id) || normalizeStoreStaffRow(row, index));
+  const customRows = savedRows.filter((row) => row.is_active !== false && !staffRosterSeed.some((seed) => seed.id === row.id));
+  return [...seedRows, ...customRows]
+    .filter((row) => row.is_active !== false)
+    .sort((a, b) => (
+      String(a.store_code || "").localeCompare(String(b.store_code || "")) ||
+      Number(a.sort_order || 999) - Number(b.sort_order || 999) ||
+      String(a.employeeName || "").localeCompare(String(b.employeeName || ""), "zh-Hant")
+    ));
+}
+
+export async function upsertStoreStaffMember(payload) {
+  if (!supabase) return normalizeStoreStaffRow({ ...payload, id: payload.id || crypto.randomUUID?.() || Date.now() });
+  const cleanPayload = {
+    id: payload.id || crypto.randomUUID?.() || String(Date.now()),
+    store_code: payload.store_code || payload.storeCode || "",
+    store_name: payload.store_name || payload.storeName || "",
+    employee_name: String(payload.employee_name || payload.employeeName || "").trim(),
+    role_name: String(payload.role_name || payload.role || "").trim(),
+    sort_order: Number(payload.sort_order || 999),
+    is_active: payload.is_active !== false,
+    updated_at: new Date().toISOString(),
+  };
+  if (!cleanPayload.employee_name) throw new Error("請輸入人員姓名");
+  if (!cleanPayload.role_name) throw new Error("請選擇職稱");
+  if (!cleanPayload.store_code && !cleanPayload.store_name) throw new Error("請選擇門店");
+
+  const { data, error } = await supabase
+    .from("store_staff")
+    .upsert(cleanPayload, { onConflict: "id" })
+    .select(STORE_STAFF_FIELDS)
+    .single();
+  if (error) throw error;
+  return normalizeStoreStaffRow(data);
+}
+
+export async function deleteStoreStaffMember(staffMember) {
+  const staffId = typeof staffMember === "string" ? staffMember : staffMember?.id;
+  if (!supabase || !staffId) return;
+  const { data, error } = await supabase
+    .from("store_staff")
+    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .eq("id", staffId)
+    .select("id");
+  if (error) throw error;
+  if (!data?.length && typeof staffMember === "object") {
+    const saved = await upsertStoreStaffMember({ ...staffMember, is_active: false });
+    return [saved];
+  }
+  if (!data?.length) throw new Error("找不到要停用的人員資料");
+  return data;
 }
 
 export async function upsertStaffPerformance(payload) {
