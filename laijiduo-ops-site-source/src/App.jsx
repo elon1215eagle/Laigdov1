@@ -2799,16 +2799,13 @@ function leaveDaySource(draft, day) {
 const leaveTypeOptions = ["排休", "特休", "事假", "病假", "其他"];
 const combinedStoreCodes = new Set(["S02", "S03"]);
 const wujiaStoreCode = "S01";
-const wujiaEffectiveStaffNames = new Set(["穎德", "阿暄", "韋呈", "欣樺", "娟姨"]);
 
 function isDeliveryStaff(person) {
-  return person.role === "送貨人員";
+  return /外送|送貨|配送/.test(String(person.role || ""));
 }
 
 function isEffectiveScheduleStaff(person) {
-  const code = canonicalStoreCode(person);
   if (isDeliveryStaff(person)) return false;
-  if (code === wujiaStoreCode) return wujiaEffectiveStaffNames.has(person.employeeName);
   return true;
 }
 
@@ -2827,8 +2824,8 @@ function scheduleGroupForStore(store) {
       code: store.code,
       name: store.name,
       sourceCodes: [store.code],
-      demand: 3,
-      ruleNote: "五甲有效排班人力 5 人：正式、店長、新進各 1 人，兼職後勤 2 人；送貨不計入。",
+      demand: 5,
+      ruleNote: "五甲排班規則：除外送、送貨、配送人員外，其餘門店人員皆列入排班；每日需求 5 人。",
     };
   }
   return {
