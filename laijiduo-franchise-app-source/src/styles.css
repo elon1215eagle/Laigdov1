@@ -6,8 +6,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
-  color: #201f1d;
-  background: #f4f6f2;
+  color: #2f241f;
+  background: #f6f1ec;
   font-family: "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif;
 }
 
@@ -37,7 +37,7 @@ button:disabled {
 .primary,
 .login-card button {
   color: #fff;
-  background: #245b45;
+  background: #1f6b48;
 }
 
 .app {
@@ -52,7 +52,7 @@ button:disabled {
   gap: 20px;
   padding: 24px;
   color: #fff;
-  background: #222823;
+  background: #2b211d;
 }
 
 .brand {
@@ -68,7 +68,7 @@ button:disabled {
   place-items: center;
   border-radius: 8px;
   color: #fff;
-  background: #a93624;
+  background: #ba342c;
   font-weight: 900;
   font-size: 22px;
 }
@@ -176,9 +176,9 @@ textarea {
 
 .metric,
 .panel {
-  border: 1px solid #dfe5d9;
+  border: 1px solid #ead6ca;
   border-radius: 8px;
-  background: #fffffb;
+  background: #fffdfa;
   box-shadow: 0 10px 28px rgba(70, 45, 30, 0.08);
 }
 
@@ -198,7 +198,7 @@ textarea {
 }
 
 .metric.good strong {
-  color: #245b45;
+  color: #1f6b48;
 }
 
 .metric.warn strong {
@@ -259,168 +259,12 @@ textarea {
   background: #fee2e2;
 }
 
-.admin-toolbar,
-.report-toolbar {
+.admin-toolbar {
   display: grid;
   grid-template-columns: minmax(220px, 1.4fr) minmax(180px, 1fr) auto;
   gap: 12px;
   align-items: end;
   margin-bottom: 18px;
-}
-
-.workspace {
-  display: grid;
-  gap: 18px;
-}
-
-.store-risk-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 12px;
-}
-
-.risk-card {
-  display: grid;
-  gap: 5px;
-  padding: 14px;
-  border: 1px solid #dfe5d9;
-  border-left: 5px solid #245b45;
-  border-radius: 8px;
-  background: #fbfdf9;
-}
-
-.risk-card span,
-.risk-card small {
-  color: #657064;
-  font-size: 12px;
-}
-
-.risk-card strong {
-  font-size: 18px;
-}
-
-.risk-card p {
-  margin: 0;
-  font-weight: 800;
-}
-
-.risk-card.warn {
-  border-left-color: #b56a1f;
-  background: #fff9ed;
-}
-
-.risk-card.danger {
-  border-left-color: #b13327;
-  background: #fff3f1;
-}
-
-.inventory-edit-list {
-  display: grid;
-  gap: 12px;
-}
-
-.inventory-row-card {
-  display: grid;
-  gap: 12px;
-  padding: 14px;
-  border: 1px solid #dfe5d9;
-  border-radius: 8px;
-  background: #fbfdf9;
-}
-
-.inventory-row-card.low {
-  border-color: #efc2b8;
-  background: #fff5f2;
-}
-
-.inventory-product-head {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  align-items: start;
-}
-
-.inventory-product-head strong,
-.inventory-product-head span {
-  display: block;
-}
-
-.inventory-product-head span,
-.inventory-product-head em {
-  color: #657064;
-  font-size: 12px;
-  font-style: normal;
-}
-
-.inventory-product-head em {
-  padding: 6px 9px;
-  border-radius: 999px;
-  background: #e8f1e7;
-  color: #245b45;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.inventory-product-head em.bad {
-  background: #ffe5e0;
-  color: #b13327;
-}
-
-.inventory-input-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.qty-field div {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 86px;
-  gap: 6px;
-}
-
-.sticky-submit {
-  position: sticky;
-  bottom: 12px;
-  width: 100%;
-  min-height: 52px;
-  margin-top: 14px;
-  box-shadow: 0 10px 30px rgba(36, 91, 69, 0.18);
-}
-
-.readonly-banner {
-  margin-top: 14px;
-  padding: 14px 16px;
-  border: 1px solid #ead6ca;
-  border-radius: 8px;
-  background: #fff8f2;
-  color: #7c4a25;
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.chip {
-  display: inline-flex;
-  align-items: center;
-  min-height: 26px;
-  border-radius: 999px;
-  padding: 0 9px;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.chip.good {
-  color: #245b45;
-  background: #e8f1e7;
-}
-
-.chip.bad {
-  color: #b13327;
-  background: #ffe5e0;
-}
-
-.negative {
-  color: #b13327;
-  font-weight: 900;
 }
 
 .admin-section {
@@ -537,31 +381,13 @@ tfoot td {
 
   .topbar,
   .toolbar,
-  .admin-toolbar,
-  .report-toolbar,
-  .inventory-product-head {
+  .admin-toolbar {
     display: grid;
     width: 100%;
   }
 
   .kpi-grid,
-  .form-grid,
-  .inventory-input-grid {
+  .form-grid {
     grid-template-columns: 1fr;
-  }
-
-  .content,
-  .sidebar {
-    padding: 16px;
-  }
-
-  .panel {
-    padding: 16px;
-  }
-
-  button,
-  input,
-  select {
-    min-height: 46px;
   }
 }

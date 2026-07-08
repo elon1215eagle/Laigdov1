@@ -1,39 +1,27 @@
-# 萊吉多加盟庫存系統
+﻿# 萊吉多加盟店 APP
 
-獨立於萊吉多營運 APP 的加盟店庫存管理系統。第一階段只處理「加盟店每日庫存回報」與「總部 / CFO / COO 庫存總覽」，不混入直營門店營運資料。
+這是獨立於直營總部營運 APP 的加盟店回報系統，不與直營門店資料混用。
 
-## 核心功能
+## 主要用途
 
-- 加盟店每日填寫庫存、進貨、報廢與備註。
-- 主商品可選單位：箱 / 大包 / 小包。
-- 總部、CFO、COO 可查看全部加盟店庫存總覽。
-- 總部可看到未回報、低庫存、異常耗用、今日進貨量。
-- 加盟店帳號只能查看與填寫自己綁定門店。
+- 加盟店每日 14:00 前營收回報
+- 加盟店每日 14:00-19:00 營收回報
+- 加盟店每日打烊總營收回報
+- 系統自動計算 19:00-打烊營收
+- 加盟店每日支出登錄
+- 總部可查看加盟店月彙總
+- 加盟店帳號只能查看與填寫自己的店
 
-## 主要資料表
+## 資料表
+
+所有資料表都使用 `franchise_` 前綴，避免與原直營 APP 混用。
 
 - `franchise_stores`
 - `franchise_profiles`
-- `franchise_inventory_products`
-- `franchise_inventory_reports`
-- `franchise_inventory_items`
+- `franchise_daily_reports`
+- `franchise_expenses`
 
-## Supabase Migration
-
-請套用：
-
-```text
-supabase/migration_2026_07_08_franchise_inventory_management.sql
-```
-
-## 角色
-
-- `franchise_admin` / `franchise_hq`：總部管理。
-- `franchise_coo`：COO，可查看全部與管理庫存。
-- `franchise_cfo`：CFO，可查看全部庫存總覽與風險。
-- `franchise_owner`：加盟店，只能看自己門店。
-
-## 本機開發
+## 本機啟動
 
 ```bash
 npm install
@@ -45,3 +33,25 @@ npm run dev
 ```bash
 npm run build
 ```
+
+## 環境變數
+
+```text
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
+```
+
+## Supabase 建表
+
+請套用：
+
+```text
+supabase/migration_2026_06_22_franchise_app_schema.sql
+```
+
+## 權限原則
+
+- `franchise_admin`：總部管理者，可看全部加盟店資料。
+- `franchise_owner`：加盟店帳號，只能看自己綁定的加盟店資料。
+
+未綁定 `franchise_profiles.franchise_store_id` 的加盟店帳號，不會看到任何門店資料。
