@@ -895,13 +895,19 @@ export function App() {
         {!activeModuleAllowed && <AccessDeniedModule roleName={currentRole} />}
         {activeModuleAllowed && activeModule === "ops" && role === "hq" && (
           <HqDashboard
+            currentRole={currentRole}
             reports={reports}
             products={products}
             handovers={handovers}
             performanceRows={performanceRows}
+            staffRoster={staffRoster}
+            scheduleRows={scheduleSeed}
+            hqTasks={hqTasks}
+            securitySettings={securitySettings}
             canEditTargets={canEditMonthlyTargets(currentRole)}
             canManageReports={canManageDailyReportData(currentRole)}
             onSelect={setSelectedStoreId}
+            onOpenModule={openModule}
             onSaveReport={saveHqDailyReport}
             onDeleteReport={clearHqDailyReport}
             onBulkDeleteReports={clearHqDailyReports}
@@ -912,13 +918,26 @@ export function App() {
           <StoreReport report={selectedReport} reportDate={reportDate} products={products} onDateChange={changeReportDate} onSave={saveReport} />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "review" && selectedReport && (
-          <ReviewConsole
-            reports={reports}
-            report={selectedReport}
-            products={products}
-            onSelect={setSelectedStoreId}
-            onReview={handleReview}
-          />
+          <>
+            <SupervisorOpsHome
+              currentRole={currentRole}
+              reports={reports}
+              handovers={handovers}
+              performanceRows={performanceRows}
+              staffRoster={staffRoster}
+              scheduleRows={scheduleSeed}
+              hqTasks={hqTasks}
+              onOpenModule={openModule}
+              onSelect={setSelectedStoreId}
+            />
+            <ReviewConsole
+              reports={reports}
+              report={selectedReport}
+              products={products}
+              onSelect={setSelectedStoreId}
+              onReview={handleReview}
+            />
+          </>
         )}
         {activeModuleAllowed && activeModule === "handover" && (
           selectedReport ? (
@@ -1318,7 +1337,226 @@ function AccessDeniedModule({ roleName }) {
   );
 }
 
-function HqDashboard({ reports, products, handovers, performanceRows, canEditTargets, canManageReports, onSelect, onSaveReport, onDeleteReport, onBulkDeleteReports, onNotify }) {
+function buildRoleOpsSummary({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows }) {
+  const reportedRows = reports.filter(hasSubmittedReport);
+  const total = reports.reduce((sum, report) => sum + totalRevenue(report), 0);
+  const target = reports.reduce((sum, report) => sum + Number(report.target || 0), 0);
+  const unreported = reports.filter((report) => !hasSubmittedReport(report));
+  const cashIssues = reports.filter((report) => Math.abs(Number(report.cash_difference || 0)) >= 500);
+  const lowRevenue = reports.filter((report) => totalRevenue(report) < Number(report.target || 0) * 0.8);
+  const shortageRows = scheduleRows.filter((row) => row.status === "人力不足");
+  const overdueTasks = hqTasks.filter((row) => row.status !== "已完成" && isOverdue(row.due_date));
+  const handoverIssues = handovers.filter((row) => row.status === "需追蹤" || row.cash_status !== "正常" || row.cleaning_status !== "完成");
+  const pendingHr = hqTasks.filter((row) => row.status !== "已完成" && (row.scope_type === "人資" || row.task_type === "人資異動"));
+  const activeStaff = staffRoster.filter((row) => row.is_active !== false);
+  const managerStoreCodes = new Set(activeStaff.filter((row) => row.role === "店長" || row.role === "副店長").map(canonicalStoreCode));
+  const managerGaps = reports.filter((report) => report.name !== "鳳山南華店" && !managerStoreCodes.has(canonicalStoreCode(report)));
+  const ranking = [...reports]
+    .map((report) => ({
+      ...report,
+      attainment: (totalRevenue(report) / Math.max(1, Number(report.target || 0))) * 100,
+    }))
+    .sort((a, b) => b.attainment - a.attainment);
+  const riskRows = [...anomalyRows]
+    .sort((a, b) => {
+      const levelScore = (row) => (row.level === "重大" ? 3 : 1) + (isOverdue(row.due_date) ? 2 : 0);
+      return levelScore(b) - levelScore(a) || String(a.due_date).localeCompare(String(b.due_date));
+    })
+    .slice(0, 6);
+
+  return {
+    total,
+    target,
+    reportedRows,
+    reportRate: (reportedRows.length / Math.max(1, reports.length)) * 100,
+    unreported,
+    cashIssues,
+    lowRevenue,
+    shortageRows,
+    overdueTasks,
+    handoverIssues,
+    pendingHr,
+    managerGaps,
+    activeStaff,
+    ranking,
+    riskRows,
+  };
+}
+
+function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettings, onSelect, onOpenModule }) {
+  const roleMeta = {
+    ceo: {
+      title: "執行長今日總覽",
+      subtitle: "先看品牌營運健康度、重大風險與資料安全狀態。",
+      metrics: [
+        ["品牌營收", money(summary.total), `達成 ${pct((summary.total / Math.max(1, summary.target)) * 100)}`, "hot"],
+        ["重大風險", `${summary.riskRows.filter((row) => row.level === "重大").length} 件`, summary.riskRows[0]?.storeName || "目前穩定", "bad"],
+        ["回報完成率", pct(summary.reportRate), `${summary.reportedRows.length}/${reports.length} 店`, "good"],
+        ["資料遮蔽", securitySettings?.is_fault_mode ? "已啟動" : "未啟動", "CEO/COO 可操作", securitySettings?.is_fault_mode ? "bad" : "good"],
+      ],
+      actions: [["查看異常", "anomaly"], ["系統安全", "security"], ["營收總覽", "ops"]],
+    },
+    coo: {
+      title: "營運長今日指揮台",
+      subtitle: "優先處理逾期異常、巡檢缺失、任務追蹤與排班缺口。",
+      metrics: [
+        ["逾期任務", `${summary.overdueTasks.length} 件`, summary.overdueTasks[0]?.title || "無逾期", summary.overdueTasks.length ? "bad" : "good"],
+        ["排班缺口", `${summary.shortageRows.length} 筆`, summary.shortageRows[0]?.storeName || "目前足夠", summary.shortageRows.length ? "bad" : "good"],
+        ["交接追蹤", `${summary.handoverIssues.length} 筆`, "現金、清潔、待辦", summary.handoverIssues.length ? "warn" : "good"],
+        ["低達成店", `${summary.lowRevenue.length} 店`, summary.lowRevenue[0]?.name || "無", summary.lowRevenue.length ? "warn" : "good"],
+      ],
+      actions: [["異常中心", "anomaly"], ["任務派遣", "tasks"], ["排班管理", "schedule"]],
+    },
+    cfo: {
+      title: "財務長營收與現金風險",
+      subtitle: "聚焦營收達成、現金差異與報表資料完整性。",
+      metrics: [
+        ["今日營收", money(summary.total), `目標 ${money(summary.target)}`, "hot"],
+        ["現金差異", `${summary.cashIssues.length} 店`, summary.cashIssues[0]?.name || "未見重大差異", summary.cashIssues.length ? "bad" : "good"],
+        ["未回報", `${summary.unreported.length} 店`, summary.unreported[0]?.name || "已完成", summary.unreported.length ? "warn" : "good"],
+        ["回報完成率", pct(summary.reportRate), "財務報表可信度", summary.reportRate >= 90 ? "good" : "warn"],
+      ],
+      actions: [["營收總覽", "ops"], ["異常中心", "anomaly"], ["制度中心", "system"]],
+    },
+    cso: {
+      title: "督導長今日待辦",
+      subtitle: "先處理門店異常、巡檢改善、排班支援與督導任務。",
+      metrics: [
+        ["督導異常", `${anomalyRows.filter((row) => row.owner.includes("督導")).length} 件`, "需督導介入", "warn"],
+        ["排班支援", `${summary.shortageRows.length} 筆`, summary.shortageRows[0]?.storeName || "無", summary.shortageRows.length ? "bad" : "good"],
+        ["交接缺失", `${summary.handoverIssues.length} 筆`, "未結案事項", summary.handoverIssues.length ? "warn" : "good"],
+        ["任務逾期", `${summary.overdueTasks.length} 件`, summary.overdueTasks[0]?.assignee_name || "無", summary.overdueTasks.length ? "bad" : "good"],
+      ],
+      actions: [["巡檢管理", "inspection"], ["異常中心", "anomaly"], ["任務派遣", "tasks"]],
+    },
+    supervisor: {
+      title: "督導今日巡店工作台",
+      subtitle: "從待改善、缺報與交接異常開始處理。",
+      metrics: [
+        ["待改善", `${summary.riskRows.length} 件`, summary.riskRows[0]?.storeName || "目前無", summary.riskRows.length ? "warn" : "good"],
+        ["未回報店", `${summary.unreported.length} 店`, summary.unreported[0]?.name || "已完成", summary.unreported.length ? "warn" : "good"],
+        ["交接追蹤", `${summary.handoverIssues.length} 筆`, "店長需補充", summary.handoverIssues.length ? "warn" : "good"],
+        ["排班缺口", `${summary.shortageRows.length} 筆`, "需協調代班", summary.shortageRows.length ? "bad" : "good"],
+      ],
+      actions: [["巡檢管理", "inspection"], ["異常中心", "anomaly"], ["排班管理", "schedule"]],
+    },
+    general_affairs: {
+      title: "總務 / 人資處理台",
+      subtitle: "先看人員主檔、排班處理、人資異動與行政任務。",
+      metrics: [
+        ["人員主檔", `${summary.activeStaff.length} 人`, "連動排班與排休", "good"],
+        ["人資待辦", `${summary.pendingHr.length} 件`, summary.pendingHr[0]?.title || "無", summary.pendingHr.length ? "warn" : "good"],
+        ["主管缺口", `${summary.managerGaps.length} 店`, summary.managerGaps[0]?.name || "無", summary.managerGaps.length ? "bad" : "good"],
+        ["排班缺口", `${summary.shortageRows.length} 筆`, "需補人或支援", summary.shortageRows.length ? "bad" : "good"],
+      ],
+      actions: [["人資主檔", "hr"], ["人資異動", "hrFlow"], ["排班管理", "schedule"]],
+    },
+  };
+  const meta = roleMeta[roleName] || roleMeta.coo;
+  const riskRows = roleName === "cfo" ? summary.cashIssues.slice(0, 4).map((row) => ({
+    id: `cash-${row.store_id}`,
+    storeName: row.name,
+    type: "現金差異",
+    level: "重大",
+    status: statusLabel(row.status),
+    message: `差異 ${money(row.cash_difference)}`,
+    store_id: row.store_id,
+  })) : summary.riskRows;
+
+  return (
+    <section className="panel wide role-home">
+      <div className="panel-head">
+        <div>
+          <h2>{meta.title}</h2>
+          <p>{meta.subtitle}</p>
+        </div>
+        <div className="role-actions">
+          {meta.actions.map(([label, moduleName]) => (
+            <button key={label} type="button" onClick={() => onOpenModule?.(moduleName)}>{label}</button>
+          ))}
+        </div>
+      </div>
+      <div className="summary-grid role-summary">
+        {meta.metrics.map(([label, value, detail, itemTone]) => (
+          <Metric key={label} label={label} value={value} detail={detail} tone={itemTone} />
+        ))}
+      </div>
+      <div className="role-home-grid">
+        <div>
+          <h3>今日優先處理</h3>
+          <div className="priority-list">
+            {riskRows.slice(0, 5).map((row) => (
+              <button key={row.id} type="button" className="priority-item" onClick={() => onSelect?.(row.store_id || reportForStoreCode(reports, row.store_code)?.store_id)}>
+                <span className={`chip ${row.level === "重大" ? "bad" : "warn"}`}>{row.level}</span>
+                <strong>{row.storeName}</strong>
+                <em>{row.type}</em>
+                <small>{row.message}</small>
+              </button>
+            ))}
+            {!riskRows.length && <div className="empty-state">目前沒有需要立即升級處理的事項。</div>}
+          </div>
+        </div>
+        <div>
+          <h3>門店達成率排名</h3>
+          <div className="rank-list">
+            {summary.ranking.slice(0, 6).map((row, index) => (
+              <button key={row.store_id || row.id} type="button" className="rank-row" onClick={() => onSelect?.(row.store_id)}>
+                <span>{index + 1}</span>
+                <strong>{row.name}</strong>
+                <Progress value={row.attainment} />
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SupervisorOpsHome({ currentRole, reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, onOpenModule, onSelect }) {
+  const anomalyRows = useMemo(
+    () => buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks }),
+    [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks],
+  );
+  const summary = useMemo(
+    () => buildRoleOpsSummary({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows }),
+    [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows],
+  );
+
+  return (
+    <div className="workspace hq-grid">
+      <RoleHomePanel
+        roleName={currentRole}
+        summary={summary}
+        reports={reports}
+        anomalyRows={anomalyRows}
+        securitySettings={defaultSecuritySettings}
+        onSelect={onSelect}
+        onOpenModule={onOpenModule}
+      />
+    </div>
+  );
+}
+
+function HqDashboard({
+  currentRole,
+  reports,
+  products,
+  handovers,
+  performanceRows,
+  staffRoster,
+  scheduleRows,
+  hqTasks,
+  securitySettings,
+  canEditTargets,
+  canManageReports,
+  onSelect,
+  onOpenModule,
+  onSaveReport,
+  onDeleteReport,
+  onBulkDeleteReports,
+  onNotify,
+}) {
   const [periodRows, setPeriodRows] = useState([]);
   const [usageRows, setUsageRows] = useState([]);
   const [targetDrafts, setTargetDrafts] = useState({});
@@ -1373,6 +1611,14 @@ function HqDashboard({ reports, products, handovers, performanceRows, canEditTar
   const weeklyRevenueRows = useMemo(() => buildWeeklyRevenueRows(periodRows.length ? periodRows : reports, fourWeekRanges), [periodRows, reports, fourWeekRanges]);
   const usageMatrix = useMemo(() => buildUsageMatrix(usageSummary.rows), [usageSummary.rows]);
   const dataQuality = useMemo(() => buildDataQualitySummary(reports, handovers, performanceRows), [reports, handovers, performanceRows]);
+  const anomalyRows = useMemo(
+    () => buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks }),
+    [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks],
+  );
+  const opsSummary = useMemo(
+    () => buildRoleOpsSummary({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows }),
+    [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows],
+  );
 
   async function saveMonthlyTarget(report) {
     if (!canEditTargets) {
@@ -1395,6 +1641,15 @@ function HqDashboard({ reports, products, handovers, performanceRows, canEditTar
 
   return (
     <div className="workspace hq-grid">
+      <RoleHomePanel
+        roleName={currentRole}
+        summary={opsSummary}
+        reports={reports}
+        anomalyRows={anomalyRows}
+        securitySettings={securitySettings}
+        onSelect={onSelect}
+        onOpenModule={onOpenModule}
+      />
       <section className="kpi-strip">
         <Metric label="今日總營收" value={money(summary.total)} detail={`目標 ${money(summary.target)}`} tone="hot" />
         <Metric label="整體達成率" value={pct((summary.total / summary.target) * 100)} detail="依今日目標計算" />
@@ -3615,6 +3870,7 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
 }
 
 function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedStoreId, storeHours, staffRoster, salaryRows, stores, profile, onNotify }) {
+  const [scheduleView, setScheduleView] = useState("week");
   const isStoreScoped = currentRole === "store_manager";
   const selectedStoreRecord = isStoreScoped
     ? (
@@ -3648,6 +3904,13 @@ function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedSto
       .filter((row) => row.role === "店長" || row.role === "副店長")
       .map((row) => row.storeName),
   ).size;
+  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(getWeekRange(today).start, index)), []);
+  const monthDays = useMemo(() => Array.from({ length: daysInMonth(today) }, (_, index) => `${today.slice(0, 8)}${String(index + 1).padStart(2, "0")}`), []);
+  const viewDays = scheduleView === "week" ? weekDays : monthDays;
+  const roleByName = useMemo(
+    () => new Map(scopedStaffRoster.map((row) => [row.employeeName, row.role])),
+    [scopedStaffRoster],
+  );
 
   return (
     <div className="workspace module-grid">
@@ -3668,6 +3931,40 @@ function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedSto
         storeHours={storeHours}
         onNotify={onNotify}
       />
+
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>班表視圖</h2>
+            <p>用週視圖看尖峰配置，用月視圖看人力風險；紅色代表缺口或需支援。</p>
+          </div>
+          <div className="segments compact">
+            <button className={scheduleView === "week" ? "active" : ""} onClick={() => setScheduleView("week")}>週視圖</button>
+            <button className={scheduleView === "month" ? "active" : ""} onClick={() => setScheduleView("month")}>月視圖</button>
+          </div>
+        </div>
+        <div className={`schedule-calendar ${scheduleView}`}>
+          {viewDays.map((day, dayIndex) => (
+            <div className="schedule-day" key={day}>
+              <div className="schedule-day-head">
+                <strong>{day.slice(5)}</strong>
+                <span>{["週日", "週一", "週二", "週三", "週四", "週五", "週六"][new Date(`${day}T00:00:00`).getDay()]}</span>
+              </div>
+              {(scheduleView === "week" ? scopedScheduleRows : scopedScheduleRows.filter((_, index) => index % 7 === dayIndex % 7)).slice(0, scheduleView === "week" ? 6 : 3).map((row) => {
+                const gap = Number(row.required_staff || 0) - (row.assigned_staff?.length || 0);
+                return (
+                  <div className={`shift-card shift-${row.shift_name} ${gap > 0 || row.status === "人力不足" ? "needs-help" : ""}`} key={`${day}-${row.id}`}>
+                    <span>{row.shift_name} · {row.start_time}-{row.end_time}</span>
+                    <strong>{displayStoreName(row)}</strong>
+                    <small>{row.assigned_staff?.slice(0, 3).map((name) => `${name}${roleByName.get(name) ? `(${roleByName.get(name)})` : ""}`).join("、") || "待排"}</small>
+                    <em>{gap > 0 ? `缺 ${gap} 人` : "人力足夠"}</em>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="panel wide">
         <div className="panel-head">
@@ -3976,13 +4273,16 @@ function buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, sc
   const quality = buildDataQualitySummary(reports, handovers, performanceRows).issues.map((issue, index) => ({
     id: `quality-${index}`,
     type: issue.type,
+    category: anomalyCategory(issue.type),
     store_code: canonicalStoreCode({ storeName: issue.storeName, store_id: issue.storeId }),
     storeName: displayStoreName({ storeName: issue.storeName }),
+    occurred_at: today,
     level: issue.level === "bad" ? "重大" : "提醒",
     owner: issue.type.includes("績效") ? "店長 / 督導" : "店長",
     due_date: today,
     status: "待處理",
     message: issue.message,
+    next_action: issue.type.includes("現金") ? "請店長補充差異原因，財務或督導覆核。" : "由責任人補資料或提出改善說明。",
   }));
   const managerStoreCodes = new Set(
     staffRoster
@@ -3995,53 +4295,96 @@ function buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, sc
     .map((report, index) => ({
       id: `manager-${index}`,
       type: "主管缺口",
+      category: "人資異動待處理",
       store_code: canonicalStoreCode(report),
       storeName: displayStoreName(report),
+      occurred_at: today,
       level: "重大",
       owner: "督導長",
       due_date: today,
       status: "待補",
       message: "營運中門店未配置店長或副店長，需立即補主管責任人",
+      next_action: "由總務/人資確認人員主檔，督導長指定暫代主管。",
     }));
   const scheduleIssues = scheduleRows
     .filter((row) => row.status !== "足夠")
     .map((row) => ({
       id: `schedule-${row.id}`,
       type: "排班異常",
+      category: "排班異常",
       store_code: canonicalStoreCode(row),
       storeName: displayStoreName(row),
+      occurred_at: today,
       level: row.status === "人力不足" ? "重大" : "提醒",
       owner: row.status === "暫停營業" ? "督導長" : "店長 / 執行督導",
       due_date: today,
       status: row.status,
       message: `${row.shift_name} ${row.start_time}-${row.end_time}：${row.action}`,
+      next_action: row.status === "人力不足" ? "前一日完成調班或跨店支援確認。" : "確認復店條件或總部決策。",
     }));
   const taskIssues = hqTasks
     .filter((row) => row.status !== "已完成")
     .map((row) => ({
       id: `task-${row.id}`,
       type: "總部任務",
+      category: isOverdue(row.due_date) ? "任務逾期" : (row.scope_type === "人資" ? "人資異動待處理" : "任務追蹤"),
       store_code: canonicalStoreCode(row),
       storeName: displayStoreName(row),
+      occurred_at: row.created_at?.slice?.(0, 10) || today,
       level: row.priority === "高" || isOverdue(row.due_date) ? "重大" : "提醒",
       owner: row.assignee_name || row.owner,
       due_date: row.due_date,
       status: row.status,
       message: `${row.task_type}：${row.action || row.title}`,
+      next_action: isOverdue(row.due_date) ? "更新完成證據或由總部重新指定期限。" : (row.next_step || "依任務驗收證據完成回報。"),
     }));
   return [...quality, ...managerRows, ...scheduleIssues, ...taskIssues];
 }
 
+function anomalyCategory(type = "") {
+  if (type.includes("營收")) return "營收異常";
+  if (type.includes("現金")) return "現金差異異常";
+  if (type.includes("庫存") || type.includes("補貨")) return "庫存異常";
+  if (type.includes("排班") || type.includes("主管缺口")) return "排班異常";
+  if (type.includes("交接") || type.includes("巡檢")) return "巡檢缺失未改善";
+  if (type.includes("人資") || type.includes("績效")) return "人資異動待處理";
+  if (type.includes("任務")) return "任務逾期";
+  return "營運異常";
+}
+
 function AnomalyCenterModule({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, onSelect }) {
+  const [periodFilter, setPeriodFilter] = useState("today");
+  const [storeFilter, setStoreFilter] = useState("all");
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useState("all");
   const rows = buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks });
-  const criticalRows = rows.filter((row) => row.level === "重大");
-  const overdueRows = rows.filter((row) => isOverdue(row.due_date) && row.status !== "已完成");
-  const supervisorRows = rows.filter((row) => row.owner.includes("督導"));
+  const weekRange = useMemo(() => getWeekRange(today), []);
+  const monthRange = useMemo(() => getMonthRange(today), []);
+  const storeOptions = Array.from(new Map(rows.map((row) => [row.store_code, row.storeName])).entries()).filter(([code]) => code);
+  const categoryOptions = Array.from(new Set(rows.map((row) => row.category))).filter(Boolean);
+  const filteredRows = rows
+    .filter((row) => {
+      const date = row.occurred_at || row.due_date || today;
+      if (periodFilter === "today" && date !== today && row.due_date !== today) return false;
+      if (periodFilter === "week" && (date < weekRange.start || date > weekRange.end) && (row.due_date < weekRange.start || row.due_date > weekRange.end)) return false;
+      if (periodFilter === "month" && (date < monthRange.start || date > monthRange.end) && (row.due_date < monthRange.start || row.due_date > monthRange.end)) return false;
+      if (storeFilter !== "all" && row.store_code !== storeFilter) return false;
+      if (categoryFilter !== "all" && row.category !== categoryFilter) return false;
+      if (levelFilter !== "all" && row.level !== levelFilter) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      const score = (row) => (row.level === "重大" ? 3 : 1) + (isOverdue(row.due_date) ? 2 : 0);
+      return score(b) - score(a) || String(a.due_date).localeCompare(String(b.due_date));
+    });
+  const criticalRows = filteredRows.filter((row) => row.level === "重大");
+  const overdueRows = filteredRows.filter((row) => isOverdue(row.due_date) && row.status !== "已完成");
+  const supervisorRows = filteredRows.filter((row) => row.owner.includes("督導"));
 
   return (
     <div className="workspace module-grid">
       <section className="kpi-strip">
-        <Metric label="異常總數" value={`${rows.length} 件`} detail="營收、交接、排班、績效、人資" tone={rows.length ? "warn" : "good"} />
+        <Metric label="異常總數" value={`${filteredRows.length} 件`} detail="依目前篩選條件" tone={filteredRows.length ? "warn" : "good"} />
         <Metric label="重大異常" value={`${criticalRows.length} 件`} detail={criticalRows[0]?.storeName || "無"} tone={criticalRows.length ? "bad" : "good"} />
         <Metric label="督導追蹤" value={`${supervisorRows.length} 件`} detail="需督導長或執行督導處理" tone="warn" />
         <Metric label="逾期事項" value={`${overdueRows.length} 件`} detail={overdueRows[0]?.storeName || "無逾期"} tone={overdueRows.length ? "bad" : "good"} />
@@ -4055,25 +4398,46 @@ function AnomalyCenterModule({ reports, handovers, performanceRows, staffRoster,
             <p>總部每日先看這張表，重大異常優先派工，避免缺報、缺人、未改善累積。</p>
           </div>
         </div>
+        <div className="filter-bar">
+          <select value={periodFilter} onChange={(event) => setPeriodFilter(event.target.value)}>
+            <option value="today">今日</option>
+            <option value="week">本週</option>
+            <option value="month">本月</option>
+            <option value="all">全部</option>
+          </select>
+          <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
+            <option value="all">全部門店</option>
+            {storeOptions.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+          </select>
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+            <option value="all">全部異常類型</option>
+            {categoryOptions.map((category) => <option key={category} value={category}>{category}</option>)}
+          </select>
+          <select value={levelFilter} onChange={(event) => setLevelFilter(event.target.value)}>
+            <option value="all">全部嚴重程度</option>
+            <option value="重大">重大</option>
+            <option value="提醒">提醒</option>
+          </select>
+        </div>
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>等級</th><th>類型</th><th>代碼</th><th>門店</th><th>責任人</th><th>期限</th><th>處理狀態</th><th>問題說明 / 下一步</th></tr>
+              <tr><th>等級</th><th>異常分類</th><th>發生日</th><th>門店</th><th>負責人</th><th>期限</th><th>狀態</th><th>問題與下一步</th></tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
+              {filteredRows.map((row) => (
                 <tr key={row.id} onClick={() => onSelect?.(reportForStoreCode(reports, row.store_code)?.store_id)}>
                   <td><span className={`chip ${row.level === "重大" ? "bad" : "warn"}`}>{row.level}</span></td>
-                  <td><strong>{row.type}</strong></td>
-                  <td><span className="code-chip">{row.store_code}</span></td>
-                  <td>{row.storeName}</td>
+                  <td><strong>{row.category}</strong><span>{row.type}</span></td>
+                  <td>{row.occurred_at || today}</td>
+                  <td><strong>{row.storeName}</strong><span className="code-chip">{row.store_code}</span></td>
                   <td>{row.owner}</td>
                   <td className={isOverdue(row.due_date) ? "negative" : ""}>{row.due_date}</td>
                   <td><span className={`chip ${taskTone(row.status)}`}>{row.status}</span></td>
-                  <td>{row.message}</td>
+                  <td><strong>{row.message}</strong><span>{row.next_action}</span></td>
                 </tr>
               ))}
-              {!rows.length && <tr><td colSpan="8">目前無異常，維持每日巡檢與交接稽核即可。</td></tr>}
+              {!filteredRows.length && <tr><td colSpan="8">目前篩選條件下無異常，維持每日巡檢與交接稽核即可。</td></tr>}
             </tbody>
           </table>
         </div>
@@ -4084,6 +4448,11 @@ function AnomalyCenterModule({ reports, handovers, performanceRows, staffRoster,
 
 function HandoverModule({ report, handovers, onSave }) {
   const storeRows = handovers.filter((row) => row.store_id === report.store_id);
+  const handoverTemplates = {
+    開店: ["現金確認", "昨日待辦", "設備開機", "備料與清潔"],
+    班中: ["尖峰補貨", "現金短溢", "客訴事件", "人力支援"],
+    打烊: ["現金結算", "庫存盤點", "設備關閉", "閉店清潔"],
+  };
   const [form, setForm] = useState({
     shift_type: "打烊",
     cash_status: "正常",
@@ -4120,6 +4489,14 @@ function HandoverModule({ report, handovers, onSave }) {
     setSaving(false);
   }
 
+  function applyShiftTemplate(shiftType) {
+    setForm((current) => ({
+      ...current,
+      shift_type: shiftType,
+      pending_tasks: current.pending_tasks || handoverTemplates[shiftType].join("、"),
+    }));
+  }
+
   return (
     <div className="workspace module-grid">
       <section className="kpi-strip">
@@ -4135,6 +4512,19 @@ function HandoverModule({ report, handovers, onSave }) {
             <h2>交接填報</h2>
             <p>{report.name} · 開店、班中、打烊交接均可登錄。</p>
           </div>
+        </div>
+        <div className="handover-template-row">
+          {Object.entries(handoverTemplates).map(([shiftType, items]) => (
+            <button
+              key={shiftType}
+              type="button"
+              className={form.shift_type === shiftType ? "active" : ""}
+              onClick={() => applyShiftTemplate(shiftType)}
+            >
+              <strong>{shiftType}</strong>
+              <span>{items.slice(0, 2).join("、")}</span>
+            </button>
+          ))}
         </div>
         <div className="form-grid">
           <SelectField label="交接時段" value={form.shift_type} options={["開店", "班中", "打烊"]} onChange={(value) => setForm({ ...form, shift_type: value })} />
@@ -4367,6 +4757,12 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
   );
   const currentTotal = numericValue(form.full_day_revenue);
   const revenueInvalid = currentTotal < numericValue(form.opened_to_1400_revenue) + numericValue(form.revenue_1400_to_1900);
+  const salesSteps = [
+    ["1", "14:00", "開店至 14:00 營收", form.opened_to_1400_revenue],
+    ["2", "19:00", "14:00 至 19:00 營收", form.revenue_1400_to_1900],
+    ["3", "全日", "打烊收銀總額", form.full_day_revenue],
+  ];
+  const completedSteps = salesSteps.filter((step) => !isBlankNumber(step[3]) && Number(step[3]) >= 0).length;
 
   useEffect(() => {
     setDateDraft(reportDate || today);
@@ -4443,6 +4839,18 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
         <div className="alert-line">營收只需填 14:00、19:00 與全日總營收；19:00 至打烊由系統自動倒算。</div>
         {reportDate < today && <div className="alert-line warn">目前正在修改過往日期 {reportDate}，已通過認證碼。</div>}
         {revenueInvalid && <div className="alert-line danger">全日總營收不可小於 14:00 與 19:00 加總，請修正後再送出。</div>}
+        <div className="store-today-panel">
+          <div>
+            <span>今日待完成</span>
+            <strong>{completedSteps}/3 段營收</strong>
+            <p>庫存與進貨可用上一筆庫存作為參考，送出前再確認現金差異。</p>
+          </div>
+          <div className="store-action-chips">
+            <span className={completedSteps >= 3 ? "done" : ""}>營收</span>
+            <span className={inventory.some((row) => !isBlankNumber(row.current_stock) || !isBlankNumber(row.current_stock_boxes) || !isBlankNumber(row.current_stock_packs)) ? "done" : ""}>庫存</span>
+            <span className={!isBlankNumber(form.cash_difference) ? "done" : ""}>現金</span>
+          </div>
+        </div>
         <div className="segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
           <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
@@ -4450,6 +4858,15 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
         </div>
         {tab === "sales" ? (
           <div className="mobile-stack">
+            <div className="step-strip">
+              {salesSteps.map(([step, title, detail, value]) => (
+                <div className={!isBlankNumber(value) ? "done" : ""} key={title}>
+                  <span>{step}</span>
+                  <strong>{title}</strong>
+                  <small>{detail}</small>
+                </div>
+              ))}
+            </div>
             <RevenueInput label="14:00" helper="開店至 14:00" value={form.opened_to_1400_revenue} onChange={(value) => setForm({ ...form, opened_to_1400_revenue: value })} />
             <RevenueInput label="19:00" helper="14:00 至 19:00" value={form.revenue_1400_to_1900} onChange={(value) => setForm({ ...form, revenue_1400_to_1900: value })} />
             <RevenueInput label="全日總營收" helper="今日收銀總額" value={form.full_day_revenue} onChange={(value) => setForm({ ...form, full_day_revenue: value })} />
