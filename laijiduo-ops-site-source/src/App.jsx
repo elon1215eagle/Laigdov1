@@ -54,12 +54,18 @@ import {
 } from "./lib/storeScope";
 import {
   buildHalfHourStaffingMatrix,
+  buildDailyShiftCommand,
+  buildScheduleChangeRequest,
   buildStaffingSegments,
   calculateDailyStaffing,
+  deriveScheduleAccess,
   isEffectiveScheduleStaff,
   isScheduleExcludedRole,
+  mergeDailyShift,
   normalizeStoreScopedScheduleCode,
+  removeDailyShiftById,
   scheduleGroupForStore,
+  scheduleLockStatusText,
   supportVisibleGroupsForTemporarySupport,
   validateTimeWindow,
 } from "./modules/scheduling";
@@ -3675,13 +3681,17 @@ function MonthlyLeavePlanner({
   const supportRows = isStoreScoped && remoteSupportRows !== null
     ? remoteSupportRows
     : calculatedSupportRows;
-  const isScheduleConfirmed = Boolean(scheduleControl.lock?.is_confirmed);
   const currentScheduleRequestCode = storeGroups[0]?.code || allowedGroupCode || normalizeStoreScopedScheduleCode(allowedStoreCode);
-  const ownScheduleRequest = isStoreScoped
-    ? scheduleControl.requests.find((request) => request.store_code === currentScheduleRequestCode)
-    : null;
-  const storeEditApproved = ownScheduleRequest?.status === "approved";
-  const canEditSchedule = !isStoreScoped || !isScheduleConfirmed || storeEditApproved;
+  const {
+    isConfirmed: isScheduleConfirmed,
+    ownRequest: ownScheduleRequest,
+    storeEditApproved,
+    canEdit: canEditSchedule,
+  } = deriveScheduleAccess({
+    isStoreScoped,
+    scheduleControl,
+    requestStoreCode: currentScheduleRequestCode,
+  });
   const editablePartTimeStaff = (isStoreScoped ? plannerRows : scheduleStaff).filter((person) => person.role === "兼職人員");
   const visibleDailyShifts = dailyShifts.filter((shift) => (
     !isStoreScoped || plannerRows.some((person) => String(person.id) === String(shift.staff_id))
@@ -3714,13 +3724,11 @@ function MonthlyLeavePlanner({
     : [];
   const wujiaGapRows = wujiaMatrixRows.filter((row) => row.gap > 0);
   const wujiaPeakGapRows = wujiaGapRows.filter((row) => row.isPeak);
-  const lockStatusText = !hasSupabaseConfig
-    ? "本機模式未啟用總部確認"
-    : scheduleControl.missingTable
-      ? "尚未建立排班確認資料表"
-      : isScheduleConfirmed
-        ? "總部已確認，門店不可修改"
-        : "尚未確認，門店可修改";
+  const lockStatusText = scheduleLockStatusText({
+    hasRemoteConfig: hasSupabaseConfig,
+    isConfirmed: isScheduleConfirmed,
+    missingTable: scheduleControl.missingTable,
+  });
   const filledCount = plannerRows.filter((row) => countLeaveDays(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates)).length;
   const totalLeaveDays = plannerRows.reduce((sum, row) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates), 0);
   const overLimitCount = plannerRows.filter((row) => {
@@ -3758,28 +3766,21 @@ function MonthlyLeavePlanner({
       return;
     }
     const person = editablePartTimeStaff.find((row) => String(row.id) === String(shiftForm.staff_id));
-    if (!person) return onNotify?.("請選擇兼職人員");
-    const validation = validateTimeWindow(shiftForm.start_time, shiftForm.end_time);
-    if (!validation.valid || !validation.start || !validation.end) {
-      onNotify?.(validation.message || "請輸入當日上班與下班時間");
+    const command = buildDailyShiftCommand({
+      form: shiftForm,
+      person,
+      homeStoreCode: person ? canonicalStoreCode(person) : "",
+    });
+    if (!command.valid) {
+      onNotify?.(command.message);
       return;
     }
-    const homeStoreCode = canonicalStoreCode(person);
-    const assignedStoreCode = shiftForm.assigned_store_code || homeStoreCode;
-    const payload = {
-      ...shiftForm,
-      employee_name: person.employeeName,
-      home_store_code: homeStoreCode,
-      assigned_store_code: assignedStoreCode,
-      start_time: validation.start,
-      end_time: validation.end,
-      shift_type: assignedStoreCode === homeStoreCode ? "override" : "support",
-    };
+    const payload = command.payload;
     setShiftSaving(true);
     try {
       const saved = await upsertDailyStaffShift(payload);
       setDailyShifts((current) => {
-        const next = [...current.filter((row) => !(row.shift_date === saved.shift_date && String(row.staff_id) === String(saved.staff_id))), saved];
+        const next = mergeDailyShift(current, saved);
         if (!hasSupabaseConfig) localStorage.setItem(`daily-staff-shifts:${leaveMonth}`, JSON.stringify(next));
         return next;
       });
@@ -3798,7 +3799,7 @@ function MonthlyLeavePlanner({
     try {
       await deleteDailyStaffShift(shift.id);
       setDailyShifts((current) => {
-        const next = current.filter((row) => row.id !== shift.id);
+        const next = removeDailyShiftById(current, shift.id);
         if (!hasSupabaseConfig) localStorage.setItem(`daily-staff-shifts:${leaveMonth}`, JSON.stringify(next));
         return next;
       });
@@ -3829,18 +3830,18 @@ function MonthlyLeavePlanner({
   }
 
   async function submitChangeRequest() {
-    const reason = requestReason.trim();
-    if (!reason) {
-      onNotify?.("請先填寫修改原因");
+    const command = buildScheduleChangeRequest({
+      periodMonth: leaveMonth,
+      reason: requestReason,
+      storeCode: currentScheduleRequestCode,
+      storeName: storeGroups[0]?.name || allowedStoreName || "",
+    });
+    if (!command.valid) {
+      onNotify?.(command.message);
       return;
     }
     try {
-      await submitMonthlyScheduleChangeRequest({
-        period_month: leaveMonth,
-        store_code: currentScheduleRequestCode,
-        store_name: storeGroups[0]?.name || allowedStoreName || "",
-        reason,
-      });
+      await submitMonthlyScheduleChangeRequest(command.payload);
       setRequestReason("");
       await loadScheduleControl();
       onNotify?.("修改申請已送出，待總部核可");

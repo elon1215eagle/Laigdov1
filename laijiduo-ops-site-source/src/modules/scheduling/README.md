@@ -29,6 +29,22 @@ The repository owns:
 - daily part-time overrides and cross-store support shifts;
 - offline fallbacks used by local acceptance testing.
 
+## Application model
+
+`application/schedulePageModel.js` owns page-level decisions that must remain
+consistent across desktop and mobile:
+
+- headquarters confirmation and store editing access;
+- approved store change requests;
+- schedule lock status text;
+- daily shift command construction;
+- local shift replacement and removal;
+- schedule change request validation.
+
+React owns only component state, event wiring and rendering. Scheduling business
+rules remain in `domain`, page decisions in `application`, and persistence in
+`data`.
+
 ## Invariants
 
 - A one-day shift overrides the staff master default for that date only.
