@@ -66,6 +66,7 @@ import {
   normalizeStoreName,
 } from "./lib/storeScope";
 import {
+  buildHalfHourStaffingMatrix,
   resolvePersonWorkWindow,
   segmentCoverageRatio as calculateSegmentCoverageRatio,
   validateTimeWindow,
@@ -3728,6 +3729,34 @@ function MonthlyLeavePlanner({
   const visibleDailyShifts = dailyShifts.filter((shift) => (
     !isStoreScoped || plannerRows.some((person) => String(person.id) === String(shift.staff_id))
   ));
+  const wujiaGroup = allStoreGroups.find((store) => store.sourceCodes.includes("S01"));
+  const wujiaMatrixVisible = !isStoreScoped || ["S01", "S06"].includes(allowedStoreCode);
+  const wujiaMatrixDay = Number(supportDate.slice(8, 10));
+  const wujiaLeaveStaffIds = staffRoster
+    .filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, wujiaMatrixDay))
+    .map((person) => person.id);
+  const wujiaMatrixRows = wujiaGroup && supportDate.startsWith(leaveMonth)
+    ? buildHalfHourStaffingMatrix({
+        dateValue: supportDate,
+        store: {
+          ...(storeHourMap.get("S01") || {}),
+          code: "S01",
+          store_code: "S01",
+          open_time: storeHourMap.get("S01")?.open_time || "10:00",
+          close_time: storeHourMap.get("S01")?.close_time || storeHourMap.get("S01")?.close_report_time || "23:00",
+        },
+        people: staffRoster.map((person) => ({
+          ...person,
+          excludedFromStaffing: isScheduleExcludedRole(person),
+        })),
+        overrides: dailyShifts,
+        leaveStaffIds: wujiaLeaveStaffIds,
+        demand: wujiaGroup.demand || storeDemandMap.get("S01") || 5,
+        storeCodes: wujiaGroup.sourceCodes,
+      })
+    : [];
+  const wujiaGapRows = wujiaMatrixRows.filter((row) => row.gap > 0);
+  const wujiaPeakGapRows = wujiaGapRows.filter((row) => row.isPeak);
   const lockStatusText = !hasSupabaseConfig
     ? "本機模式未啟用總部確認"
     : scheduleControl.missingTable
@@ -4415,6 +4444,50 @@ function MonthlyLeavePlanner({
           </div>
         )}
       </section>
+
+      {wujiaMatrixVisible && wujiaGroup && (
+        <section className="staffing-matrix">
+          <div className="panel-head">
+            <div>
+              <h3>五甲店時段人力矩陣</h3>
+              <p>{supportDate}，每 30 分鐘核對實際在班、有效人力、需求與缺口；沿用上方臨時支援日期。</p>
+            </div>
+            <div className="matrix-summary">
+              <span className={wujiaPeakGapRows.length ? "negative" : "positive"}><strong>{wujiaPeakGapRows.length}</strong> 個尖峰缺口</span>
+              <span><strong>{wujiaGapRows.length}</strong> 個全日缺口</span>
+            </div>
+          </div>
+          <div className="table-wrap staffing-matrix-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>時段</th>
+                  <th>餐期</th>
+                  <th>實際在班</th>
+                  <th>有效人力</th>
+                  <th>需求人力</th>
+                  <th>缺口</th>
+                  <th>在班名單</th>
+                </tr>
+              </thead>
+              <tbody>
+                {wujiaMatrixRows.map((row) => (
+                  <tr className={`${row.isPeak ? "peak-row" : ""} ${row.gap > 0 ? "gap-row" : ""}`} key={row.startTime}>
+                    <td><strong>{row.startTime}–{row.endTime}</strong></td>
+                    <td>{row.peakLabel || "離峰"}</td>
+                    <td>{row.actualCount}</td>
+                    <td>{row.effectiveCount}</td>
+                    <td>{row.demand}</td>
+                    <td className={row.gap > 0 ? "negative" : "positive"}>{row.gap > 0 ? `缺 ${row.gap}` : row.surplus > 0 ? `多 ${row.surplus}` : "足額"}</td>
+                    <td className="matrix-name-list">{row.peopleNames.join("、") || "無人在班"}</td>
+                  </tr>
+                ))}
+                {!wujiaMatrixRows.length && <tr><td colSpan="7">目前無法建立五甲店時段矩陣，請確認營業時間與人員主檔。</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <div className="support-panel">
         <label>

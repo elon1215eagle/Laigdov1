@@ -84,3 +84,58 @@ export function segmentCoverageRatio(window, segment) {
   return overlap / (segment.end - segment.start);
 }
 
+export function buildHalfHourStaffingMatrix({
+  dateValue,
+  store,
+  people,
+  overrides = [],
+  leaveStaffIds = [],
+  demand = 0,
+  storeCodes = [],
+  holidayDates = [],
+}) {
+  const start = timeToMinutes(store.open_time, 10 * 60);
+  const end = timeToMinutes(store.close_time || store.close_report_time, 23 * 60);
+  const targetCodes = storeCodes.length ? storeCodes : [store.store_code || store.code].filter(Boolean);
+  const overrideByStaff = new Map(
+    overrides.filter((row) => row.shift_date === dateValue).map((row) => [String(row.staff_id), row]),
+  );
+  const leaveIds = new Set(leaveStaffIds.map(String));
+  const rows = [];
+
+  for (let slotStart = start; slotStart < end; slotStart += 30) {
+    const slotEnd = Math.min(slotStart + 30, end);
+    const presentPeople = people.filter((person) => {
+      if (leaveIds.has(String(person.id))) return false;
+      const override = overrideByStaff.get(String(person.id));
+      const assignedStoreCode = override?.assigned_store_code || person.store_code || person.storeCode;
+      if (!targetCodes.includes(assignedStoreCode)) return false;
+      const window = resolvePersonWorkWindow({ person, dateValue, store, override, holidayDates });
+      return Boolean(window) && window.start <= slotStart && window.end >= slotEnd;
+    });
+    const effectivePeople = presentPeople.filter((person) => !person.excludedFromStaffing);
+    const isLunchPeak = slotStart < 14 * 60 && slotEnd > 11 * 60;
+    const isDinnerPeak = slotStart < 19 * 60 && slotEnd > 16 * 60 + 30;
+    rows.push({
+      startTime: minutesToTime(slotStart),
+      endTime: minutesToTime(slotEnd),
+      actualCount: presentPeople.length,
+      effectiveCount: effectivePeople.length,
+      demand: Number(demand || 0),
+      gap: Math.max(Number(demand || 0) - effectivePeople.length, 0),
+      surplus: Math.max(effectivePeople.length - Number(demand || 0), 0),
+      isPeak: isLunchPeak || isDinnerPeak,
+      peakLabel: isLunchPeak ? "午峰" : isDinnerPeak ? "晚峰" : "",
+      peopleNames: presentPeople.map((person) => person.employeeName || person.employee_name || "").filter(Boolean),
+      effectivePeopleNames: effectivePeople.map((person) => person.employeeName || person.employee_name || "").filter(Boolean),
+    });
+  }
+  return rows;
+}
+
+export function minutesToTime(value) {
+  const normalized = Math.max(0, Number(value || 0));
+  const hour = Math.floor(normalized / 60) % 24;
+  const minute = normalized % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}

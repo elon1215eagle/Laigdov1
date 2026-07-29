@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildHalfHourStaffingMatrix,
   getPartTimeDefaultWindow,
   resolvePersonWorkWindow,
   segmentCoverageRatio,
@@ -68,3 +69,56 @@ test("允許主檔預設時間全部留空", () => {
   assert.deepEqual(validateTimeWindow("", ""), { valid: true, start: "", end: "" });
 });
 
+test("五甲矩陣以30分鐘顯示兼職重疊，不重複放大人力", () => {
+  const people = [
+    { id: "a", employeeName: "上午班", role: "兼職人員", store_code: "S01", weekday_start_time: "10:00", weekday_end_time: "16:00" },
+    { id: "b", employeeName: "下午班", role: "兼職人員", store_code: "S01", weekday_start_time: "14:00", weekday_end_time: "20:00" },
+  ];
+  const rows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-07-29",
+    store: { code: "S01", open_time: "10:00", close_time: "20:00" },
+    people,
+    demand: 1,
+    storeCodes: ["S01", "S06"],
+  });
+  assert.equal(rows.find((row) => row.startTime === "13:30").effectiveCount, 1);
+  assert.equal(rows.find((row) => row.startTime === "14:00").effectiveCount, 2);
+  assert.equal(rows.find((row) => row.startTime === "16:00").effectiveCount, 1);
+});
+
+test("跨店支援只計入實際工作門店", () => {
+  const person = { id: "a", employeeName: "支援人員", role: "兼職人員", store_code: "S01", weekday_start_time: "10:00", weekday_end_time: "16:00" };
+  const override = [{ shift_date: "2026-07-29", staff_id: "a", assigned_store_code: "S09", start_time: "15:00", end_time: "23:00", shift_type: "support" }];
+  const wujiaRows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-07-29",
+    store: { code: "S01", open_time: "10:00", close_time: "23:00" },
+    people: [person],
+    overrides: override,
+    storeCodes: ["S01", "S06"],
+  });
+  const dingshanRows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-07-29",
+    store: { code: "S09", open_time: "10:00", close_time: "23:00" },
+    people: [person],
+    overrides: override,
+    storeCodes: ["S09"],
+  });
+  assert.equal(wujiaRows.find((row) => row.startTime === "15:00").actualCount, 0);
+  assert.equal(dingshanRows.find((row) => row.startTime === "15:00").actualCount, 1);
+});
+
+test("排除角色可顯示實際在班但不列入有效人力", () => {
+  const rows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-07-29",
+    store: { code: "S01", open_time: "10:00", close_time: "11:00" },
+    people: [
+      { id: "a", employeeName: "正式人員", role: "正式人員", store_code: "S01" },
+      { id: "b", employeeName: "送貨人員", role: "送貨人員", store_code: "S01", excludedFromStaffing: true },
+    ],
+    demand: 2,
+    storeCodes: ["S01"],
+  });
+  assert.equal(rows[0].actualCount, 2);
+  assert.equal(rows[0].effectiveCount, 1);
+  assert.equal(rows[0].gap, 1);
+});
