@@ -250,7 +250,7 @@ td span,
 }
 
 .segments {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
 }
 
 .role-switcher button,
@@ -274,6 +274,33 @@ td span,
   color: #604235;
   font-size: 13px;
   font-weight: 700;
+}
+
+.store-scope-card {
+  border: 1px solid #f0d5c7;
+  background: #fff8f2;
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+
+.store-scope-card span {
+  display: block;
+  color: #856d60;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.store-scope-card strong {
+  display: block;
+  margin-top: 4px;
+  color: #2c211c;
+  font-size: 18px;
+}
+
+.store-scope-card p {
+  margin: 4px 0 0;
+  color: #856d60;
+  font-size: 13px;
 }
 
 select,
@@ -652,6 +679,11 @@ tbody tr.selected,
   background: #fff4ec;
 }
 
+.inline-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .progress {
   position: relative;
   min-width: 112px;
@@ -981,6 +1013,67 @@ tbody tr.selected,
   font-size: 18px;
 }
 
+.schedule-control-panel,
+.schedule-request-review {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #efd8ca;
+  border-radius: 8px;
+  background: #fffaf6;
+}
+
+.schedule-control-panel {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.schedule-control-panel.locked {
+  border-color: #efb3a5;
+  background: #fff1ee;
+}
+
+.schedule-control-panel span {
+  color: #856d60;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.schedule-control-panel strong,
+.schedule-approved-box strong {
+  display: block;
+  margin-top: 4px;
+  color: #2c211c;
+  font-size: 17px;
+}
+
+.schedule-control-panel p,
+.schedule-approved-box p,
+.schedule-request-box small {
+  margin: 4px 0 0;
+  color: #856d60;
+  font-size: 13px;
+}
+
+.schedule-control-actions,
+.schedule-request-box {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.schedule-request-box textarea {
+  width: min(420px, 100%);
+  min-height: 74px;
+  padding: 10px 12px;
+}
+
+.schedule-request-review .compact-head {
+  margin-bottom: 0;
+}
+
 .support-panel {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -1006,7 +1099,7 @@ tbody tr.selected,
 
 .support-list {
   display: grid;
-  grid-template-columns: repeat(5, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 8px;
 }
 
@@ -1029,6 +1122,11 @@ tbody tr.selected,
 .support-card span {
   color: #76594b;
   font-size: 12px;
+}
+
+.support-card .warn-text {
+  color: #ad4d21;
+  font-weight: 800;
 }
 
 .support-card em {
@@ -1376,7 +1474,7 @@ tbody tr.selected,
 
 .staff-admin-grid {
   display: grid;
-  grid-template-columns: 1.1fr 1fr 1fr 120px auto;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 12px;
   align-items: end;
   margin-bottom: 16px;

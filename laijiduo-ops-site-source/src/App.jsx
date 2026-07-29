@@ -4,16 +4,20 @@ import {
   deleteDailyReport,
   deleteDailyReports,
   fetchDailyReports,
+  fetchDailyReportsRange,
   fetchHandovers,
   fetchHqDashboardData,
   fetchHqTasks,
   fetchInventoryCounts,
   fetchMonthlyLeavePlans,
+  fetchMonthlyScheduleControl,
   fetchPreviousInventoryCounts,
   fetchProducts,
   fetchSecuritySettings,
   fetchStaffPerformance,
+  fetchStoreRelationGroups,
   fetchStoreStaff,
+  fetchTemporarySupportSummary,
   fetchStores,
   getSessionProfile,
   hasSupabaseConfig,
@@ -23,12 +27,16 @@ import {
   statusLabel,
   totalRevenue,
   updateStoreMonthlyTarget,
+  confirmMonthlySchedule,
   upsertDailyReport,
   upsertHandover,
   upsertHqTask,
   upsertInventoryCounts,
   upsertMonthlyLeavePlan,
   upsertMonthlyLeavePlans,
+  submitMonthlyScheduleChangeRequest,
+  reviewMonthlyScheduleChangeRequest,
+  unlockMonthlySchedule,
   upsertSecuritySettings,
   upsertStaffPerformance,
   upsertStoreStaffMember,
@@ -48,6 +56,12 @@ import {
   storeHoursSeed,
   storesSeed,
 } from "./lib/mockData";
+import {
+  STORE_RELATION_GROUPS,
+  createStoreDirectory,
+  mergeStoreRelationGroups,
+  normalizeStoreName,
+} from "./lib/storeScope";
 import { InspectionApp } from "./InspectionApp";
 
 const taipeiDateTimeParts = new Intl.DateTimeFormat("en-CA", {
@@ -78,10 +92,18 @@ function getTaipeiBusinessDate(parts = taipeiDateTimeParts) {
 }
 
 const today = getTaipeiBusinessDate();
+const STORE_MANAGER_REVENUE_LOOKBACK_DAYS = 14;
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const numberText = (value, digits = 2) => Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: digits });
 const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
+const storeDirectory = createStoreDirectory(storesSeed);
+const {
+  canonicalStoreCode,
+  displayStoreName,
+  findStoreScopedRecord,
+  resolveStoreCodeFromRef,
+} = storeDirectory;
 
 const ROLE_LABELS = {
   ceo: "執行長",
@@ -107,6 +129,9 @@ const ROLE_MODULES = {
   store_manager: ["ops", "handover", "schedule", "system"],
 };
 
+const HIDDEN_MODULES = new Set(["handover", "anomaly", "tasks", "hrFlow", "performance", "inspection", "system"]);
+const HIDDEN_VIEW_MODES = new Set(["review", "inspection"]);
+
 const MODULE_GROUPS = [
   {
     title: "每日作業",
@@ -125,7 +150,7 @@ const MODULE_GROUPS = [
     ],
   },
   {
-    title: "人資績效",
+    title: "人員資料",
     items: [
       ["hr", "人資主檔"],
       ["hrFlow", "人資異動"],
@@ -153,18 +178,22 @@ const ROLE_VIEW_OPTIONS = {
   store_manager: ["store"],
 };
 
+function visibleViewModesForRole(roleName) {
+  const modes = (ROLE_VIEW_OPTIONS[roleName] || ["hq"]).filter((mode) => !HIDDEN_VIEW_MODES.has(mode));
+  return modes.length ? modes : ["hq"];
+}
+
 function profileRole(profile) {
   return profile?.role || "admin";
 }
 
 function appViewForRole(roleName) {
   if (roleName === "store_manager") return "store";
-  if (roleName === "cso" || roleName === "supervisor") return "review";
   return "hq";
 }
 
 function modulesForRole(roleName) {
-  return ROLE_MODULES[roleName] || ROLE_MODULES.hq;
+  return (ROLE_MODULES[roleName] || ROLE_MODULES.hq).filter((moduleName) => !HIDDEN_MODULES.has(moduleName));
 }
 
 function canAccessModule(roleName, moduleName) {
@@ -253,6 +282,14 @@ function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+function storeManagerRevenueMinDate(referenceDate = today) {
+  return addDays(referenceDate, 1 - STORE_MANAGER_REVENUE_LOOKBACK_DAYS);
+}
+
+function isStoreManagerRevenueDateAllowed(dateText, referenceDate = today) {
+  return Boolean(dateText) && dateText >= storeManagerRevenueMinDate(referenceDate) && dateText <= referenceDate;
 }
 
 function getWeekRange(dateText) {
@@ -355,6 +392,7 @@ export function App() {
   const [performanceRows, setPerformanceRows] = useState([]);
   const [hqTasks, setHqTasks] = useState([]);
   const [staffRoster, setStaffRoster] = useState([]);
+  const [storeRelationGroups, setStoreRelationGroups] = useState(STORE_RELATION_GROUPS);
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -368,11 +406,12 @@ export function App() {
     setPerformanceRows([]);
     setHqTasks([]);
     setStaffRoster([]);
+    setStoreRelationGroups(STORE_RELATION_GROUPS);
     setSelectedStoreId("");
   }
 
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId, preferredReportDate = reportDate) {
-    const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows, staffRows] = await Promise.all([
+    const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows, staffRows, relationGroups] = await Promise.all([
       fetchStores(),
       fetchProducts(),
       fetchDailyReports(preferredReportDate),
@@ -380,6 +419,7 @@ export function App() {
       fetchStaffPerformance(new Date().toISOString().slice(0, 7)),
       fetchHqTasks(),
       fetchStoreStaff(),
+      fetchStoreRelationGroups(),
     ]);
     setStores(storeRows);
     setProducts(productRows);
@@ -387,6 +427,7 @@ export function App() {
     setPerformanceRows(performanceData);
     setHqTasks(taskRows);
     setStaffRoster(staffRows);
+    setStoreRelationGroups(mergeStoreRelationGroups(relationGroups));
     const nextStoreId = nextProfile?.role === "store_manager"
       ? (nextProfile?.store_id || nextProfile?.store_code || "")
       : (nextProfile?.store_id || nextProfile?.store_code || preferredStoreId || storeRows[0]?.id || "");
@@ -424,6 +465,7 @@ export function App() {
           setPerformanceRows(performanceSeed);
           setHqTasks(hqTaskSeed);
           setStaffRoster(staffRosterSeed);
+          setStoreRelationGroups(STORE_RELATION_GROUPS);
         }
       } catch (error) {
         setMessage(error.message);
@@ -520,6 +562,10 @@ export function App() {
 
   async function changeReportDate(nextDate, authCode = "") {
     if (!nextDate) return false;
+    if (currentRole === "store_manager" && !isStoreManagerRevenueDateAllowed(nextDate)) {
+      show(`店長帳號僅可查閱最近 ${STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天營收資料`);
+      return false;
+    }
     if (nextDate < today && authCode !== "8599") {
       show("過往日期需輸入認證碼 8599");
       return false;
@@ -915,7 +961,7 @@ export function App() {
           />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "store" && selectedReport && (
-          <StoreReport report={selectedReport} reportDate={reportDate} products={products} onDateChange={changeReportDate} onSave={saveReport} />
+          <StoreReport report={selectedReport} reportDate={reportDate} products={products} currentRole={currentRole} onDateChange={changeReportDate} onSave={saveReport} />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "review" && selectedReport && (
           <>
@@ -985,6 +1031,7 @@ export function App() {
             selectedStoreId={selectedStoreId}
             selectedReport={selectedReport}
             currentRole={currentRole}
+            storeRelationGroups={storeRelationGroups}
             onNotify={show}
           />
         )}
@@ -1178,7 +1225,7 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
       <section className="entry-copy">
         <div className="brand-mark">萊</div>
         <h1>萊吉多營運回報入口</h1>
-        <p>門店回報營收、庫存與差異，總部與營運審核可即時查看每日營運狀況。</p>
+        <p>門店回報營收、庫存與差異，總部可即時查看每日營運狀況。</p>
         <label>
           選擇門店
           <select onChange={(event) => onSelectStore(event.target.value)} defaultValue="">
@@ -1190,13 +1237,12 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
         </label>
         <div className="entry-actions">
           <button className="primary" onClick={() => onRole("hq")}>總部儀表板</button>
-          <button onClick={() => onRole("review")}>營運審核</button>
         </div>
       </section>
       <section className="entry-panels">
         <Info title="門店回報" text="依 14:00、19:00、打烊三個時段填寫營收，並補上現金差異與備註。" />
-        <Info title="總部總覽" text="快速查看各門店營收、達成率、庫存狀態與待審核數量。" />
-        <Info title="營運審核" text="針對異常回報進行通過、退回修改或指派追蹤。" />
+        <Info title="總部總覽" text="快速查看各門店營收、達成率、庫存狀態與目標進度。" />
+        <Info title="排班與人員" text="維護門店人員資料，支援排假與人力需求判讀。" />
       </section>
     </main>
   );
@@ -1216,7 +1262,8 @@ function Sidebar({
   onSignOut,
 }) {
   const isStoreManager = profile?.role === "store_manager";
-  const allowedViewModes = ROLE_VIEW_OPTIONS[currentRole] || ["hq"];
+  const allowedViewModes = visibleViewModesForRole(currentRole);
+  const selectedStore = stores.find((store) => store.id === selectedStoreId || store.store_id === selectedStoreId || store.store_code === selectedStoreId);
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -1251,16 +1298,25 @@ function Sidebar({
           ))}
         </div>
       )}
-      <label className="field-label">門店</label>
-      <select
-        value={selectedStoreId}
-        disabled={isStoreManager}
-        onChange={(event) => setSelectedStoreId(event.target.value)}
-      >
-        {stores.map((store) => (
-          <option key={store.id} value={store.id}>{store.name}</option>
-        ))}
-      </select>
+      {isStoreManager ? (
+        <div className="store-scope-card">
+          <span>目前門店</span>
+          <strong>{selectedStore?.name || profile?.store_code || "已綁定門店"}</strong>
+          <p>僅可查看與操作本店資料</p>
+        </div>
+      ) : (
+        <>
+          <label className="field-label">門店</label>
+          <select
+            value={selectedStoreId}
+            onChange={(event) => setSelectedStoreId(event.target.value)}
+          >
+            {stores.map((store) => (
+              <option key={store.id} value={store.id}>{store.name}</option>
+            ))}
+          </select>
+        </>
+      )}
       <nav className="side-nav">
         {MODULE_GROUPS.map((group) => (
           <NavGroup
@@ -1453,15 +1509,39 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
     },
   };
   const meta = roleMeta[roleName] || roleMeta.coo;
-  const riskRows = roleName === "cfo" ? summary.cashIssues.slice(0, 4).map((row) => ({
-    id: `cash-${row.store_id}`,
-    storeName: row.name,
-    type: "現金差異",
-    level: "重大",
-    status: statusLabel(row.status),
-    message: `差異 ${money(row.cash_difference)}`,
-    store_id: row.store_id,
-  })) : summary.riskRows;
+  const visibleActions = meta.actions.filter(([, moduleName]) => canAccessModule(roleName, moduleName));
+  const displayMetrics = [
+    ["今日營收", money(summary.total), `目標 ${money(summary.target)}`, "hot"],
+    ["回報完成率", pct(summary.reportRate), `${summary.reportedRows.length}/${reports.length} 門店`, summary.reportRate >= 90 ? "good" : "warn"],
+    ["排班缺口", `${summary.shortageRows.length} 筆`, summary.shortageRows[0]?.storeName || "目前足夠", summary.shortageRows.length ? "bad" : "good"],
+    ["人員主檔", `${summary.activeStaff.length} 人`, "支援排班與門店管理", "good"],
+  ];
+  const priorityRows = [
+    ...summary.unreported.map((row) => ({
+      id: `unreported-${row.store_id || row.id}`,
+      store_id: row.store_id || row.id,
+      storeName: row.name,
+      type: "尚未回報",
+      level: "重大",
+      message: "今日營運回報尚未送出",
+    })),
+    ...summary.shortageRows.map((row) => ({
+      id: `schedule-${row.storeCode || row.storeName}`,
+      store_code: row.storeCode,
+      storeName: row.storeName,
+      type: "排班缺口",
+      level: "提醒",
+      message: row.note || "門店人力需求需確認",
+    })),
+    ...summary.lowRevenue.map((row) => ({
+      id: `low-revenue-${row.store_id || row.id}`,
+      store_id: row.store_id || row.id,
+      storeName: row.name,
+      type: "營收未達標",
+      level: "提醒",
+      message: `目前達成率 ${pct((totalRevenue(row) / Math.max(1, Number(row.target || 0))) * 100)}`,
+    })),
+  ];
 
   return (
     <section className="panel wide role-home">
@@ -1471,13 +1551,13 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
           <p>{meta.subtitle}</p>
         </div>
         <div className="role-actions">
-          {meta.actions.map(([label, moduleName]) => (
+          {visibleActions.map(([label, moduleName]) => (
             <button key={label} type="button" onClick={() => onOpenModule?.(moduleName)}>{label}</button>
           ))}
         </div>
       </div>
       <div className="summary-grid role-summary">
-        {meta.metrics.map(([label, value, detail, itemTone]) => (
+        {displayMetrics.map(([label, value, detail, itemTone]) => (
           <Metric key={label} label={label} value={value} detail={detail} tone={itemTone} />
         ))}
       </div>
@@ -1485,7 +1565,7 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
         <div>
           <h3>今日優先處理</h3>
           <div className="priority-list">
-            {riskRows.slice(0, 5).map((row) => (
+            {priorityRows.slice(0, 5).map((row) => (
               <button key={row.id} type="button" className="priority-item" onClick={() => onSelect?.(row.store_id || reportForStoreCode(reports, row.store_code)?.store_id)}>
                 <span className={`chip ${row.level === "重大" ? "bad" : "warn"}`}>{row.level}</span>
                 <strong>{row.storeName}</strong>
@@ -1493,7 +1573,7 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
                 <small>{row.message}</small>
               </button>
             ))}
-            {!riskRows.length && <div className="empty-state">目前沒有需要立即升級處理的事項。</div>}
+            {!priorityRows.length && <div className="empty-state">目前核心回報、排班與營收狀況正常。</div>}
           </div>
         </div>
         <div>
@@ -1609,6 +1689,7 @@ function HqDashboard({
   const usageSummary = useMemo(() => buildUsageSummary(reports, products, periodRows, usageRows), [reports, products, periodRows, usageRows]);
   const dailyRevenueRows = useMemo(() => buildDailyRevenueRows(periodRows.length ? periodRows : reports), [periodRows, reports]);
   const weeklyRevenueRows = useMemo(() => buildWeeklyRevenueRows(periodRows.length ? periodRows : reports, fourWeekRanges), [periodRows, reports, fourWeekRanges]);
+  const weeklyComparisonRows = useMemo(() => buildWeeklySameDayRows(periodRows.length ? periodRows : reports, today), [periodRows, reports]);
   const usageMatrix = useMemo(() => buildUsageMatrix(usageSummary.rows), [usageSummary.rows]);
   const dataQuality = useMemo(() => buildDataQualitySummary(reports, handovers, performanceRows), [reports, handovers, performanceRows]);
   const anomalyRows = useMemo(
@@ -1653,11 +1734,11 @@ function HqDashboard({
       <section className="kpi-strip">
         <Metric label="今日總營收" value={money(summary.total)} detail={`目標 ${money(summary.target)}`} tone="hot" />
         <Metric label="整體達成率" value={pct((summary.total / summary.target) * 100)} detail="依今日目標計算" />
-        <Metric label="待審核" value={`${reports.filter((report) => report.status === "submitted").length} 間`} detail="等待營運審核確認" tone="warn" />
-        <Metric label="需追蹤" value={`${reports.filter((report) => report.status === "follow_up").length} 間`} detail="異常或補貨需求" tone="bad" />
+        <Metric label="已送出" value={`${reports.filter((report) => report.status === "submitted" || report.status === "approved").length} 間`} detail="今日已有回報紀錄" tone="good" />
+        <Metric label="未回報" value={`${reports.filter((report) => report.status === "draft" || !report.id).length} 間`} detail="提醒門店完成日報" tone="warn" />
         <Metric label="已達標" value={`${reports.filter((report) => totalRevenue(report) >= report.target).length} 間`} detail="營收高於目標" tone="good" />
       </section>
-      <DataQualityPanel summary={dataQuality} onSelect={onSelect} />
+      <HqOperationsView rows={weeklyComparisonRows} />
       <section className="panel wide">
         <div className="panel-head">
           <div>
@@ -1866,6 +1947,63 @@ function mergeInventoryRows(products, savedRows, previousRows) {
       previous_stock_unit: previous?.stock_unit || previous?.unit || product.unit || defaultUnitForProduct(product.name),
     };
   });
+}
+
+function HqOperationsView({ rows }) {
+  const visibleRows = rows.filter((row) => row.currentTotal || row.previousTotal).slice(0, 80);
+  return (
+    <section className="panel wide">
+      <div className="panel-head">
+        <div>
+          <h2>營運視圖</h2>
+          <p>各店本週同星期對比上週同星期，快速看出哪一天成長、哪一天下滑。</p>
+        </div>
+      </div>
+      <div className="table-wrap compact">
+        <table>
+          <thead>
+            <tr>
+              <th>門店</th>
+              <th>星期</th>
+              <th>本週日期</th>
+              <th>本週 14:00</th>
+              <th>本週 19:00</th>
+              <th>本週打烊</th>
+              <th>本週總額</th>
+              <th>上週日期</th>
+              <th>上週 14:00</th>
+              <th>上週 19:00</th>
+              <th>上週打烊</th>
+              <th>上週總額</th>
+              <th>總額差</th>
+              <th>成長率</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => (
+              <tr key={`${row.storeCode}-${row.currentDate}`}>
+                <td><strong>{row.storeName}</strong><span>{row.storeCode}</span></td>
+                <td>{row.weekday}</td>
+                <td>{row.currentDate}</td>
+                <td>{money(row.current?.opened_to_1400_revenue)}</td>
+                <td>{money(row.current?.revenue_1400_to_1900)}</td>
+                <td>{money(row.current?.revenue_1900_to_close)}</td>
+                <td>{money(row.currentTotal)}</td>
+                <td>{row.previousDate}</td>
+                <td>{money(row.previous?.opened_to_1400_revenue)}</td>
+                <td>{money(row.previous?.revenue_1400_to_1900)}</td>
+                <td>{money(row.previous?.revenue_1900_to_close)}</td>
+                <td>{money(row.previousTotal)}</td>
+                <td className={row.delta < 0 ? "negative" : row.delta > 0 ? "positive" : ""}>{money(row.delta)}</td>
+                <td><span className={`chip ${revenueDeltaTone(row.delta)}`}>{pct(row.growth)}</span></td>
+              </tr>
+            ))}
+            {!visibleRows.length && <tr><td colSpan="14">目前尚無足夠資料可做週對週同日比較。</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
 }
 
 function HqReportRecords({ reports, products, canManageReports, onSelect, onSaveReport, onDeleteReport, onBulkDeleteReports, onNotify, onRefresh }) {
@@ -2638,7 +2776,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
       .sort((a, b) => a.store_code.localeCompare(b.store_code));
   }, [stores, storeHours]);
   const roleOptions = useMemo(() => {
-    const roles = [...salaryRows.map((row) => row.role), "店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職後勤", "送貨人員"];
+    const roles = [...salaryRows.map((row) => row.role), "店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職人員", "兼職後勤", "送貨人員"];
     return roles.filter(Boolean).filter((roleName, index, rows) => rows.indexOf(roleName) === index);
   }, [salaryRows]);
   const defaultStoreCode = canonicalStoreCode(selectedStore) || canonicalStoreCode({ storeName: selectedStoreName }) || storeOptions[0]?.store_code || "";
@@ -2649,6 +2787,8 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     store_name: defaultStoreName,
     employee_name: "",
     role_name: roleOptions[0] || "",
+    work_start_time: "",
+    work_end_time: "",
     sort_order: 999,
     is_active: true,
   });
@@ -2667,6 +2807,8 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
       store_name: defaultStoreName,
       employee_name: "",
       role_name: roleOptions[0] || "",
+      work_start_time: "",
+      work_end_time: "",
       sort_order: 999,
       is_active: true,
     });
@@ -2681,6 +2823,8 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
       store_name: store?.name || displayStoreName(row),
       employee_name: row.employeeName,
       role_name: row.role,
+      work_start_time: row.work_start_time || row.workStartTime || "",
+      work_end_time: row.work_end_time || row.workEndTime || "",
       sort_order: row.sort_order || 999,
       is_active: row.is_active !== false,
     });
@@ -2688,11 +2832,25 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
 
   async function submitStaffForm(event) {
     event.preventDefault();
+    const normalizedStartTime = formatTime24(staffForm.work_start_time);
+    const normalizedEndTime = formatTime24(staffForm.work_end_time);
+    if (staffForm.role_name === "兼職人員") {
+      if (!normalizedStartTime || !normalizedEndTime) {
+        window.alert("兼職人員請填寫上班與下班時間");
+        return;
+      }
+      if (timeToMinutes(normalizedEndTime) <= timeToMinutes(normalizedStartTime)) {
+        window.alert("兼職人員下班時間需晚於上班時間");
+        return;
+      }
+    }
     const saved = await onSaveStaffMember?.({
       ...staffForm,
       store_name: selectedFormStore?.name || staffForm.store_name,
       employee_name: staffForm.employee_name.trim(),
       role_name: staffForm.role_name.trim(),
+      work_start_time: staffForm.role_name === "兼職人員" ? normalizedStartTime : "",
+      work_end_time: staffForm.role_name === "兼職人員" ? normalizedEndTime : "",
     });
     if (saved) resetStaffForm();
   }
@@ -2745,10 +2903,33 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             </label>
             <label>
               職稱
-              <select value={staffForm.role_name} onChange={(event) => setStaffForm({ ...staffForm, role_name: event.target.value })}>
+              <select
+                value={staffForm.role_name}
+                onChange={(event) => {
+                  const roleName = event.target.value;
+                  setStaffForm({
+                    ...staffForm,
+                    role_name: roleName,
+                    work_start_time: roleName === "兼職人員" ? staffForm.work_start_time : "",
+                    work_end_time: roleName === "兼職人員" ? staffForm.work_end_time : "",
+                  });
+                }}
+              >
                 {roleOptions.map((roleName) => <option key={roleName} value={roleName}>{roleName}</option>)}
               </select>
             </label>
+            {staffForm.role_name === "兼職人員" && (
+              <>
+                <label>
+                  上班時間（24H）
+                  <input type="time" lang="en-GB" step="60" value={staffForm.work_start_time} onChange={(event) => setStaffForm({ ...staffForm, work_start_time: formatTime24(event.target.value) })} />
+                </label>
+                <label>
+                  下班時間（24H）
+                  <input type="time" lang="en-GB" step="60" value={staffForm.work_end_time} onChange={(event) => setStaffForm({ ...staffForm, work_end_time: formatTime24(event.target.value) })} />
+                </label>
+              </>
+            )}
             <label>
               排序
               <input type="number" min="1" value={staffForm.sort_order} onChange={(event) => setStaffForm({ ...staffForm, sort_order: event.target.value })} />
@@ -2764,7 +2945,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
         <div className="table-wrap compact">
           <table>
             <thead>
-              <tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>排序</th><th>操作</th></tr>
+              <tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>兼職工時</th><th>排序</th><th>操作</th></tr>
             </thead>
             <tbody>
               {staffRoster
@@ -2775,6 +2956,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                     <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
                     <td>{row.employeeName}</td>
                     <td>{row.role}</td>
+                    <td>{row.role === "兼職人員" ? `${formatTime24(row.work_start_time || row.workStartTime) || "未填"} - ${formatTime24(row.work_end_time || row.workEndTime) || "未填"}` : "-"}</td>
                     <td>{row.sort_order || "-"}</td>
                     <td>
                       {canEditStaff ? (
@@ -2786,7 +2968,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                     </td>
                   </tr>
                 ))}
-              {!staffRoster.length && <tr><td colSpan="5">尚無人員資料，請由總部新增。</td></tr>}
+              {!staffRoster.length && <tr><td colSpan="6">尚無人員資料，請由總部新增。</td></tr>}
             </tbody>
           </table>
         </div>
@@ -2871,71 +3053,65 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
   );
 }
 
-function normalizeStoreName(name = "") {
-  return String(name)
-    .replaceAll("潮洲", "潮州")
-    .replace("屏東潮州二店", "屏東潮二店")
-    .replace("阿瑄", "阿暄")
-    .trim();
-}
-
-const canonicalStoreRows = storesSeed.map((store) => ({
-  store_code: store.store_code || store.id,
-  name: store.name,
-  normalizedName: normalizeStoreName(store.name),
-}));
-
-function canonicalStoreByName(name = "") {
-  const normalizedName = normalizeStoreName(name);
-  return canonicalStoreRows.find((store) => store.normalizedName === normalizedName);
-}
-
-function canonicalStoreCode(row = {}) {
-  const hasDisplayStore = row.storeName && row.storeName !== "未指定";
-  if (row.scope_type && !row.store_code && !row.storeCode && !hasDisplayStore && !row.name) {
-    return {
-      總部: "HQ",
-      跨店: "ALL",
-      人資: "HR",
-      財務: "FIN",
-      稽核: "AUD",
-      門店: "STORE",
-    }[row.scope_type] || row.scope_type;
-  }
-  return row.store_code || row.storeCode || canonicalStoreByName(row.storeName || row.name)?.store_code || row.store_id || row.id || "";
-}
-
-function findStoreScopedRecord(rows = [], storeRef = "") {
-  if (!storeRef) return null;
-  return rows.find((row) => (
-    row.id === storeRef ||
-    row.store_id === storeRef ||
-    row.store_code === storeRef ||
-    row.storeCode === storeRef ||
-    canonicalStoreCode(row) === storeRef
-  )) || null;
-}
-
-function resolveStoreCodeFromRef(storeRef = "", stores = [], reports = []) {
-  if (!storeRef) return "";
-  const store = findStoreScopedRecord(stores, storeRef);
-  if (store) return canonicalStoreCode(store);
-  const report = findStoreScopedRecord(reports, storeRef);
-  if (report) return canonicalStoreCode(report);
-  const canonical = canonicalStoreCode({ store_code: storeRef });
-  return canonicalStoreRows.some((store) => store.store_code === canonical) ? canonical : "";
-}
-
-function displayStoreName(row = {}) {
-  const hasDisplayStore = row.storeName && row.storeName !== "未指定";
-  if (row.scope_type && !hasDisplayStore && !row.name && !row.store_code && !row.storeCode) {
-    return row.scope_type === "跨店" ? "全門店" : row.scope_type;
-  }
-  return canonicalStoreByName(row.storeName || row.name)?.name || row.storeName || row.name || "未命名門店";
-}
-
 function reportForStoreCode(reports, storeCode) {
   return reports.find((report) => canonicalStoreCode(report) === storeCode);
+}
+
+const weekdayLabels = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+
+function weekdayLabel(dateText) {
+  return weekdayLabels[new Date(`${dateText}T00:00:00Z`).getUTCDay()];
+}
+
+function revenueDeltaTone(delta) {
+  if (delta > 0) return "good";
+  if (delta < 0) return "bad";
+  return "";
+}
+
+function growthPct(current, previous) {
+  if (!previous && current > 0) return 100;
+  if (!previous) return 0;
+  return ((current - previous) / previous) * 100;
+}
+
+function buildWeeklySameDayRows(reports = [], referenceDate = today) {
+  const weekRange = getWeekRange(referenceDate);
+  const currentWeekDates = Array.from({ length: 7 }, (_, index) => addDays(weekRange.start, index));
+  const previousWeekDates = currentWeekDates.map((date) => addDays(date, -7));
+  const reportMap = new Map(
+    reports.map((report) => [`${canonicalStoreCode(report)}:${report.report_date}`, report]),
+  );
+  const storeRows = Array.from(new Map(
+    reports
+      .filter((report) => canonicalStoreCode(report))
+      .map((report) => [canonicalStoreCode(report), {
+        storeCode: canonicalStoreCode(report),
+        storeName: displayStoreName(report),
+      }]),
+  ).values()).sort((a, b) => a.storeCode.localeCompare(b.storeCode));
+
+  return storeRows.flatMap((store) =>
+    currentWeekDates.map((currentDate, index) => {
+      const previousDate = previousWeekDates[index];
+      const current = reportMap.get(`${store.storeCode}:${currentDate}`);
+      const previous = reportMap.get(`${store.storeCode}:${previousDate}`);
+      const currentTotal = totalRevenue(current || {});
+      const previousTotal = totalRevenue(previous || {});
+      return {
+        ...store,
+        weekday: weekdayLabel(currentDate),
+        currentDate,
+        previousDate,
+        current,
+        previous,
+        currentTotal,
+        previousTotal,
+        delta: currentTotal - previousTotal,
+        growth: growthPct(currentTotal, previousTotal),
+      };
+    }),
+  );
 }
 
 function ManagementSystemModule({ systems }) {
@@ -3052,35 +3228,119 @@ function leaveDaySource(draft, day) {
 }
 
 const leaveTypeOptions = ["排休", "特休", "事假", "病假", "其他"];
-const combinedStoreCodes = new Set(["S02", "S03"]);
-const wujiaStoreCode = "S01";
 
 function isDeliveryStaff(person) {
   return /外送|送貨|配送/.test(String(person.role || ""));
 }
 
-function isEffectiveScheduleStaff(person) {
-  if (isDeliveryStaff(person)) return false;
-  return true;
+function isScheduleExcludedRole(person) {
+  return ["兼職後勤", "送貨人員"].includes(String(person.role || "")) || isDeliveryStaff(person);
 }
 
-function scheduleGroupForStore(store) {
-  if (combinedStoreCodes.has(store.code)) {
+function isEffectiveScheduleStaff(person) {
+  return !isScheduleExcludedRole(person);
+}
+
+function timeToMinutes(value, fallback = 0) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return fallback;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function formatTime24(value) {
+  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return "";
+  return `${String(Number(match[1])).padStart(2, "0")}:${match[2]}`;
+}
+
+function personWorkWindow(person, store) {
+  if (person.role === "兼職人員") {
+    if (!person.work_start_time || !person.work_end_time) return null;
     return {
-      code: "S02-S03",
-      name: "鳳山凱旋店 + 鳳山武廟店",
-      sourceCodes: ["S02", "S03"],
-      demand: 5,
-      ruleNote: "同一位店主管，二店合併排假，合計每日需 5 人上班。",
+      start: timeToMinutes(formatTime24(person.work_start_time)),
+      end: timeToMinutes(formatTime24(person.work_end_time)),
     };
   }
-  if (store.code === wujiaStoreCode) {
+  return {
+    start: timeToMinutes(store.open_time, 0),
+    end: timeToMinutes(store.close_time, 24 * 60),
+  };
+}
+
+function buildStaffingSegments(store) {
+  return [
+    {
+      key: "lunchPeak",
+      label: "午峰",
+      start: timeToMinutes("11:00", 11 * 60),
+      end: timeToMinutes("14:00", 14 * 60),
+      critical: true,
+    },
+    {
+      key: "dinnerPeak",
+      label: "晚峰",
+      start: timeToMinutes("16:30", 16 * 60 + 30),
+      end: timeToMinutes("19:00", 19 * 60),
+      critical: true,
+    },
+    {
+      key: "closing",
+      label: "打烊段",
+      start: timeToMinutes(store.dinner_report_time, 19 * 60),
+      end: timeToMinutes(store.close_report_time || store.close_time, 22 * 60),
+      critical: false,
+    },
+  ].filter((segment) => segment.end > segment.start);
+}
+
+function coversStaffingSegment(window, segment) {
+  return Boolean(window) && window.start <= segment.start && window.end >= segment.end;
+}
+
+function segmentCoverageRatio(window, segment) {
+  if (!window || segment.end <= segment.start) return 0;
+  const overlap = Math.max(0, Math.min(window.end, segment.end) - Math.max(window.start, segment.start));
+  return overlap / (segment.end - segment.start);
+}
+
+function staffingCountText(value) {
+  return Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 });
+}
+
+function calculateStoreStaffingForDay(store, drafts, leaveMonth, day) {
+  const segments = buildStaffingSegments(store);
+  const workingPeople = store.staff.filter((person) => !isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, day));
+  const segmentRows = segments.map((segment) => ({
+    ...segment,
+    count: workingPeople.reduce((sum, person) => sum + segmentCoverageRatio(personWorkWindow(person, store), segment), 0),
+  }));
+  const criticalRows = segmentRows.filter((segment) => segment.critical);
+  const effectiveCount = criticalRows.length ? Math.min(...criticalRows.map((segment) => segment.count)) : workingPeople.length;
+  const partTimeMissingHours = workingPeople.filter((person) => person.role === "兼職人員" && !personWorkWindow(person, store)).length;
+  return {
+    offCount: store.staff.length - workingPeople.length,
+    workingPeopleCount: workingPeople.length,
+    segmentRows,
+    effectiveCount,
+    partTimeMissingHours,
+    surplus: effectiveCount - store.demand,
+  };
+}
+
+function scheduleGroupForStore(store, relationGroups = STORE_RELATION_GROUPS) {
+  const relationGroup = relationGroups.find((group) => group.sourceCodes.includes(store.code));
+  if (relationGroup) {
     return {
-      code: store.code,
-      name: store.name,
-      sourceCodes: [store.code],
-      demand: 5,
-      ruleNote: "五甲排班規則：除外送、送貨、配送人員外，其餘門店人員皆列入排班；每日需求 5 人。",
+      code: relationGroup.code,
+      name: relationGroup.name,
+      sourceCodes: [...relationGroup.sourceCodes],
+      demand: relationGroup.demand,
+      open_time: store.open_time,
+      lunch_report_time: store.lunch_report_time,
+      dinner_report_time: store.dinner_report_time,
+      close_report_time: store.close_report_time,
+      close_time: store.close_time,
+      ruleNote: relationGroup.ruleNote,
     };
   }
   return {
@@ -3088,6 +3348,11 @@ function scheduleGroupForStore(store) {
     name: store.name,
     sourceCodes: [store.code],
     demand: store.demand,
+    open_time: store.open_time,
+    lunch_report_time: store.lunch_report_time,
+    dinner_report_time: store.dinner_report_time,
+    close_report_time: store.close_report_time,
+    close_time: store.close_time,
     ruleNote: "",
   };
 }
@@ -3122,6 +3387,14 @@ function buildLeavePlanPayload({ month, person, dates, manualDates, autoDates, l
     leave_type: leaveType,
     note,
   };
+}
+
+function normalizeStoreScopedScheduleCode(storeCode = "") {
+  return storeCode;
+}
+
+function supportVisibleGroupsForTemporarySupport(allStoreGroups) {
+  return allStoreGroups;
 }
 
 function getMonthlyRestDays(role, salaryRows) {
@@ -3171,12 +3444,26 @@ function buildLeavePlannerCsv({ month, rows, drafts, salaryRows }) {
   return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
 }
 
-function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isStoreScoped = false, staffRoster, salaryRows, storeHours, onNotify }) {
+function MonthlyLeavePlanner({
+  allowedStoreCode = "",
+  allowedStoreName = "",
+  isStoreScoped = false,
+  staffRoster,
+  salaryRows,
+  storeHours,
+  storeRelationGroups = STORE_RELATION_GROUPS,
+  onNotify,
+}) {
   const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
   const [storeFilter, setStoreFilter] = useState(allowedStoreCode || "all");
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
   const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
   const [uploadingCode, setUploadingCode] = useState("");
+  const [scheduleControl, setScheduleControl] = useState({ lock: null, requests: [], missingTable: false });
+  const [controlLoading, setControlLoading] = useState(false);
+  const [requestReason, setRequestReason] = useState("");
+  const [reviewNote, setReviewNote] = useState("");
+  const [remoteSupportRows, setRemoteSupportRows] = useState(null);
   const [drafts, setDrafts] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(leavePlannerStorageKey) || "{}");
@@ -3223,9 +3510,48 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
     };
   }, [leaveMonth]);
 
+  async function loadScheduleControl() {
+    if (!hasSupabaseConfig) return;
+    setControlLoading(true);
+    try {
+      const data = await fetchMonthlyScheduleControl(leaveMonth);
+      setScheduleControl(data);
+    } catch (error) {
+      onNotify?.(`排班確認狀態讀取失敗：${error.message}`);
+    } finally {
+      setControlLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadScheduleControl();
+  }, [leaveMonth]);
+
   useEffect(() => {
     if (!supportDate.startsWith(leaveMonth)) setSupportDate(`${leaveMonth}-01`);
   }, [leaveMonth, supportDate]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadTemporarySupportSummary() {
+      if (!hasSupabaseConfig || !isStoreScoped) {
+        setRemoteSupportRows(null);
+        return;
+      }
+      try {
+        const rows = await fetchTemporarySupportSummary(supportDate);
+        if (active) setRemoteSupportRows(rows);
+      } catch (error) {
+        if (!active) return;
+        setRemoteSupportRows(null);
+        onNotify?.(`臨時支援摘要讀取失敗：${error.message}`);
+      }
+    }
+    loadTemporarySupportSummary();
+    return () => {
+      active = false;
+    };
+  }, [isStoreScoped, supportDate]);
 
   const monthDays = useMemo(() => Array.from({ length: daysInMonth(`${leaveMonth}-01`) }, (_, index) => index + 1), [leaveMonth]);
   const scheduleStaff = useMemo(
@@ -3246,11 +3572,18 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
     () => new Map(storeHours.map((row) => [canonicalStoreCode(row), Number(row.duty_staff || 0)])),
     [storeHours],
   );
+  const storeHourMap = useMemo(
+    () => new Map(storeHours.map((row) => [canonicalStoreCode(row), row])),
+    [storeHours],
+  );
   const allStoreGroups = useMemo(
     () => {
       const groups = new Map();
       storeOptions.forEach((store) => {
-        const ruleGroup = scheduleGroupForStore({ ...store, demand: storeDemandMap.get(store.code) || 0 });
+        const ruleGroup = scheduleGroupForStore(
+          { ...store, ...(storeHourMap.get(store.code) || {}), demand: storeDemandMap.get(store.code) || 0 },
+          storeRelationGroups,
+        );
         if (!groups.has(ruleGroup.code)) {
           groups.set(ruleGroup.code, {
             ...ruleGroup,
@@ -3260,17 +3593,22 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
       });
       return Array.from(groups.values()).filter((store) => store.staff.length);
     },
-    [scheduleStaff, storeDemandMap, storeOptions],
+    [scheduleStaff, storeDemandMap, storeHourMap, storeOptions, storeRelationGroups],
   );
   const allowedGroupCode = useMemo(() => {
     if (!allowedStoreCode) return "";
-    const selectedOption = storeOptions.find((store) => store.code === allowedStoreCode);
-    return scheduleGroupForStore({
-      code: allowedStoreCode,
-      name: selectedOption?.name || "",
-      demand: storeDemandMap.get(allowedStoreCode) || 0,
-    }).code;
-  }, [allowedStoreCode, storeDemandMap, storeOptions]);
+    const scheduleStoreCode = isStoreScoped ? normalizeStoreScopedScheduleCode(allowedStoreCode) : allowedStoreCode;
+    const selectedOption = storeOptions.find((store) => store.code === scheduleStoreCode);
+    return scheduleGroupForStore(
+      {
+        code: scheduleStoreCode,
+        name: selectedOption?.name || "",
+        ...(storeHourMap.get(scheduleStoreCode) || {}),
+        demand: storeDemandMap.get(scheduleStoreCode) || 0,
+      },
+      storeRelationGroups,
+    ).code;
+  }, [allowedStoreCode, isStoreScoped, storeDemandMap, storeHourMap, storeOptions, storeRelationGroups]);
 
   useEffect(() => {
     if (isStoreScoped && allowedGroupCode) setStoreFilter(allowedGroupCode);
@@ -3285,16 +3623,16 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   );
   const plannerRows = useMemo(() => storeGroups.flatMap((store) => store.staff), [storeGroups]);
   const supportDay = Number(supportDate.slice(8, 10));
-  const supportSourceGroups = isStoreScoped ? storeGroups : allStoreGroups;
-  const supportRows = supportSourceGroups
+  const supportSourceGroups = useMemo(
+    () => (isStoreScoped ? supportVisibleGroupsForTemporarySupport(allStoreGroups) : allStoreGroups),
+    [allStoreGroups, isStoreScoped],
+  );
+  const calculatedSupportRows = supportSourceGroups
     .map((store) => {
-      const offCount = store.staff.filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, supportDay)).length;
-      const workingCount = store.staff.length - offCount;
+      const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, supportDay);
       return {
         ...store,
-        offCount,
-        workingCount,
-        surplus: workingCount - store.demand,
+        ...staffing,
       };
     })
     .sort((a, b) => {
@@ -3302,6 +3640,23 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
       if (a.surplus >= 0 && b.surplus < 0) return 1;
       return b.surplus - a.surplus || a.code.localeCompare(b.code);
     });
+  const supportRows = isStoreScoped && remoteSupportRows !== null
+    ? remoteSupportRows
+    : calculatedSupportRows;
+  const isScheduleConfirmed = Boolean(scheduleControl.lock?.is_confirmed);
+  const currentScheduleRequestCode = storeGroups[0]?.code || allowedGroupCode || normalizeStoreScopedScheduleCode(allowedStoreCode);
+  const ownScheduleRequest = isStoreScoped
+    ? scheduleControl.requests.find((request) => request.store_code === currentScheduleRequestCode)
+    : null;
+  const storeEditApproved = ownScheduleRequest?.status === "approved";
+  const canEditSchedule = !isStoreScoped || !isScheduleConfirmed || storeEditApproved;
+  const lockStatusText = !hasSupabaseConfig
+    ? "本機模式未啟用總部確認"
+    : scheduleControl.missingTable
+      ? "尚未建立排班確認資料表"
+      : isScheduleConfirmed
+        ? "總部已確認，門店不可修改"
+        : "尚未確認，門店可修改";
   const filledCount = plannerRows.filter((row) => countLeaveDays(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates)).length;
   const totalLeaveDays = plannerRows.reduce((sum, row) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates), 0);
   const overLimitCount = plannerRows.filter((row) => {
@@ -3320,7 +3675,60 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
       )
     : (isStoreScoped ? allowedStoreCode || "未綁定門店" : "");
 
+  async function confirmSchedule() {
+    try {
+      await confirmMonthlySchedule(leaveMonth, "總部確認排班");
+      await loadScheduleControl();
+      onNotify?.(`${leaveMonth} 排班已由總部確認，門店已鎖定修改`);
+    } catch (error) {
+      onNotify?.(`總部確認失敗：${error.message}`);
+    }
+  }
+
+  async function unlockSchedule() {
+    try {
+      await unlockMonthlySchedule(leaveMonth, "總部解除確認");
+      await loadScheduleControl();
+      onNotify?.(`${leaveMonth} 已解除確認，門店可修改`);
+    } catch (error) {
+      onNotify?.(`解除確認失敗：${error.message}`);
+    }
+  }
+
+  async function submitChangeRequest() {
+    const reason = requestReason.trim();
+    if (!reason) {
+      onNotify?.("請先填寫修改原因");
+      return;
+    }
+    try {
+      await submitMonthlyScheduleChangeRequest({
+        period_month: leaveMonth,
+        store_code: currentScheduleRequestCode,
+        store_name: storeGroups[0]?.name || allowedStoreName || "",
+        reason,
+      });
+      setRequestReason("");
+      await loadScheduleControl();
+      onNotify?.("修改申請已送出，待總部核可");
+    } catch (error) {
+      onNotify?.(`修改申請送出失敗：${error.message}`);
+    }
+  }
+
+  async function reviewChangeRequest(request, status) {
+    try {
+      await reviewMonthlyScheduleChangeRequest(request.id, status, reviewNote);
+      setReviewNote("");
+      await loadScheduleControl();
+      onNotify?.(status === "approved" ? `${request.store_name} 已開放修改` : `${request.store_name} 申請已處理`);
+    } catch (error) {
+      onNotify?.(`申請處理失敗：${error.message}`);
+    }
+  }
+
   const updateDraft = (staffId, field, value) => {
+    if (!canEditSchedule) return;
     const key = leaveDraftKey(leaveMonth, staffId);
     setDrafts((current) => ({
       ...current,
@@ -3332,6 +3740,7 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   };
 
   const saveDraft = async (person, draft) => {
+    if (!canEditSchedule) return;
     if (!person || !hasSupabaseConfig) return;
     try {
       setSyncState("儲存中");
@@ -3365,6 +3774,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   });
 
   const uploadStore = async (store, sourceDrafts = drafts, successText = "") => {
+    if (!canEditSchedule) {
+      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
+      return false;
+    }
     if (!store?.staff?.length) {
       onNotify?.("此門店目前沒有可上傳的排假人員");
       return false;
@@ -3391,6 +3804,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   };
 
   const uploadVisibleStores = async () => {
+    if (!canEditSchedule) {
+      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
+      return false;
+    }
     if (!storeGroups.length) {
       onNotify?.("目前沒有可上傳的門店排假表");
       return false;
@@ -3420,6 +3837,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   };
 
   const toggleLeaveDay = (staffId, day) => {
+    if (!canEditSchedule) {
+      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
+      return;
+    }
     const key = leaveDraftKey(leaveMonth, staffId);
     const person = staffRoster.find((row) => row.id === staffId);
     setDrafts((current) => {
@@ -3447,6 +3868,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   };
 
   const autoArrangeStore = (store) => {
+    if (!canEditSchedule) {
+      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
+      return;
+    }
     const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
     if (!maxOffPerDay) return;
 
@@ -3571,6 +3996,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   };
 
   const clearStore = (store) => {
+    if (!canEditSchedule) {
+      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
+      return;
+    }
     setDrafts((current) => {
       const next = { ...current };
       store.staff.forEach((person) => {
@@ -3607,6 +4036,7 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   };
 
   const clearMonth = () => {
+    if (!canEditSchedule) return;
     if (!window.confirm(`確定清空 ${leaveMonth} 的排假填寫資料？`)) return;
     setDrafts((current) =>
       Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${leaveMonth}:`))),
@@ -3641,15 +4071,88 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
           <p>依門店分表排假；最多連續工作 6 天，先點預定休假，再由一鍵排休補足月休與人力需求。</p>
         </div>
         <div className="panel-actions">
-          <button className="primary" type="button" onClick={uploadVisibleStores} disabled={!storeGroups.length || uploadingCode === "all"}>
+          <button className="primary" type="button" onClick={uploadVisibleStores} disabled={!canEditSchedule || !storeGroups.length || uploadingCode === "all"}>
             {uploadingCode === "all" ? "上傳中..." : "上傳目前排假"}
           </button>
           <button type="button" onClick={() => downloadTextFile(buildLeavePlannerCsv({ month: leaveMonth, rows: plannerRows, drafts, salaryRows }), `萊吉多${leaveMonth}排假表.csv`)}>
             匯出排假
           </button>
-          {!isStoreScoped && <button type="button" onClick={clearMonth}>清空本月</button>}
+          {!isStoreScoped && <button type="button" onClick={clearMonth} disabled={!canEditSchedule}>清空本月</button>}
         </div>
       </div>
+
+      <section className={`schedule-control-panel ${isScheduleConfirmed ? "locked" : ""}`}>
+        <div>
+          <span>排班確認狀態</span>
+          <strong>{lockStatusText}</strong>
+          {scheduleControl.lock?.confirmed_at && <p>確認時間：{new Date(scheduleControl.lock.confirmed_at).toLocaleString("zh-TW")}</p>}
+          {scheduleControl.missingTable && <p>請先執行 Supabase migration，才會正式啟用跨裝置鎖版。</p>}
+        </div>
+        {!isStoreScoped ? (
+          <div className="schedule-control-actions">
+            <button className="primary" type="button" onClick={confirmSchedule} disabled={controlLoading || scheduleControl.missingTable}>
+              {isScheduleConfirmed ? "再次確認並鎖定" : "總部確認排班"}
+            </button>
+            <button type="button" onClick={unlockSchedule} disabled={controlLoading || scheduleControl.missingTable}>解除確認</button>
+          </div>
+        ) : isScheduleConfirmed && !storeEditApproved ? (
+          <div className="schedule-request-box">
+            <textarea
+              value={requestReason}
+              onChange={(event) => setRequestReason(event.target.value)}
+              placeholder="請說明需修改排班的原因，例如：臨時請假、人力異動、總部支援調整。"
+            />
+            <button className="primary" type="button" onClick={submitChangeRequest} disabled={controlLoading || scheduleControl.missingTable}>
+              送出修改申請
+            </button>
+            {ownScheduleRequest && <small>目前申請狀態：{ownScheduleRequest.status === "pending" ? "待總部核可" : ownScheduleRequest.status === "rejected" ? "已退回" : ownScheduleRequest.status}</small>}
+          </div>
+        ) : isScheduleConfirmed && storeEditApproved ? (
+          <div className="schedule-approved-box">
+            <strong>總部已核可本店修改</strong>
+            <p>請完成修改後通知總部重新確認鎖定。</p>
+          </div>
+        ) : null}
+      </section>
+
+      {!isStoreScoped && scheduleControl.requests.length > 0 && (
+        <section className="schedule-request-review">
+          <div className="panel-head compact-head">
+            <div>
+              <h3>門店修改申請</h3>
+              <p>核可後，該店可在已確認月份中自行修改；總部完成覆核後可再次確認鎖定。</p>
+            </div>
+          </div>
+          <label>
+            總部備註
+            <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="可填寫核可或退回原因" />
+          </label>
+          <div className="table-wrap compact">
+            <table>
+              <thead>
+                <tr><th>門店</th><th>狀態</th><th>原因</th><th>時間</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                {scheduleControl.requests.map((request) => (
+                  <tr key={request.id}>
+                    <td><strong>{request.store_name}</strong><span>{request.store_code}</span></td>
+                    <td><span className={`chip ${request.status === "approved" ? "good" : request.status === "pending" ? "warn" : ""}`}>{request.status}</span></td>
+                    <td>{request.reason || "-"}</td>
+                    <td>{new Date(request.updated_at || request.created_at).toLocaleString("zh-TW")}</td>
+                    <td>
+                      <div className="inline-actions">
+                        <button type="button" onClick={() => reviewChangeRequest(request, "approved")} disabled={request.status === "approved"}>核可</button>
+                        <button type="button" onClick={() => reviewChangeRequest(request, "rejected")}>退回</button>
+                        <button type="button" onClick={() => reviewChangeRequest(request, "closed")}>關閉</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <div className="leave-toolbar">
         <label>
@@ -3692,8 +4195,10 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
           {supportRows.map((store) => (
             <div className={`support-card ${store.surplus < 0 ? "bad" : store.surplus > 0 ? "good" : ""}`} key={store.code}>
               <strong>{store.code} {store.name}</strong>
-              <span>上班 {store.workingCount} / 需求 {store.demand}</span>
-              <em>{store.surplus > 0 ? `可支援 ${store.surplus} 人` : store.surplus < 0 ? `缺 ${Math.abs(store.surplus)} 人` : "剛好滿編"}</em>
+              <span>有效 {staffingCountText(store.effectiveCount)} / 需求 {store.demand}</span>
+              <span>{store.segmentRows.map((segment) => `${segment.label} ${staffingCountText(segment.count)}`).join(" · ")}</span>
+              {store.partTimeMissingHours > 0 && <span className="warn-text">兼職 {store.partTimeMissingHours} 人未填工時</span>}
+              <em>{store.surplus > 0 ? `可支援 ${staffingCountText(store.surplus)} 人` : store.surplus < 0 ? `缺 ${staffingCountText(Math.abs(store.surplus))} 人` : "剛好滿編"}</em>
             </div>
           ))}
         </div>
@@ -3725,6 +4230,7 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
             toggleLeaveDay={toggleLeaveDay}
             updateDraft={updateDraft}
             uploadStore={uploadStore}
+            canEditSchedule={canEditSchedule}
           />
         ))}
       </div>
@@ -3732,7 +4238,7 @@ function MonthlyLeavePlanner({ allowedStoreCode = "", allowedStoreName = "", isS
   );
 }
 
-function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, store, toggleLeaveDay, updateDraft, uploadStore }) {
+function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, store, toggleLeaveDay, updateDraft, uploadStore }) {
   const totalLeaveDays = store.staff.reduce((sum, person) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates), 0);
   const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
 
@@ -3744,11 +4250,11 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading,
           <p>{store.staff.length} 人計入排班，門店每日需求 {store.demand} 人，每日最多可排休 {maxOffPerDay} 人，本月已排休 {totalLeaveDays} 天。{store.ruleNote}</p>
         </div>
         <div className="panel-actions">
-          <button className="primary" type="button" onClick={() => uploadStore(store)} disabled={isUploading}>
+          <button className="primary" type="button" onClick={() => uploadStore(store)} disabled={!canEditSchedule || isUploading}>
             {isUploading ? "上傳中..." : "上傳本店排假"}
           </button>
-          <button type="button" onClick={() => autoArrangeStore(store)} disabled={!maxOffPerDay}>一鍵平均排休</button>
-          <button type="button" onClick={() => clearStore(store)}>清空本店</button>
+          <button type="button" onClick={() => autoArrangeStore(store)} disabled={!canEditSchedule || !maxOffPerDay}>一鍵平均排休</button>
+          <button type="button" onClick={() => clearStore(store)} disabled={!canEditSchedule}>清空本店</button>
         </div>
       </div>
       <div className="table-wrap leave-calendar-wrap">
@@ -3780,6 +4286,7 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading,
                   <th className="leave-staff-col">
                     <strong>{person.employeeName}</strong>
                     <span>{person.role}</span>
+                    {person.role === "兼職人員" && <span>{formatTime24(person.work_start_time || person.workStartTime) || "未填"} - {formatTime24(person.work_end_time || person.workEndTime) || "未填"}</span>}
                   </th>
                   {monthDays.map((day) => {
                     const checked = isLeaveDay(draft.dates, day);
@@ -3790,6 +4297,7 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading,
                           aria-label={`${person.employeeName} ${day}日${checked ? "取消休假" : "排休"}`}
                           className={checked ? `leave-dot on ${source}` : "leave-dot"}
                           type="button"
+                          disabled={!canEditSchedule}
                           onClick={() => toggleLeaveDay(person.id, day)}
                         />
                       </td>
@@ -3801,6 +4309,7 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading,
                     <select
                       className="leave-type-select"
                       value={draft.leaveType || "排休"}
+                      disabled={!canEditSchedule}
                       onChange={(event) => {
                         const nextDraft = { ...draft, leaveType: event.target.value };
                         updateDraft(person.id, "leaveType", event.target.value);
@@ -3815,6 +4324,7 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading,
                     <input
                       className="table-input leave-note-input"
                       value={draft.note || ""}
+                      disabled={!canEditSchedule}
                       onChange={(event) => updateDraft(person.id, "note", event.target.value)}
                       onBlur={(event) => saveDraft(person, { ...draft, note: event.target.value })}
                       placeholder="代班、禁休"
@@ -3833,22 +4343,37 @@ function StoreLeaveCalendar({ autoArrangeStore, clearStore, drafts, isUploading,
 
 function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
   const dailyRows = monthDays.map((day) => {
-    const offCount = store.staff.filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, day)).length;
-    const workingCount = store.staff.length - offCount;
+    const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, day);
     return {
       day,
-      offCount,
-      workingCount,
-      surplus: workingCount - store.demand,
+      ...staffing,
     };
   });
+  const segmentTemplates = buildStaffingSegments(store);
 
   return (
     <>
       <tr className="leave-summary-row staff-count">
-        <th className="leave-staff-col">店面人員</th>
-        {dailyRows.map((row) => <td key={row.day}>{row.workingCount}</td>)}
+        <th className="leave-staff-col">實際上班</th>
+        {dailyRows.map((row) => <td key={row.day}>{row.workingPeopleCount}</td>)}
         <td>{dailyRows.reduce((sum, row) => sum + row.offCount, 0)}</td>
+        <td colSpan="4" />
+      </tr>
+      {segmentTemplates.map((segment) => (
+        <tr className="leave-summary-row staff-count" key={segment.key}>
+          <th className="leave-staff-col">{segment.label}人力</th>
+          {dailyRows.map((row) => {
+            const segmentRow = row.segmentRows.find((item) => item.key === segment.key);
+            return <td key={row.day}>{staffingCountText(segmentRow?.count || 0)}</td>;
+          })}
+          <td />
+          <td colSpan="4" />
+        </tr>
+      ))}
+      <tr className="leave-summary-row staff-count">
+        <th className="leave-staff-col">有效人力</th>
+        {dailyRows.map((row) => <td key={row.day}>{staffingCountText(row.effectiveCount)}</td>)}
+        <td />
         <td colSpan="4" />
       </tr>
       <tr className="leave-summary-row demand-count">
@@ -3858,9 +4383,9 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
         <td colSpan="4" />
       </tr>
       <tr className="leave-summary-row surplus-count">
-        <th className="leave-staff-col">小計</th>
+        <th className="leave-staff-col">缺口小計</th>
         {dailyRows.map((row) => (
-          <td className={row.surplus < 0 ? "negative" : row.surplus > 0 ? "positive" : ""} key={row.day}>{row.surplus}</td>
+          <td className={row.surplus < 0 ? "negative" : row.surplus > 0 ? "positive" : ""} key={row.day}>{staffingCountText(row.surplus)}</td>
         ))}
         <td />
         <td colSpan="4" />
@@ -3869,7 +4394,19 @@ function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
   );
 }
 
-function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedStoreId, storeHours, staffRoster, salaryRows, stores, profile, onNotify }) {
+function ScheduleModule({
+  currentRole,
+  scheduleRows,
+  selectedReport,
+  selectedStoreId,
+  storeHours,
+  staffRoster,
+  salaryRows,
+  stores,
+  profile,
+  storeRelationGroups,
+  onNotify,
+}) {
   const [scheduleView, setScheduleView] = useState("week");
   const isStoreScoped = currentRole === "store_manager";
   const selectedStoreRecord = isStoreScoped
@@ -3882,11 +4419,17 @@ function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedSto
     : null;
   const selectedStoreCode = isStoreScoped
     ? (
-        canonicalStoreCode(selectedStoreRecord) ||
-        canonicalStoreCode(selectedReport)
+        normalizeStoreScopedScheduleCode(canonicalStoreCode(selectedStoreRecord)) ||
+        normalizeStoreScopedScheduleCode(canonicalStoreCode(selectedReport))
       )
     : "";
-  const selectedStoreName = isStoreScoped ? displayStoreName(selectedStoreRecord || selectedReport) : "";
+  const selectedStoreName = isStoreScoped
+    ? (
+        selectedStoreCode === "S05"
+          ? "前鎮隆興店"
+          : displayStoreName(selectedStoreRecord || selectedReport)
+      )
+    : "";
   const scopedScheduleRows = isStoreScoped
     ? (selectedStoreCode ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
     : scheduleRows;
@@ -3929,6 +4472,7 @@ function ScheduleModule({ currentRole, scheduleRows, selectedReport, selectedSto
         staffRoster={staffRoster}
         salaryRows={salaryRows}
         storeHours={storeHours}
+        storeRelationGroups={storeRelationGroups}
         onNotify={onNotify}
       />
 
@@ -4646,7 +5190,7 @@ function PerformanceModule({ stores, selectedStoreId, rows, onSave }) {
             姓名
             <input value={form.employee_name} onChange={(event) => setForm({ ...form, employee_name: event.target.value })} />
           </label>
-          <SelectField label="職位" value={form.role_name} options={["店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職後勤", "送貨專員"]} onChange={(value) => setForm({ ...form, role_name: value })} />
+          <SelectField label="職位" value={form.role_name} options={["店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職人員", "兼職後勤", "送貨人員"]} onChange={(value) => setForm({ ...form, role_name: value })} />
           <IntegerField label="遲到分鐘" value={form.late_count} onChange={(value) => updatePerformanceField({ late_count: value })} />
           <IntegerField label="違規請假次數" value={form.leave_count} onChange={(value) => updatePerformanceField({ leave_count: value })} />
           <IntegerField label="曠職日數" value={form.absence_count} onChange={(value) => updatePerformanceField({ absence_count: value })} />
@@ -4735,10 +5279,12 @@ function IntegerField({ label, value, onChange }) {
   );
 }
 
-function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
+function StoreReport({ report, reportDate, products, currentRole, onDateChange, onSave }) {
   const [tab, setTab] = useState("sales");
   const [dateDraft, setDateDraft] = useState(reportDate || today);
   const [authCode, setAuthCode] = useState("");
+  const [operationsRows, setOperationsRows] = useState([]);
+  const [operationsLoading, setOperationsLoading] = useState(false);
   const reportSubmitted = hasSubmittedReport(report);
   const [form, setForm] = useState({
     opened_to_1400_revenue: reportSubmitted ? report.opened_to_1400_revenue : "",
@@ -4763,6 +5309,8 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
     ["3", "全日", "打烊收銀總額", form.full_day_revenue],
   ];
   const completedSteps = salesSteps.filter((step) => !isBlankNumber(step[3]) && Number(step[3]) >= 0).length;
+  const isStoreManagerView = currentRole === "store_manager";
+  const minReportDate = isStoreManagerView ? storeManagerRevenueMinDate() : "";
 
   useEffect(() => {
     setDateDraft(reportDate || today);
@@ -4798,6 +5346,35 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
     };
   }, [products, report.id, report.store_id, reportDate]);
 
+  useEffect(() => {
+    let active = true;
+    async function loadOperationsRows() {
+      const range = getWeekRange(reportDate || today);
+      const requestedStart = addDays(range.start, -7);
+      const accessStart = isStoreManagerView ? storeManagerRevenueMinDate() : requestedStart;
+      const accessEnd = isStoreManagerView ? today : range.end;
+      setOperationsLoading(true);
+      try {
+        const rows = await fetchDailyReportsRange(
+          requestedStart < accessStart ? accessStart : requestedStart,
+          range.end > accessEnd ? accessEnd : range.end,
+        );
+        if (!active) return;
+        const storeCode = canonicalStoreCode(report);
+        const scopedRows = rows.filter((row) => canonicalStoreCode(row) === storeCode);
+        setOperationsRows(buildWeeklySameDayRows(scopedRows, reportDate || today));
+      } catch {
+        if (active) setOperationsRows([]);
+      } finally {
+        if (active) setOperationsLoading(false);
+      }
+    }
+    loadOperationsRows();
+    return () => {
+      active = false;
+    };
+  }, [isStoreManagerView, report, reportDate]);
+
   async function submit() {
     setSaving(true);
     await onSave(form, inventory);
@@ -4824,7 +5401,7 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
         <div className="report-date-card">
           <label>
             回報日期
-            <input type="date" max={today} value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} />
+            <input type="date" min={minReportDate} max={today} value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} />
           </label>
           {isPastDateDraft && (
             <label>
@@ -4837,6 +5414,7 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
           </button>
         </div>
         <div className="alert-line">營收只需填 14:00、19:00 與全日總營收；19:00 至打烊由系統自動倒算。</div>
+        {isStoreManagerView && <div className="alert-line warn">店長帳號僅開放最近 {STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天營收資料；完整歷史由總部查詢。</div>}
         {reportDate < today && <div className="alert-line warn">目前正在修改過往日期 {reportDate}，已通過認證碼。</div>}
         {revenueInvalid && <div className="alert-line danger">全日總營收不可小於 14:00 與 19:00 加總，請修正後再送出。</div>}
         <div className="store-today-panel">
@@ -4853,6 +5431,7 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
         </div>
         <div className="segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
+          <button className={tab === "ops" ? "active" : ""} onClick={() => setTab("ops")}>門店營運視圖</button>
           <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
           <button className={tab === "incoming" ? "active" : ""} onClick={() => setTab("incoming")}>進貨</button>
         </div>
@@ -4886,20 +5465,72 @@ function StoreReport({ report, reportDate, products, onDateChange, onSave }) {
               <p>今日目標 {money(report.target)}</p>
             </div>
           </div>
+        ) : tab === "ops" ? (
+          <StoreOperationsView rows={operationsRows} loading={operationsLoading} />
         ) : tab === "inventory" ? (
           <InventoryEditor rows={inventory} onChange={setInventory} />
         ) : (
           <IncomingEditor rows={inventory} onChange={setInventory} />
         )}
-        <button className="submit-button" disabled={saving || revenueInvalid} onClick={submit}>
-          {saving ? "送出中..." : "送出每日回報"}
-        </button>
+        {tab !== "ops" && (
+          <button className="submit-button" disabled={saving || revenueInvalid} onClick={submit}>
+            {saving ? "送出中..." : "送出每日回報"}
+          </button>
+        )}
       </section>
       <section className="panel companion">
         <div className="panel-head"><h2>門店狀態</h2><p>{report.manager_name}</p></div>
         <Metric label="今日總營收" value={money(currentTotal)} detail={`目標 ${money(report.target)}`} tone="hot" />
         <Metric label="達成率" value={pct((currentTotal / report.target) * 100)} detail="依今日目標計算" tone={currentTotal >= report.target ? "good" : "warn"} />
       </section>
+    </div>
+  );
+}
+
+function StoreOperationsView({ rows, loading }) {
+  const visibleRows = rows.filter((row) => row.currentTotal || row.previousTotal);
+  if (loading) {
+    return <div className="empty-text">門店營運視圖載入中...</div>;
+  }
+  return (
+    <div className="mobile-stack">
+      <div className="target-card">
+        <span>門店營運視圖</span>
+        <strong>本週 vs 上週同日</strong>
+        <p>只顯示自己門店，先看營業額 14:00、19:00、打烊與總額。</p>
+      </div>
+      {visibleRows.map((row) => (
+        <div className="input-card" key={`${row.storeCode}-${row.currentDate}`}>
+          <span>{row.weekday}<small>{row.currentDate} 對 {row.previousDate}</small></span>
+          <div className="table-wrap compact">
+            <table>
+              <thead>
+                <tr><th></th><th>14:00</th><th>19:00</th><th>打烊</th><th>總額</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>本週</td>
+                  <td>{money(row.current?.opened_to_1400_revenue)}</td>
+                  <td>{money(row.current?.revenue_1400_to_1900)}</td>
+                  <td>{money(row.current?.revenue_1900_to_close)}</td>
+                  <td><strong>{money(row.currentTotal)}</strong></td>
+                </tr>
+                <tr>
+                  <td>上週</td>
+                  <td>{money(row.previous?.opened_to_1400_revenue)}</td>
+                  <td>{money(row.previous?.revenue_1400_to_1900)}</td>
+                  <td>{money(row.previous?.revenue_1900_to_close)}</td>
+                  <td><strong>{money(row.previousTotal)}</strong></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <strong className={row.delta < 0 ? "negative" : row.delta > 0 ? "positive" : ""}>
+            總額差 {money(row.delta)} / {pct(row.growth)}
+          </strong>
+        </div>
+      ))}
+      {!visibleRows.length && <div className="empty-text">目前尚無足夠資料可做本週與上週同日對比。</div>}
     </div>
   );
 }
