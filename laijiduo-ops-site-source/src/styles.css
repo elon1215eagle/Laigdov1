@@ -1103,6 +1103,43 @@ tbody tr.selected,
   gap: 8px;
 }
 
+.daily-shift-editor {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 18px 0;
+}
+
+.daily-shift-form {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(120px, 1fr));
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+}
+
+.daily-shift-form .staff-admin-actions {
+  min-height: 42px;
+}
+
+.form-help {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+@media (max-width: 900px) {
+  .daily-shift-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .daily-shift-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 .support-card {
   display: grid;
   gap: 4px;

@@ -120,6 +120,23 @@ const STORE_STAFF_FIELDS = [
   "role_name",
   "work_start_time",
   "work_end_time",
+  "weekday_start_time",
+  "weekday_end_time",
+  "holiday_start_time",
+  "holiday_end_time",
+  "sort_order",
+  "is_active",
+  "created_at",
+  "updated_at",
+].join(", ");
+const COMPATIBLE_STORE_STAFF_FIELDS = [
+  "id",
+  "store_code",
+  "store_name",
+  "employee_name",
+  "role_name",
+  "work_start_time",
+  "work_end_time",
   "sort_order",
   "is_active",
   "created_at",
@@ -173,6 +190,21 @@ const MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS = [
   "reviewed_by",
   "reviewed_at",
   "review_note",
+  "created_at",
+  "updated_at",
+].join(", ");
+const DAILY_STAFF_SHIFT_FIELDS = [
+  "id",
+  "shift_date",
+  "staff_id",
+  "employee_name",
+  "home_store_code",
+  "assigned_store_code",
+  "start_time",
+  "end_time",
+  "shift_type",
+  "note",
+  "created_by",
   "created_at",
   "updated_at",
 ].join(", ");
@@ -695,6 +727,10 @@ function normalizeStoreStaffRow(row, index = 0) {
     work_end_time: row.work_end_time || row.workEndTime || "",
     workStartTime: row.work_start_time || row.workStartTime || "",
     workEndTime: row.work_end_time || row.workEndTime || "",
+    weekday_start_time: row.weekday_start_time || row.weekdayStartTime || row.work_start_time || row.workStartTime || "",
+    weekday_end_time: row.weekday_end_time || row.weekdayEndTime || row.work_end_time || row.workEndTime || "",
+    holiday_start_time: row.holiday_start_time || row.holidayStartTime || row.weekday_start_time || row.work_start_time || "",
+    holiday_end_time: row.holiday_end_time || row.holidayEndTime || row.weekday_end_time || row.work_end_time || "",
     sort_order: Number(row.sort_order || index + 1),
     is_active: row.is_active !== false,
   };
@@ -1026,14 +1062,28 @@ export async function fetchStoreStaff() {
     .order("store_code")
     .order("sort_order")
     .order("employee_name");
-  const { data, error } = result.error && isMissingSupabaseColumn(result.error)
-    ? await supabase
+  let data = result.data;
+  let error = result.error;
+  if (error && isMissingSupabaseColumn(error)) {
+    const compatibleResult = await supabase
+      .from("store_staff")
+      .select(COMPATIBLE_STORE_STAFF_FIELDS)
+      .order("store_code")
+      .order("sort_order")
+      .order("employee_name");
+    data = compatibleResult.data;
+    error = compatibleResult.error;
+  }
+  if (error && isMissingSupabaseColumn(error)) {
+    const legacyResult = await supabase
       .from("store_staff")
       .select(LEGACY_STORE_STAFF_FIELDS)
       .order("store_code")
       .order("sort_order")
-      .order("employee_name")
-    : result;
+      .order("employee_name");
+    data = legacyResult.data;
+    error = legacyResult.error;
+  }
   if (error) {
     if (isMissingSupabaseTable(error)) return staffRosterSeed;
     throw error;
@@ -1059,6 +1109,10 @@ export async function upsertStoreStaffMember(payload) {
   const roleName = String(payload.role_name || payload.role || "").trim();
   const workStartTime = roleName === "兼職人員" ? normalizeTime24(payload.work_start_time || payload.workStartTime) : null;
   const workEndTime = roleName === "兼職人員" ? normalizeTime24(payload.work_end_time || payload.workEndTime) : null;
+  const weekdayStartTime = roleName === "兼職人員" ? normalizeTime24(payload.weekday_start_time || workStartTime) : null;
+  const weekdayEndTime = roleName === "兼職人員" ? normalizeTime24(payload.weekday_end_time || workEndTime) : null;
+  const holidayStartTime = roleName === "兼職人員" ? normalizeTime24(payload.holiday_start_time || weekdayStartTime) : null;
+  const holidayEndTime = roleName === "兼職人員" ? normalizeTime24(payload.holiday_end_time || weekdayEndTime) : null;
   const cleanPayload = {
     id: payload.id || crypto.randomUUID?.() || String(Date.now()),
     store_code: payload.store_code || payload.storeCode || "",
@@ -1067,6 +1121,10 @@ export async function upsertStoreStaffMember(payload) {
     role_name: roleName,
     work_start_time: workStartTime,
     work_end_time: workEndTime,
+    weekday_start_time: weekdayStartTime,
+    weekday_end_time: weekdayEndTime,
+    holiday_start_time: holidayStartTime,
+    holiday_end_time: holidayEndTime,
     sort_order: Number(payload.sort_order || 999),
     is_active: payload.is_active !== false,
     updated_at: new Date().toISOString(),
@@ -1074,11 +1132,13 @@ export async function upsertStoreStaffMember(payload) {
   if (!cleanPayload.employee_name) throw new Error("請輸入人員姓名");
   if (!cleanPayload.role_name) throw new Error("請選擇職稱");
   if (!cleanPayload.store_code && !cleanPayload.store_name) throw new Error("請選擇門店");
-  if (cleanPayload.role_name === "兼職人員" && (!cleanPayload.work_start_time || !cleanPayload.work_end_time)) {
-    throw new Error("兼職人員請填寫上班與下班時間");
-  }
-  if (cleanPayload.role_name === "兼職人員" && cleanPayload.work_end_time <= cleanPayload.work_start_time) {
-    throw new Error("兼職人員下班時間需晚於上班時間");
+  const defaultWindows = [
+    [cleanPayload.weekday_start_time, cleanPayload.weekday_end_time, "平日"],
+    [cleanPayload.holiday_start_time, cleanPayload.holiday_end_time, "假日"],
+  ];
+  for (const [start, end, label] of defaultWindows) {
+    if (Boolean(start) !== Boolean(end)) throw new Error(`${label}上班與下班時間需同時填寫`);
+    if (start && end <= start) throw new Error(`${label}下班時間需晚於上班時間`);
   }
 
   const result = await supabase
@@ -1089,20 +1149,80 @@ export async function upsertStoreStaffMember(payload) {
   let data = result.data;
   let error = result.error;
   if (error && isMissingSupabaseColumn(error)) {
-    if (cleanPayload.role_name === "兼職人員") {
-      throw new Error("請先執行兼職工時欄位 SQL，才能儲存兼職上班與下班時間");
-    }
-    const { work_start_time, work_end_time, ...legacyPayload } = cleanPayload;
-    const legacyResult = await supabase
+    const {
+      weekday_start_time,
+      weekday_end_time,
+      holiday_start_time,
+      holiday_end_time,
+      ...compatiblePayload
+    } = cleanPayload;
+    const compatibleResult = await supabase
       .from("store_staff")
-      .upsert(legacyPayload, { onConflict: "id" })
-      .select(LEGACY_STORE_STAFF_FIELDS)
+      .upsert(compatiblePayload, { onConflict: "id" })
+      .select(COMPATIBLE_STORE_STAFF_FIELDS)
       .single();
-    data = legacyResult.data;
-    error = legacyResult.error;
+    data = compatibleResult.data;
+    error = compatibleResult.error;
   }
   if (error) throw error;
   return normalizeStoreStaffRow(data);
+}
+
+export async function fetchDailyStaffShifts(periodMonth) {
+  if (!supabase || !periodMonth) return [];
+  const startDate = `${periodMonth}-01`;
+  const nextMonthDate = new Date(`${startDate}T12:00:00+08:00`);
+  nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+  const nextMonth = nextMonthDate.toISOString().slice(0, 10);
+  const { data, error } = await supabase
+    .from("daily_staff_shifts")
+    .select(DAILY_STAFF_SHIFT_FIELDS)
+    .gte("shift_date", startDate)
+    .lt("shift_date", nextMonth)
+    .order("shift_date")
+    .order("start_time");
+  if (error) {
+    if (isMissingSupabaseTable(error)) return [];
+    throw error;
+  }
+  return data || [];
+}
+
+export async function upsertDailyStaffShift(payload) {
+  if (!supabase) return { ...payload, id: payload.id || crypto.randomUUID?.() || String(Date.now()) };
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const startTime = normalizeTime24(payload.start_time);
+  const endTime = normalizeTime24(payload.end_time);
+  if (!payload.shift_date || !payload.staff_id) throw new Error("請選擇日期與人員");
+  if (!startTime || !endTime || endTime <= startTime) throw new Error("請輸入有效的上班與下班時間");
+  const cleanPayload = {
+    id: payload.id || crypto.randomUUID?.() || String(Date.now()),
+    shift_date: payload.shift_date,
+    staff_id: payload.staff_id,
+    employee_name: payload.employee_name || "",
+    home_store_code: payload.home_store_code || "",
+    assigned_store_code: payload.assigned_store_code || payload.home_store_code || "",
+    start_time: startTime,
+    end_time: endTime,
+    shift_type: payload.shift_type === "support" ? "support" : "override",
+    note: payload.note || "",
+    created_by: userData.user?.id || null,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from("daily_staff_shifts")
+    .upsert(cleanPayload, { onConflict: "shift_date,staff_id" })
+    .select(DAILY_STAFF_SHIFT_FIELDS)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function deleteDailyStaffShift(shiftId) {
+  if (!supabase || !shiftId) return;
+  const { error } = await supabase.from("daily_staff_shifts").delete().eq("id", shiftId);
+  if (error) throw error;
 }
 
 export async function deleteStoreStaffMember(staffMember) {

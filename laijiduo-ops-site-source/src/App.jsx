@@ -5,6 +5,7 @@ import {
   deleteDailyReports,
   fetchDailyReports,
   fetchDailyReportsRange,
+  fetchDailyStaffShifts,
   fetchHandovers,
   fetchHqDashboardData,
   fetchHqTasks,
@@ -41,6 +42,8 @@ import {
   upsertStaffPerformance,
   upsertStoreStaffMember,
   deleteStoreStaffMember,
+  deleteDailyStaffShift,
+  upsertDailyStaffShift,
 } from "./lib/api";
 import {
   handoverSeed,
@@ -62,6 +65,11 @@ import {
   mergeStoreRelationGroups,
   normalizeStoreName,
 } from "./lib/storeScope";
+import {
+  resolvePersonWorkWindow,
+  segmentCoverageRatio as calculateSegmentCoverageRatio,
+  validateTimeWindow,
+} from "./lib/staffing";
 import { InspectionApp } from "./InspectionApp";
 
 const taipeiDateTimeParts = new Intl.DateTimeFormat("en-CA", {
@@ -2789,6 +2797,10 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     role_name: roleOptions[0] || "",
     work_start_time: "",
     work_end_time: "",
+    weekday_start_time: "",
+    weekday_end_time: "",
+    holiday_start_time: "",
+    holiday_end_time: "",
     sort_order: 999,
     is_active: true,
   });
@@ -2809,6 +2821,10 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
       role_name: roleOptions[0] || "",
       work_start_time: "",
       work_end_time: "",
+      weekday_start_time: "",
+      weekday_end_time: "",
+      holiday_start_time: "",
+      holiday_end_time: "",
       sort_order: 999,
       is_active: true,
     });
@@ -2825,6 +2841,10 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
       role_name: row.role,
       work_start_time: row.work_start_time || row.workStartTime || "",
       work_end_time: row.work_end_time || row.workEndTime || "",
+      weekday_start_time: row.weekday_start_time || row.work_start_time || row.workStartTime || "",
+      weekday_end_time: row.weekday_end_time || row.work_end_time || row.workEndTime || "",
+      holiday_start_time: row.holiday_start_time || row.weekday_start_time || row.work_start_time || "",
+      holiday_end_time: row.holiday_end_time || row.weekday_end_time || row.work_end_time || "",
       sort_order: row.sort_order || 999,
       is_active: row.is_active !== false,
     });
@@ -2832,25 +2852,23 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
 
   async function submitStaffForm(event) {
     event.preventDefault();
-    const normalizedStartTime = formatTime24(staffForm.work_start_time);
-    const normalizedEndTime = formatTime24(staffForm.work_end_time);
+    const weekdayWindow = validateTimeWindow(staffForm.weekday_start_time, staffForm.weekday_end_time);
+    const holidayWindow = validateTimeWindow(staffForm.holiday_start_time, staffForm.holiday_end_time);
     if (staffForm.role_name === "兼職人員") {
-      if (!normalizedStartTime || !normalizedEndTime) {
-        window.alert("兼職人員請填寫上班與下班時間");
-        return;
-      }
-      if (timeToMinutes(normalizedEndTime) <= timeToMinutes(normalizedStartTime)) {
-        window.alert("兼職人員下班時間需晚於上班時間");
-        return;
-      }
+      if (!weekdayWindow.valid) return window.alert(`平日${weekdayWindow.message}`);
+      if (!holidayWindow.valid) return window.alert(`假日${holidayWindow.message}`);
     }
     const saved = await onSaveStaffMember?.({
       ...staffForm,
       store_name: selectedFormStore?.name || staffForm.store_name,
       employee_name: staffForm.employee_name.trim(),
       role_name: staffForm.role_name.trim(),
-      work_start_time: staffForm.role_name === "兼職人員" ? normalizedStartTime : "",
-      work_end_time: staffForm.role_name === "兼職人員" ? normalizedEndTime : "",
+      work_start_time: staffForm.role_name === "兼職人員" ? weekdayWindow.start : "",
+      work_end_time: staffForm.role_name === "兼職人員" ? weekdayWindow.end : "",
+      weekday_start_time: staffForm.role_name === "兼職人員" ? weekdayWindow.start : "",
+      weekday_end_time: staffForm.role_name === "兼職人員" ? weekdayWindow.end : "",
+      holiday_start_time: staffForm.role_name === "兼職人員" ? holidayWindow.start : "",
+      holiday_end_time: staffForm.role_name === "兼職人員" ? holidayWindow.end : "",
     });
     if (saved) resetStaffForm();
   }
@@ -2912,6 +2930,10 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                     role_name: roleName,
                     work_start_time: roleName === "兼職人員" ? staffForm.work_start_time : "",
                     work_end_time: roleName === "兼職人員" ? staffForm.work_end_time : "",
+                    weekday_start_time: roleName === "兼職人員" ? staffForm.weekday_start_time : "",
+                    weekday_end_time: roleName === "兼職人員" ? staffForm.weekday_end_time : "",
+                    holiday_start_time: roleName === "兼職人員" ? staffForm.holiday_start_time : "",
+                    holiday_end_time: roleName === "兼職人員" ? staffForm.holiday_end_time : "",
                   });
                 }}
               >
@@ -2921,13 +2943,22 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             {staffForm.role_name === "兼職人員" && (
               <>
                 <label>
-                  上班時間（24H）
-                  <input type="time" lang="en-GB" step="60" value={staffForm.work_start_time} onChange={(event) => setStaffForm({ ...staffForm, work_start_time: formatTime24(event.target.value) })} />
+                  平日上班（選填）
+                  <input type="time" lang="en-GB" step="60" value={staffForm.weekday_start_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_start_time: formatTime24(event.target.value) })} />
                 </label>
                 <label>
-                  下班時間（24H）
-                  <input type="time" lang="en-GB" step="60" value={staffForm.work_end_time} onChange={(event) => setStaffForm({ ...staffForm, work_end_time: formatTime24(event.target.value) })} />
+                  平日下班（選填）
+                  <input type="time" lang="en-GB" step="60" value={staffForm.weekday_end_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_end_time: formatTime24(event.target.value) })} />
                 </label>
+                <label>
+                  假日上班（選填）
+                  <input type="time" lang="en-GB" step="60" value={staffForm.holiday_start_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_start_time: formatTime24(event.target.value) })} />
+                </label>
+                <label>
+                  假日下班（選填）
+                  <input type="time" lang="en-GB" step="60" value={staffForm.holiday_end_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_end_time: formatTime24(event.target.value) })} />
+                </label>
+                <p className="form-help">未設定單日班次時，系統依平日／假日預設時間計算；四個欄位皆可留空。</p>
               </>
             )}
             <label>
@@ -2945,7 +2976,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
         <div className="table-wrap compact">
           <table>
             <thead>
-              <tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>兼職工時</th><th>排序</th><th>操作</th></tr>
+              <tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>兼職預設工時</th><th>排序</th><th>操作</th></tr>
             </thead>
             <tbody>
               {staffRoster
@@ -2956,7 +2987,14 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                     <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
                     <td>{row.employeeName}</td>
                     <td>{row.role}</td>
-                    <td>{row.role === "兼職人員" ? `${formatTime24(row.work_start_time || row.workStartTime) || "未填"} - ${formatTime24(row.work_end_time || row.workEndTime) || "未填"}` : "-"}</td>
+                    <td>
+                      {row.role === "兼職人員" ? (
+                        <>
+                          <span>平日 {formatTime24(row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.weekday_end_time || row.work_end_time) || "未填"}</span>
+                          <span>假日 {formatTime24(row.holiday_start_time || row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.holiday_end_time || row.weekday_end_time || row.work_end_time) || "未填"}</span>
+                        </>
+                      ) : "-"}
+                    </td>
                     <td>{row.sort_order || "-"}</td>
                     <td>
                       {canEditStaff ? (
@@ -3253,18 +3291,8 @@ function formatTime24(value) {
   return `${String(Number(match[1])).padStart(2, "0")}:${match[2]}`;
 }
 
-function personWorkWindow(person, store) {
-  if (person.role === "兼職人員") {
-    if (!person.work_start_time || !person.work_end_time) return null;
-    return {
-      start: timeToMinutes(formatTime24(person.work_start_time)),
-      end: timeToMinutes(formatTime24(person.work_end_time)),
-    };
-  }
-  return {
-    start: timeToMinutes(store.open_time, 0),
-    end: timeToMinutes(store.close_time, 24 * 60),
-  };
+function personWorkWindow(person, store, dateValue, override = null) {
+  return resolvePersonWorkWindow({ person, store, dateValue, override });
 }
 
 function buildStaffingSegments(store) {
@@ -3297,26 +3325,36 @@ function coversStaffingSegment(window, segment) {
   return Boolean(window) && window.start <= segment.start && window.end >= segment.end;
 }
 
-function segmentCoverageRatio(window, segment) {
-  if (!window || segment.end <= segment.start) return 0;
-  const overlap = Math.max(0, Math.min(window.end, segment.end) - Math.max(window.start, segment.start));
-  return overlap / (segment.end - segment.start);
-}
-
 function staffingCountText(value) {
   return Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 });
 }
 
-function calculateStoreStaffingForDay(store, drafts, leaveMonth, day) {
+function calculateStoreStaffingForDay(store, drafts, leaveMonth, day, dailyShifts = [], allStaff = store.staff) {
+  const dateValue = `${leaveMonth}-${String(day).padStart(2, "0")}`;
+  const shiftByStaff = new Map(
+    dailyShifts.filter((shift) => shift.shift_date === dateValue).map((shift) => [String(shift.staff_id), shift]),
+  );
   const segments = buildStaffingSegments(store);
-  const workingPeople = store.staff.filter((person) => !isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, day));
+  const workingPeople = allStaff.filter((person) => {
+    if (isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, day)) return false;
+    const override = shiftByStaff.get(String(person.id));
+    const assignedStoreCode = override?.assigned_store_code;
+    if (assignedStoreCode) return store.sourceCodes.includes(assignedStoreCode);
+    return store.sourceCodes.includes(canonicalStoreCode(person));
+  });
   const segmentRows = segments.map((segment) => ({
     ...segment,
-    count: workingPeople.reduce((sum, person) => sum + segmentCoverageRatio(personWorkWindow(person, store), segment), 0),
+    count: workingPeople.reduce((sum, person) => {
+      const override = shiftByStaff.get(String(person.id));
+      return sum + calculateSegmentCoverageRatio(personWorkWindow(person, store, dateValue, override), segment);
+    }, 0),
   }));
   const criticalRows = segmentRows.filter((segment) => segment.critical);
   const effectiveCount = criticalRows.length ? Math.min(...criticalRows.map((segment) => segment.count)) : workingPeople.length;
-  const partTimeMissingHours = workingPeople.filter((person) => person.role === "兼職人員" && !personWorkWindow(person, store)).length;
+  const partTimeMissingHours = workingPeople.filter((person) => (
+    person.role === "兼職人員"
+    && !personWorkWindow(person, store, dateValue, shiftByStaff.get(String(person.id)))
+  )).length;
   return {
     offCount: store.staff.length - workingPeople.length,
     workingPeopleCount: workingPeople.length,
@@ -3464,6 +3502,17 @@ function MonthlyLeavePlanner({
   const [requestReason, setRequestReason] = useState("");
   const [reviewNote, setReviewNote] = useState("");
   const [remoteSupportRows, setRemoteSupportRows] = useState(null);
+  const [dailyShifts, setDailyShifts] = useState([]);
+  const [shiftSaving, setShiftSaving] = useState(false);
+  const [shiftForm, setShiftForm] = useState({
+    id: "",
+    shift_date: today,
+    staff_id: "",
+    assigned_store_code: "",
+    start_time: "",
+    end_time: "",
+    note: "",
+  });
   const [drafts, setDrafts] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem(leavePlannerStorageKey) || "{}");
@@ -3525,6 +3574,31 @@ function MonthlyLeavePlanner({
 
   useEffect(() => {
     loadScheduleControl();
+  }, [leaveMonth]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadDailyShifts() {
+      if (!hasSupabaseConfig) {
+        try {
+          const rows = JSON.parse(localStorage.getItem(`daily-staff-shifts:${leaveMonth}`) || "[]");
+          if (active) setDailyShifts(rows);
+        } catch {
+          if (active) setDailyShifts([]);
+        }
+        return;
+      }
+      try {
+        const rows = await fetchDailyStaffShifts(leaveMonth);
+        if (active) setDailyShifts(rows);
+      } catch (error) {
+        if (active) onNotify?.(`單日班次讀取失敗：${error.message}`);
+      }
+    }
+    loadDailyShifts();
+    return () => {
+      active = false;
+    };
   }, [leaveMonth]);
 
   useEffect(() => {
@@ -3629,7 +3703,7 @@ function MonthlyLeavePlanner({
   );
   const calculatedSupportRows = supportSourceGroups
     .map((store) => {
-      const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, supportDay);
+      const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, supportDay, dailyShifts, scheduleStaff);
       return {
         ...store,
         ...staffing,
@@ -3650,6 +3724,10 @@ function MonthlyLeavePlanner({
     : null;
   const storeEditApproved = ownScheduleRequest?.status === "approved";
   const canEditSchedule = !isStoreScoped || !isScheduleConfirmed || storeEditApproved;
+  const editablePartTimeStaff = (isStoreScoped ? plannerRows : scheduleStaff).filter((person) => person.role === "兼職人員");
+  const visibleDailyShifts = dailyShifts.filter((shift) => (
+    !isStoreScoped || plannerRows.some((person) => String(person.id) === String(shift.staff_id))
+  ));
   const lockStatusText = !hasSupabaseConfig
     ? "本機模式未啟用總部確認"
     : scheduleControl.missingTable
@@ -3674,6 +3752,75 @@ function MonthlyLeavePlanner({
           : `${storeGroups[0].code} ${storeGroups[0].name}`
       )
     : (isStoreScoped ? allowedStoreCode || "未綁定門店" : "");
+
+  function resetShiftForm(dateValue = shiftForm.shift_date || supportDate) {
+    setShiftForm({
+      id: "",
+      shift_date: dateValue,
+      staff_id: "",
+      assigned_store_code: "",
+      start_time: "",
+      end_time: "",
+      note: "",
+    });
+  }
+
+  async function saveDailyShift(event) {
+    event.preventDefault();
+    if (!canEditSchedule) {
+      onNotify?.("總部已確認排班，需先取得修改核可");
+      return;
+    }
+    const person = editablePartTimeStaff.find((row) => String(row.id) === String(shiftForm.staff_id));
+    if (!person) return onNotify?.("請選擇兼職人員");
+    const validation = validateTimeWindow(shiftForm.start_time, shiftForm.end_time);
+    if (!validation.valid || !validation.start || !validation.end) {
+      onNotify?.(validation.message || "請輸入當日上班與下班時間");
+      return;
+    }
+    const homeStoreCode = canonicalStoreCode(person);
+    const assignedStoreCode = shiftForm.assigned_store_code || homeStoreCode;
+    const payload = {
+      ...shiftForm,
+      employee_name: person.employeeName,
+      home_store_code: homeStoreCode,
+      assigned_store_code: assignedStoreCode,
+      start_time: validation.start,
+      end_time: validation.end,
+      shift_type: assignedStoreCode === homeStoreCode ? "override" : "support",
+    };
+    setShiftSaving(true);
+    try {
+      const saved = await upsertDailyStaffShift(payload);
+      setDailyShifts((current) => {
+        const next = [...current.filter((row) => !(row.shift_date === saved.shift_date && String(row.staff_id) === String(saved.staff_id))), saved];
+        if (!hasSupabaseConfig) localStorage.setItem(`daily-staff-shifts:${leaveMonth}`, JSON.stringify(next));
+        return next;
+      });
+      resetShiftForm(saved.shift_date);
+      onNotify?.(payload.shift_type === "support" ? "跨店支援班次已儲存" : "當日班次已儲存");
+    } catch (error) {
+      onNotify?.(`單日班次儲存失敗：${error.message}`);
+    } finally {
+      setShiftSaving(false);
+    }
+  }
+
+  async function removeDailyShift(shift) {
+    if (!canEditSchedule) return onNotify?.("總部已確認排班，需先取得修改核可");
+    if (!window.confirm(`恢復 ${shift.employee_name} ${shift.shift_date} 的主檔預設時間？`)) return;
+    try {
+      await deleteDailyStaffShift(shift.id);
+      setDailyShifts((current) => {
+        const next = current.filter((row) => row.id !== shift.id);
+        if (!hasSupabaseConfig) localStorage.setItem(`daily-staff-shifts:${leaveMonth}`, JSON.stringify(next));
+        return next;
+      });
+      onNotify?.("已恢復使用人資主檔預設時間");
+    } catch (error) {
+      onNotify?.(`恢復預設時間失敗：${error.message}`);
+    }
+  }
 
   async function confirmSchedule() {
     try {
@@ -4186,6 +4333,89 @@ function MonthlyLeavePlanner({
         </div>
       </div>
 
+      <section className="daily-shift-editor">
+        <div className="panel-head compact-head">
+          <div>
+            <h3>兼職單日班次調整</h3>
+            <p>未設定時自動使用人資主檔平日／假日時間；只需處理特殊班次與跨店支援。</p>
+          </div>
+        </div>
+        <form className="daily-shift-form" onSubmit={saveDailyShift}>
+          <label>
+            日期
+            <input
+              type="date"
+              min={`${leaveMonth}-01`}
+              max={`${leaveMonth}-${String(monthDays.length).padStart(2, "0")}`}
+              value={shiftForm.shift_date}
+              onChange={(event) => setShiftForm({ ...shiftForm, shift_date: event.target.value })}
+            />
+          </label>
+          <label>
+            兼職人員
+            <select
+              value={shiftForm.staff_id}
+              onChange={(event) => {
+                const person = editablePartTimeStaff.find((row) => String(row.id) === event.target.value);
+                setShiftForm({
+                  ...shiftForm,
+                  staff_id: event.target.value,
+                  assigned_store_code: canonicalStoreCode(person),
+                });
+              }}
+            >
+              <option value="">請選擇</option>
+              {editablePartTimeStaff.map((person) => (
+                <option key={person.id} value={person.id}>{canonicalStoreCode(person)} {person.employeeName}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            實際工作門店
+            <select value={shiftForm.assigned_store_code} onChange={(event) => setShiftForm({ ...shiftForm, assigned_store_code: event.target.value })}>
+              <option value="">依原門店</option>
+              {storeOptions.map((store) => <option value={store.code} key={store.code}>{store.code} {store.name}</option>)}
+            </select>
+          </label>
+          <label>
+            上班
+            <input type="time" lang="en-GB" step="60" value={shiftForm.start_time} onChange={(event) => setShiftForm({ ...shiftForm, start_time: formatTime24(event.target.value) })} />
+          </label>
+          <label>
+            下班
+            <input type="time" lang="en-GB" step="60" value={shiftForm.end_time} onChange={(event) => setShiftForm({ ...shiftForm, end_time: formatTime24(event.target.value) })} />
+          </label>
+          <label>
+            原因／備註
+            <input value={shiftForm.note} onChange={(event) => setShiftForm({ ...shiftForm, note: event.target.value })} placeholder="例：鼎山支援、延長一小時" />
+          </label>
+          <div className="staff-admin-actions">
+            <button className="primary" type="submit" disabled={!canEditSchedule || shiftSaving}>{shiftSaving ? "儲存中" : "儲存當日班次"}</button>
+            <button type="button" onClick={() => resetShiftForm(supportDate)}>清除輸入</button>
+          </div>
+        </form>
+        {visibleDailyShifts.length > 0 && (
+          <div className="table-wrap compact">
+            <table>
+              <thead><tr><th>日期</th><th>人員</th><th>工作門店</th><th>時間</th><th>類型</th><th>備註</th><th>操作</th></tr></thead>
+              <tbody>
+                {visibleDailyShifts.map((shift) => (
+                  <tr key={shift.id}>
+                    <td>{shift.shift_date}</td>
+                    <td>{shift.employee_name}</td>
+                    <td>{shift.assigned_store_code}</td>
+                    <td>{formatTime24(shift.start_time)}–{formatTime24(shift.end_time)}</td>
+                    <td><span className={`chip ${shift.shift_type === "support" ? "warn" : "good"}`}>{shift.shift_type === "support" ? "跨店支援" : "當日調整"}</span></td>
+                    <td>{shift.note || "-"}</td>
+                    <td><button type="button" disabled={!canEditSchedule} onClick={() => removeDailyShift(shift)}>恢復預設</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <div className="support-panel">
         <label>
           臨時支援日期
@@ -4217,12 +4447,14 @@ function MonthlyLeavePlanner({
         )}
         {storeGroups.map((store) => (
           <StoreLeaveCalendar
+            dailyShifts={dailyShifts}
             drafts={drafts}
             key={store.code}
             leaveMonth={leaveMonth}
             monthDays={monthDays}
             salaryRows={salaryRows}
             saveDraft={saveDraft}
+            scheduleStaff={scheduleStaff}
             store={store}
             autoArrangeStore={autoArrangeStore}
             clearStore={clearStore}
@@ -4238,7 +4470,7 @@ function MonthlyLeavePlanner({
   );
 }
 
-function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, store, toggleLeaveDay, updateDraft, uploadStore }) {
+function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dailyShifts, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, scheduleStaff, store, toggleLeaveDay, updateDraft, uploadStore }) {
   const totalLeaveDays = store.staff.reduce((sum, person) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates), 0);
   const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
 
@@ -4286,7 +4518,12 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dra
                   <th className="leave-staff-col">
                     <strong>{person.employeeName}</strong>
                     <span>{person.role}</span>
-                    {person.role === "兼職人員" && <span>{formatTime24(person.work_start_time || person.workStartTime) || "未填"} - {formatTime24(person.work_end_time || person.workEndTime) || "未填"}</span>}
+                    {person.role === "兼職人員" && (
+                      <span>
+                        平 {formatTime24(person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.weekday_end_time || person.work_end_time) || "未填"}
+                        {" / "}假 {formatTime24(person.holiday_start_time || person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.holiday_end_time || person.weekday_end_time || person.work_end_time) || "未填"}
+                      </span>
+                    )}
                   </th>
                   {monthDays.map((day) => {
                     const checked = isLeaveDay(draft.dates, day);
@@ -4333,7 +4570,14 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dra
                 </tr>
               );
             })}
-            <StoreLeaveSummaryRows drafts={drafts} leaveMonth={leaveMonth} monthDays={monthDays} store={store} />
+            <StoreLeaveSummaryRows
+              dailyShifts={dailyShifts}
+              drafts={drafts}
+              leaveMonth={leaveMonth}
+              monthDays={monthDays}
+              scheduleStaff={scheduleStaff}
+              store={store}
+            />
           </tbody>
         </table>
       </div>
@@ -4341,9 +4585,9 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dra
   );
 }
 
-function StoreLeaveSummaryRows({ drafts, leaveMonth, monthDays, store }) {
+function StoreLeaveSummaryRows({ dailyShifts, drafts, leaveMonth, monthDays, scheduleStaff, store }) {
   const dailyRows = monthDays.map((day) => {
-    const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, day);
+    const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, day, dailyShifts, scheduleStaff);
     return {
       day,
       ...staffing,
@@ -4422,7 +4666,8 @@ function ScheduleModule({
         normalizeStoreScopedScheduleCode(canonicalStoreCode(selectedStoreRecord)) ||
         normalizeStoreScopedScheduleCode(canonicalStoreCode(selectedReport))
       )
-    : "";
+      : "";
+
   const selectedStoreName = isStoreScoped
     ? (
         selectedStoreCode === "S05"

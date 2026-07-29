@@ -185,6 +185,33 @@ begin
     union all
     select standalone.scope_code, standalone.scope_code from standalone_scopes standalone
   ),
+  staff_assignments as (
+    select
+      staff.id,
+      staff.role_name,
+      coalesce(day_shift.assigned_store_code, staff.store_code) as effective_store_code,
+      coalesce(
+        day_shift.start_time,
+        case when extract(isodow from p_support_date) in (6, 7)
+          then coalesce(staff.holiday_start_time, staff.weekday_start_time, staff.work_start_time)
+          else coalesce(staff.weekday_start_time, staff.work_start_time)
+        end
+      ) as effective_start_time,
+      coalesce(
+        day_shift.end_time,
+        case when extract(isodow from p_support_date) in (6, 7)
+          then coalesce(staff.holiday_end_time, staff.weekday_end_time, staff.work_end_time)
+          else coalesce(staff.weekday_end_time, staff.work_end_time)
+        end
+      ) as effective_end_time
+    from public.store_staff staff
+    left join public.daily_staff_shifts day_shift
+      on day_shift.staff_id = staff.id
+      and day_shift.shift_date = p_support_date
+    where staff.is_active
+      and staff.role_name not in ('兼職後勤', '送貨人員')
+      and staff.role_name !~ '(外送|送貨|配送)'
+  ),
   eligible_staff as (
     select
       scope.scope_code,
@@ -192,8 +219,8 @@ begin
       scope.demand,
       staff.id,
       staff.role_name,
-      staff.work_start_time,
-      staff.work_end_time,
+      staff.effective_start_time as work_start_time,
+      staff.effective_end_time as work_end_time,
       leave_plan.leave_days,
       not (
         extract(day from p_support_date)::integer =
@@ -201,11 +228,8 @@ begin
       ) as is_working
     from scopes scope
     join scope_members member on member.scope_code = scope.scope_code
-    join public.store_staff staff
-      on staff.store_code = member.store_code
-      and staff.is_active
-      and staff.role_name not in ('兼職後勤', '送貨人員')
-      and staff.role_name !~ '(外送|送貨|配送)'
+    join staff_assignments staff
+      on staff.effective_store_code = member.store_code
     left join public.monthly_leave_plans leave_plan
       on leave_plan.period_month = to_char(p_support_date, 'YYYY-MM')
       and leave_plan.staff_id = staff.id
