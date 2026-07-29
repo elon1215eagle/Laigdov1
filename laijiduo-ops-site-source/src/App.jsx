@@ -50,7 +50,6 @@ import {
   hrChangeSeed,
   hqTaskSeed,
   hqSystemSeed,
-  mockProfile,
   performanceSeed,
   productsSeed,
   salaryStructureSeed,
@@ -419,6 +418,18 @@ export function App() {
     setSelectedStoreId("");
   }
 
+  function loadDemoWorkspace() {
+    setSecuritySettings(defaultSecuritySettings);
+    setStores(storesSeed);
+    setProducts(productsSeed);
+    setReports(storesSeed.map((store) => normalizeReport(store)));
+    setHandovers(handoverSeed);
+    setPerformanceRows(performanceSeed);
+    setHqTasks(hqTaskSeed);
+    setStaffRoster(staffRosterSeed);
+    setStoreRelationGroups(STORE_RELATION_GROUPS);
+  }
+
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId, preferredReportDate = reportDate) {
     const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows, staffRows, relationGroups] = await Promise.all([
       fetchStores(),
@@ -464,17 +475,10 @@ export function App() {
           }
           await loadWorkspace(sessionProfile);
         } else {
-          setProfile(mockProfile);
-          setSecuritySettings(defaultSecuritySettings);
-          setStores(storesSeed);
-          setProducts(productsSeed);
-          setSelectedStoreId(storesSeed[0]?.id || "");
-          setReports(storesSeed.map((store) => normalizeReport(store)));
-          setHandovers(handoverSeed);
-          setPerformanceRows(performanceSeed);
-          setHqTasks(hqTaskSeed);
-          setStaffRoster(staffRosterSeed);
-          setStoreRelationGroups(STORE_RELATION_GROUPS);
+          setProfile(null);
+          setRole("entry");
+          setSelectedStoreId("");
+          loadDemoWorkspace();
         }
       } catch (error) {
         setMessage(error.message);
@@ -521,6 +525,40 @@ export function App() {
   async function handleLogin(email, password) {
     setLoading(true);
     try {
+      if (!hasSupabaseConfig) {
+        if (password !== "demo") throw new Error("本機驗收密碼為 demo");
+        const accountCode = String(email || "").split("@")[0].trim().toUpperCase();
+        if (accountCode === "HQ") {
+          const nextProfile = {
+            id: "demo-hq",
+            full_name: "總部驗收帳號",
+            role: "hq",
+            store_id: null,
+            store_code: "",
+          };
+          setProfile(nextProfile);
+          setRole("hq");
+          setActiveModule(defaultModuleForRole(nextProfile.role));
+          setSelectedStoreId(storesSeed[0]?.id || "");
+          setMessage("");
+          return;
+        }
+        const store = storesSeed.find((row) => canonicalStoreCode(row) === accountCode);
+        if (!store) throw new Error("請選擇有效的本機驗收帳號");
+        const nextProfile = {
+          id: `demo-${accountCode.toLowerCase()}`,
+          full_name: `${store.name} 店長`,
+          role: "store_manager",
+          store_id: store.id,
+          store_code: accountCode,
+        };
+        setProfile(nextProfile);
+        setRole("store");
+        setActiveModule(defaultModuleForRole(nextProfile.role));
+        setSelectedStoreId(store.id);
+        setMessage("");
+        return;
+      }
       await signIn(email, password);
       const nextProfile = await getSessionProfile();
       const nextSecuritySettings = await fetchSecuritySettings();
@@ -549,6 +587,7 @@ export function App() {
     setProfile(null);
     setRole("entry");
     clearWorkspaceState();
+    if (!hasSupabaseConfig) loadDemoWorkspace();
     setSecuritySettings(defaultSecuritySettings);
     setMessage("");
   }
@@ -901,7 +940,7 @@ export function App() {
   if (loading) return <main className="loading">載入中...</main>;
 
   if (!profile) {
-    return <LoginScreen onLogin={handleLogin} message={message} />;
+    return <LoginScreen onLogin={handleLogin} message={message} demoMode={!hasSupabaseConfig} stores={stores} />;
   }
 
   if (securitySettings.is_fault_mode && !canManageSecurity(currentRole)) {
@@ -1204,18 +1243,29 @@ function InspectionPasswordDialog({ password, setPassword, onCancel, onConfirm }
   );
 }
 
-function LoginScreen({ onLogin, message }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+function LoginScreen({ onLogin, message, demoMode = false, stores = [] }) {
+  const [email, setEmail] = useState(demoMode ? "S01@demo.local" : "");
+  const [password, setPassword] = useState(demoMode ? "demo" : "");
   return (
     <main className="login-screen">
       <section className="login-card">
         <div className="brand-mark">萊</div>
         <h1>萊吉多營運回報</h1>
-        <p>請使用 Supabase Auth 建立的帳號登入。</p>
+        <p>{demoMode ? "本機驗收模式，登入後依帳號限制可查看的門店。" : "請使用 Supabase Auth 建立的帳號登入。"}</p>
+        {demoMode && (
+          <label>
+            驗收身份
+            <select value={email} onChange={(event) => setEmail(event.target.value)}>
+              <option value="HQ@demo.local">總部</option>
+              {stores.map((store) => (
+                <option value={`${canonicalStoreCode(store)}@demo.local`} key={store.id}>{canonicalStoreCode(store)} {store.name}</option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           Email
-          <input value={email} onChange={(event) => setEmail(event.target.value)} />
+          <input value={email} readOnly={demoMode} onChange={(event) => setEmail(event.target.value)} />
         </label>
         <label>
           密碼
