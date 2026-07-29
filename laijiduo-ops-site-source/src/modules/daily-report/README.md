@@ -12,6 +12,8 @@ headquarters editing.
 - `totalRevenue(report)` totals a stored report.
 - `dailyReportRepository` owns daily report reads, writes, legacy field
   fallback, and delete verification.
+- `inventoryRepository` owns inventory reads, writes, unit normalization, and
+  legacy schema fallback.
 
 The Supabase implementation and null/local implementation share the same
-interface. Inventory persistence and UI layout remain outside this seam.
+interface. UI layout remains outside this seam.

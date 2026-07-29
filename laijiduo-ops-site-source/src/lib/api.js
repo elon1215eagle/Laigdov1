@@ -6,7 +6,11 @@ import {
   deleteDailyReports as deleteDailyReportsFromRepository,
   fetchDailyReports as fetchDailyReportsFromRepository,
   fetchDailyReportsRange as fetchDailyReportsRangeFromRepository,
+  fetchInventoryCounts as fetchInventoryCountsFromRepository,
+  fetchInventoryCountsForReports as fetchInventoryCountsForReportsFromRepository,
+  fetchPreviousInventoryCounts as fetchPreviousInventoryCountsFromRepository,
   upsertDailyReport as upsertDailyReportFromRepository,
+  upsertInventoryCounts as upsertInventoryCountsFromRepository,
 } from "../modules/daily-report/supabase.js";
 
 export {
@@ -28,36 +32,6 @@ const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_rev
 const COMPATIBLE_STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, is_active";
 const LEGACY_STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, is_active";
 const PRODUCT_FIELDS = "id, name, unit, sort_order, is_active";
-const INVENTORY_REPORT_FIELDS = [
-  "report_id",
-  "product_id",
-  "current_stock",
-  "safety_stock",
-  "loss_count",
-  "incoming_count",
-  "stock_unit",
-  "incoming_unit",
-  "current_stock_boxes",
-  "current_stock_packs",
-  "incoming_boxes",
-  "incoming_packs",
-  "incoming_source",
-  "transfer_note",
-  "is_shortage",
-  "products(name, unit, sort_order)",
-].join(", ");
-const LEGACY_INVENTORY_REPORT_FIELDS = [
-  "report_id",
-  "product_id",
-  "current_stock",
-  "safety_stock",
-  "loss_count",
-  "incoming_count",
-  "incoming_source",
-  "transfer_note",
-  "is_shortage",
-  "products(name, unit, sort_order)",
-].join(", ");
 const INSPECTION_FIELDS = [
   "id",
   "store_id",
@@ -259,42 +233,6 @@ export async function fetchProducts() {
   return data.map(productDefaults);
 }
 
-function normalizeInventoryRow(row) {
-  return {
-    ...row,
-    stock_unit: row.stock_unit || row.unit || row.products?.unit || "件",
-    incoming_unit: row.incoming_unit || row.unit || row.products?.unit || "件",
-    current_stock_boxes: Number(row.current_stock_boxes || 0),
-    current_stock_packs: Number(row.current_stock_packs || 0),
-    incoming_boxes: Number(row.incoming_boxes || 0),
-    incoming_packs: Number(row.incoming_packs || 0),
-    incoming_source: row.incoming_source || "廠商進貨",
-    transfer_note: row.transfer_note || "",
-  };
-}
-
-function stripNewInventoryFields(rows) {
-  return rows.map((row) => {
-    const {
-      stock_unit,
-      incoming_unit,
-      current_stock_boxes,
-      current_stock_packs,
-      incoming_boxes,
-      incoming_packs,
-      incoming_source,
-      transfer_note,
-      ...legacyRow
-    } = row;
-    return legacyRow;
-  });
-}
-
-function isInventorySchemaCacheError(error) {
-  const message = String(error?.message || "");
-  return /schema cache|column|stock_unit|incoming_unit|current_stock_boxes|current_stock_packs|incoming_boxes|incoming_packs|incoming_source|transfer_note/.test(message);
-}
-
 export async function fetchStores() {
   if (!supabase) return storesSeed;
   const result = await supabase
@@ -367,13 +305,7 @@ export async function fetchDailyReportsRange(dateFrom, dateTo) {
 }
 
 export async function fetchInventoryCounts(reportId) {
-  if (!supabase || !reportId) return [];
-  const { data, error } = await supabase
-    .from("inventory_counts")
-    .select("*")
-    .eq("report_id", reportId);
-  if (error) throw error;
-  return data.map(normalizeInventoryRow);
+  return fetchInventoryCountsFromRepository(reportId);
 }
 
 function addDays(dateText, days) {
@@ -415,33 +347,11 @@ function enrichInventoryWithPrevious(reports, inventoryRows) {
 }
 
 export async function fetchPreviousInventoryCounts(storeId, reportDate) {
-  if (!supabase || !storeId || !reportDate) return [];
-  const previousDate = addDays(reportDate, -1);
-  const reports = await fetchDailyReports(previousDate);
-  const previousReport = reports.find((report) => report.store_id === storeId);
-  if (!previousReport?.id) return [];
-  return fetchInventoryCounts(previousReport.id);
+  return fetchPreviousInventoryCountsFromRepository(storeId, reportDate);
 }
 
 export async function fetchInventoryCountsForReports(reportIds) {
-  if (!supabase || !reportIds?.length) return [];
-  const result = await supabase
-    .from("inventory_counts")
-    .select(INVENTORY_REPORT_FIELDS)
-    .in("report_id", reportIds);
-  const data = result.error
-    ? (await supabase
-      .from("inventory_counts")
-      .select(LEGACY_INVENTORY_REPORT_FIELDS)
-      .in("report_id", reportIds))
-    : result;
-  if (data.error) throw data.error;
-  return data.data.map((row) => normalizeInventoryRow({
-    ...row,
-    name: row.products?.name,
-    unit: row.products?.unit,
-    sort_order: row.products?.sort_order,
-  }));
+  return fetchInventoryCountsForReportsFromRepository(reportIds);
 }
 
 export async function fetchHqDashboardData(dateFrom, dateTo) {
@@ -474,24 +384,7 @@ export async function deleteDailyReports(reportIds) {
 }
 
 export async function upsertInventoryCounts(reportId, rows) {
-  if (!supabase) return rows;
-  const payload = rows.map((row) => ({ ...row, report_id: reportId }));
-  const { data, error } = await supabase
-    .from("inventory_counts")
-    .upsert(payload, { onConflict: "report_id,product_id" })
-    .select();
-  if (!error) return data.map(normalizeInventoryRow);
-
-  if (!isInventorySchemaCacheError(error)) {
-    throw error;
-  }
-
-  const fallbackResult = await supabase
-    .from("inventory_counts")
-    .upsert(stripNewInventoryFields(payload), { onConflict: "report_id,product_id" })
-    .select();
-  if (fallbackResult.error) throw fallbackResult.error;
-  return fallbackResult.data.map(normalizeInventoryRow);
+  return upsertInventoryCountsFromRepository(reportId, rows);
 }
 
 export async function updateStoreMonthlyTarget(storeId, monthlyTarget, dailyTarget) {
