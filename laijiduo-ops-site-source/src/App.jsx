@@ -2967,6 +2967,13 @@ function buildWeeklySameDayRows(reports = [], referenceDate = today) {
     resolveStoreName: displayStoreName,
   });
 }
+
+function revenueDeltaTone(delta) {
+  if (delta > 0) return "good";
+  if (delta < 0) return "bad";
+  return "";
+}
+
 function ManagementSystemModule({ systems }) {
   const nextBuildItems = [
     ["排班管理", "依各店營業時間、尖峰時段與值班人數建立週排班表，缺員自動提示。"],
