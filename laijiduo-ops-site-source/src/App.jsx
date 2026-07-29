@@ -4275,9 +4275,27 @@ function MonthlyLeavePlanner({
                     <td>{new Date(request.updated_at || request.created_at).toLocaleString("zh-TW")}</td>
                     <td>
                       <div className="inline-actions">
-                        <button type="button" onClick={() => reviewChangeRequest(request, "approved")} disabled={request.status === "approved"}>核可</button>
-                        <button type="button" onClick={() => reviewChangeRequest(request, "rejected")}>退回</button>
-                        <button type="button" onClick={() => reviewChangeRequest(request, "closed")}>關閉</button>
+                        <button
+                          type="button"
+                          onClick={() => reviewChangeRequest(request, "approved")}
+                          disabled={request.status === "approved" || request.status === "closed"}
+                        >
+                          核可
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => reviewChangeRequest(request, "rejected")}
+                          disabled={request.status === "closed"}
+                        >
+                          退回
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => reviewChangeRequest(request, "closed")}
+                          disabled={request.status === "closed"}
+                        >
+                          關閉
+                        </button>
                       </div>
                     </td>
                   </tr>
