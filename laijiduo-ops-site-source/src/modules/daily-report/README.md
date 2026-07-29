@@ -10,5 +10,8 @@ headquarters editing.
 - `buildDailyReportPayload(input)` produces the existing Supabase
   `daily_reports` payload.
 - `totalRevenue(report)` totals a stored report.
+- `dailyReportRepository` owns daily report reads, writes, legacy field
+  fallback, and delete verification.
 
-Inventory persistence and UI layout remain outside this first-stage seam.
+The Supabase implementation and null/local implementation share the same
+interface. Inventory persistence and UI layout remain outside this seam.

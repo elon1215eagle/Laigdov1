@@ -1,6 +1,13 @@
 import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, staffRosterSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 import { totalRevenue as calculateTotalRevenue } from "../modules/daily-report";
+import {
+  deleteDailyReport as deleteDailyReportFromRepository,
+  deleteDailyReports as deleteDailyReportsFromRepository,
+  fetchDailyReports as fetchDailyReportsFromRepository,
+  fetchDailyReportsRange as fetchDailyReportsRangeFromRepository,
+  upsertDailyReport as upsertDailyReportFromRepository,
+} from "../modules/daily-report/supabase.js";
 
 export {
   confirmMonthlySchedule,
@@ -21,32 +28,6 @@ const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_rev
 const COMPATIBLE_STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, is_active";
 const LEGACY_STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, is_active";
 const PRODUCT_FIELDS = "id, name, unit, sort_order, is_active";
-const REPORT_FIELDS = [
-  "id",
-  "store_id",
-  "report_date",
-  "opened_to_1400_revenue",
-  "revenue_1400_to_1900",
-  "revenue_1900_to_close",
-  "cash_difference",
-  "status",
-  "manager_note",
-  "total_revenue",
-  "stores(name, area, store_code, manager_name, target_daily_revenue, target_monthly_revenue)",
-].join(", ");
-const LEGACY_REPORT_FIELDS = [
-  "id",
-  "store_id",
-  "report_date",
-  "opened_to_1400_revenue",
-  "revenue_1400_to_1900",
-  "revenue_1900_to_close",
-  "cash_difference",
-  "status",
-  "manager_note",
-  "total_revenue",
-  "stores(name, area, store_code, manager_name, target_daily_revenue)",
-].join(", ");
 const INVENTORY_REPORT_FIELDS = [
   "report_id",
   "product_id",
@@ -377,56 +358,12 @@ export async function fetchStoreRelationGroups() {
   }));
 }
 
-function normalizeReportRow(report) {
-  return {
-    ...report,
-    name: report.stores?.name,
-    area: report.stores?.area,
-    store_code: report.stores?.store_code,
-    manager_name: report.stores?.manager_name,
-    target: report.stores?.target_daily_revenue,
-    target_monthly_revenue: report.stores?.target_monthly_revenue,
-  };
-}
-
 export async function fetchDailyReports(reportDate) {
-  if (!supabase) return storesSeed;
-  const result = await supabase
-    .from("daily_report_totals")
-    .select(REPORT_FIELDS)
-    .eq("report_date", reportDate)
-    .order("store_id");
-  if (!result.error) return result.data.map(normalizeReportRow);
-
-  const legacyResult = await supabase
-    .from("daily_report_totals")
-    .select(LEGACY_REPORT_FIELDS)
-    .eq("report_date", reportDate)
-    .order("store_id");
-  if (legacyResult.error) throw legacyResult.error;
-  return legacyResult.data.map(normalizeReportRow);
+  return fetchDailyReportsFromRepository(reportDate);
 }
 
 export async function fetchDailyReportsRange(dateFrom, dateTo) {
-  if (!supabase) return [];
-  const result = await supabase
-    .from("daily_report_totals")
-    .select(REPORT_FIELDS)
-    .gte("report_date", dateFrom)
-    .lte("report_date", dateTo)
-    .order("report_date")
-    .order("store_id");
-  if (!result.error) return result.data.map(normalizeReportRow);
-
-  const legacyResult = await supabase
-    .from("daily_report_totals")
-    .select(LEGACY_REPORT_FIELDS)
-    .gte("report_date", dateFrom)
-    .lte("report_date", dateTo)
-    .order("report_date")
-    .order("store_id");
-  if (legacyResult.error) throw legacyResult.error;
-  return legacyResult.data.map(normalizeReportRow);
+  return fetchDailyReportsRangeFromRepository(dateFrom, dateTo);
 }
 
 export async function fetchInventoryCounts(reportId) {
@@ -525,42 +462,15 @@ export async function fetchHqDashboardData(dateFrom, dateTo) {
 }
 
 export async function upsertDailyReport(payload) {
-  if (!supabase) return payload;
-  const { data, error } = await supabase
-    .from("daily_reports")
-    .upsert(payload, { onConflict: "store_id,report_date" })
-    .select()
-    .single();
-  if (error) throw error;
-  return data;
+  return upsertDailyReportFromRepository(payload);
 }
 
 export async function deleteDailyReport(reportId) {
-  if (!supabase || !reportId) return;
-  const { data, error } = await supabase
-    .from("daily_reports")
-    .delete()
-    .eq("id", reportId)
-    .select("id");
-  if (error) throw error;
-  if (!data?.length) throw new Error("資料庫未刪除任何資料，請確認帳號權限或資料狀態");
-  return data;
+  return deleteDailyReportFromRepository(reportId);
 }
 
 export async function deleteDailyReports(reportIds) {
-  const ids = reportIds?.filter(Boolean) || [];
-  if (!supabase || !ids.length) return;
-  const { data, error } = await supabase
-    .from("daily_reports")
-    .delete()
-    .in("id", ids)
-    .select("id");
-  if (error) throw error;
-  if (!data?.length) throw new Error("資料庫未刪除任何資料，請確認帳號權限或資料狀態");
-  if (data.length !== ids.length) {
-    throw new Error(`資料庫僅刪除 ${data.length} 筆，與預期 ${ids.length} 筆不一致，請重新查詢後再操作`);
-  }
-  return data;
+  return deleteDailyReportsFromRepository(reportIds);
 }
 
 export async function upsertInventoryCounts(reportId, rows) {
