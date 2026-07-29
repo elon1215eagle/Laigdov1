@@ -46,6 +46,20 @@ import {
   usageCount,
 } from "./modules/inventory";
 import {
+  MODULE_GROUPS,
+  ROLE_LABELS,
+  appViewForRole,
+  canAccessModule,
+  canEditMonthlyTargets,
+  canExportRole,
+  canManageDailyReportData,
+  canManageSecurity,
+  defaultModuleForRole,
+  modulesForRole,
+  profileRole,
+  visibleViewModesForRole,
+} from "./modules/access";
+import {
   handoverSeed,
   hrChangeSeed,
   hqTaskSeed,
@@ -137,121 +151,6 @@ const {
   findStoreScopedRecord,
   resolveStoreCodeFromRef,
 } = storeDirectory;
-
-const ROLE_LABELS = {
-  ceo: "執行長",
-  coo: "營運長",
-  cfo: "財務長",
-  general_affairs: "總務",
-  cso: "督導長 / CSO",
-  admin: "系統管理員",
-  hq: "總部管理",
-  supervisor: "執行督導",
-  store_manager: "門店主管",
-};
-
-const ROLE_MODULES = {
-  ceo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
-  coo: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
-  cfo: ["ops", "anomaly", "system"],
-  general_affairs: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "inspection", "system"],
-  cso: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
-  admin: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
-  hq: ["ops", "handover", "schedule", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
-  supervisor: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
-  store_manager: ["ops", "handover", "schedule", "system"],
-};
-
-const HIDDEN_MODULES = new Set(["handover", "anomaly", "tasks", "hrFlow", "performance", "inspection", "system"]);
-const HIDDEN_VIEW_MODES = new Set(["review", "inspection"]);
-
-const MODULE_GROUPS = [
-  {
-    title: "每日作業",
-    items: [
-      ["ops", "每日營運回報"],
-      ["handover", "交接管理"],
-      ["schedule", "排班管理"],
-    ],
-  },
-  {
-    title: "總部管理",
-    items: [
-      ["anomaly", "異常中心"],
-      ["tasks", "任務派遣"],
-      ["security", "系統安全"],
-    ],
-  },
-  {
-    title: "人員資料",
-    items: [
-      ["hr", "人資主檔"],
-      ["hrFlow", "人資異動"],
-      ["performance", "人員績效"],
-    ],
-  },
-  {
-    title: "稽核制度",
-    items: [
-      ["inspection", "巡檢管理"],
-      ["system", "制度中心"],
-    ],
-  },
-];
-
-const ROLE_VIEW_OPTIONS = {
-  ceo: ["hq", "store", "review", "inspection"],
-  coo: ["hq", "store", "review", "inspection"],
-  admin: ["hq", "store", "review", "inspection"],
-  hq: ["hq", "store", "review", "inspection"],
-  cfo: ["hq"],
-  general_affairs: ["hq", "store", "inspection"],
-  cso: ["review", "inspection"],
-  supervisor: ["review", "inspection"],
-  store_manager: ["store"],
-};
-
-function visibleViewModesForRole(roleName) {
-  const modes = (ROLE_VIEW_OPTIONS[roleName] || ["hq"]).filter((mode) => !HIDDEN_VIEW_MODES.has(mode));
-  return modes.length ? modes : ["hq"];
-}
-
-function profileRole(profile) {
-  return profile?.role || "admin";
-}
-
-function appViewForRole(roleName) {
-  if (roleName === "store_manager") return "store";
-  return "hq";
-}
-
-function modulesForRole(roleName) {
-  return (ROLE_MODULES[roleName] || ROLE_MODULES.hq).filter((moduleName) => !HIDDEN_MODULES.has(moduleName));
-}
-
-function canAccessModule(roleName, moduleName) {
-  return modulesForRole(roleName).includes(moduleName);
-}
-
-function defaultModuleForRole(roleName) {
-  return modulesForRole(roleName)[0] || "ops";
-}
-
-function canExportRole(roleName) {
-  return ["ceo", "coo", "cfo", "admin", "hq"].includes(roleName);
-}
-
-function canEditMonthlyTargets(roleName) {
-  return ["ceo", "coo", "cfo", "admin", "hq"].includes(roleName);
-}
-
-function canManageSecurity(roleName) {
-  return ["ceo", "coo"].includes(roleName);
-}
-
-function canManageDailyReportData(roleName) {
-  return ["ceo", "coo", "admin", "hq"].includes(roleName);
-}
 
 function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00Z`);
