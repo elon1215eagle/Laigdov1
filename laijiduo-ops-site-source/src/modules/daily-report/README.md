@@ -14,6 +14,8 @@ headquarters editing.
   fallback, and delete verification.
 - `inventoryRepository` owns inventory reads, writes, unit normalization, and
   legacy schema fallback.
+- `dailyOperationsService` saves the report and inventory through one atomic
+  Supabase RPC, with a compatibility fallback until the migration is installed.
 
 The Supabase implementation and null/local implementation share the same
 interface. UI layout remains outside this seam.

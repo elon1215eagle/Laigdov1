@@ -19,14 +19,13 @@ import {
   getSessionProfile,
   hasSupabaseConfig,
   reviewReport,
+  saveDailyOperations,
   signIn,
   signOut,
   statusLabel,
   updateStoreMonthlyTarget,
-  upsertDailyReport,
   upsertHandover,
   upsertHqTask,
-  upsertInventoryCounts,
   upsertSecuritySettings,
   upsertStaffPerformance,
   upsertStoreStaffMember,
@@ -362,6 +361,25 @@ function numericValue(value) {
   return isBlankNumber(value) ? 0 : Number(value);
 }
 
+function buildInventorySaveRows(inventoryRows) {
+  return inventoryRows.map((row) => ({
+    product_id: row.product_id || row.id,
+    current_stock: numericValue(row.current_stock),
+    safety_stock: 0,
+    loss_count: numericValue(row.loss_count),
+    incoming_count: numericValue(row.incoming_count),
+    stock_unit: row.stock_unit || defaultUnitForProduct(row.name),
+    incoming_unit: row.incoming_unit || defaultUnitForProduct(row.name),
+    current_stock_boxes: numericValue(row.current_stock_boxes),
+    current_stock_packs: numericValue(row.current_stock_packs),
+    incoming_boxes: numericValue(row.incoming_boxes),
+    incoming_packs: numericValue(row.incoming_packs),
+    incoming_source: row.incoming_source || "廠商進貨",
+    transfer_note: row.transfer_note || "",
+    is_shortage: false,
+  }));
+}
+
 function hasSubmittedReport(report) {
   return Boolean(report?.id && report?.updated_at_label !== "尚未回報");
 }
@@ -662,26 +680,7 @@ export function App() {
         submittedAt: new Date().toISOString(),
         submittedBy: profile?.id,
       });
-      const saved = await upsertDailyReport(payload);
-      await upsertInventoryCounts(
-        saved.id,
-        inventoryRows.map((row) => ({
-          product_id: row.product_id || row.id,
-          current_stock: numericValue(row.current_stock),
-          safety_stock: 0,
-          loss_count: numericValue(row.loss_count),
-          incoming_count: numericValue(row.incoming_count),
-          stock_unit: row.stock_unit || defaultUnitForProduct(row.name),
-          incoming_unit: row.incoming_unit || defaultUnitForProduct(row.name),
-          current_stock_boxes: numericValue(row.current_stock_boxes),
-          current_stock_packs: numericValue(row.current_stock_packs),
-          incoming_boxes: numericValue(row.incoming_boxes),
-          incoming_packs: numericValue(row.incoming_packs),
-          incoming_source: row.incoming_source || "廠商進貨",
-          transfer_note: row.transfer_note || "",
-          is_shortage: false,
-        })),
-      );
+      await saveDailyOperations(payload, buildInventorySaveRows(inventoryRows));
       await loadWorkspace(profile, selectedReport.store_id, reportDate);
       show("每日營運回報已上傳完成");
       return true;
@@ -708,26 +707,7 @@ export function App() {
         submittedAt: new Date().toISOString(),
         submittedBy: profile?.id,
       });
-      const saved = await upsertDailyReport(payload);
-      await upsertInventoryCounts(
-        saved.id,
-        inventoryRows.map((row) => ({
-          product_id: row.product_id || row.id,
-          current_stock: numericValue(row.current_stock),
-          safety_stock: 0,
-          loss_count: numericValue(row.loss_count),
-          incoming_count: numericValue(row.incoming_count),
-          stock_unit: row.stock_unit || defaultUnitForProduct(row.name),
-          incoming_unit: row.incoming_unit || defaultUnitForProduct(row.name),
-          current_stock_boxes: numericValue(row.current_stock_boxes),
-          current_stock_packs: numericValue(row.current_stock_packs),
-          incoming_boxes: numericValue(row.incoming_boxes),
-          incoming_packs: numericValue(row.incoming_packs),
-          incoming_source: row.incoming_source || "廠商進貨",
-          transfer_note: row.transfer_note || "",
-          is_shortage: false,
-        })),
-      );
+      await saveDailyOperations(payload, buildInventorySaveRows(inventoryRows));
       await loadWorkspace(profile, report.store_id, reportDate);
       show("總部資料已儲存");
       return true;

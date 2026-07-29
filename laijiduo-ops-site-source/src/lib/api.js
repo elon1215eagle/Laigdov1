@@ -9,6 +9,7 @@ import {
   fetchInventoryCounts as fetchInventoryCountsFromRepository,
   fetchInventoryCountsForReports as fetchInventoryCountsForReportsFromRepository,
   fetchPreviousInventoryCounts as fetchPreviousInventoryCountsFromRepository,
+  saveDailyOperations as saveDailyOperationsFromService,
   upsertDailyReport as upsertDailyReportFromRepository,
   upsertInventoryCounts as upsertInventoryCountsFromRepository,
 } from "../modules/daily-report/supabase.js";
@@ -385,6 +386,10 @@ export async function deleteDailyReports(reportIds) {
 
 export async function upsertInventoryCounts(reportId, rows) {
   return upsertInventoryCountsFromRepository(reportId, rows);
+}
+
+export async function saveDailyOperations(reportPayload, inventoryRows) {
+  return saveDailyOperationsFromService(reportPayload, inventoryRows);
 }
 
 export async function updateStoreMonthlyTarget(storeId, monthlyTarget, dailyTarget) {
