@@ -6,7 +6,7 @@ import {
   resolvePersonWorkWindow,
   segmentCoverageRatio,
   validateTimeWindow,
-} from "../src/lib/staffing.js";
+} from "../src/modules/scheduling/index.js";
 
 const partTimer = {
   role: "兼職人員",

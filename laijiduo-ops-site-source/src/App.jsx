@@ -66,10 +66,15 @@ import {
 } from "./lib/storeScope";
 import {
   buildHalfHourStaffingMatrix,
-  resolvePersonWorkWindow,
-  segmentCoverageRatio as calculateSegmentCoverageRatio,
+  buildStaffingSegments,
+  calculateDailyStaffing,
+  isEffectiveScheduleStaff,
+  isScheduleExcludedRole,
+  normalizeStoreScopedScheduleCode,
+  scheduleGroupForStore,
+  supportVisibleGroupsForTemporarySupport,
   validateTimeWindow,
-} from "./lib/staffing";
+} from "./modules/scheduling";
 import { InspectionApp } from "./InspectionApp";
 
 const taipeiDateTimeParts = new Intl.DateTimeFormat("en-CA", {
@@ -3318,18 +3323,6 @@ function leaveDaySource(draft, day) {
 
 const leaveTypeOptions = ["排休", "特休", "事假", "病假", "其他"];
 
-function isDeliveryStaff(person) {
-  return /外送|送貨|配送/.test(String(person.role || ""));
-}
-
-function isScheduleExcludedRole(person) {
-  return ["兼職後勤", "送貨人員"].includes(String(person.role || "")) || isDeliveryStaff(person);
-}
-
-function isEffectiveScheduleStaff(person) {
-  return !isScheduleExcludedRole(person);
-}
-
 function timeToMinutes(value, fallback = 0) {
   const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
   if (!match) return fallback;
@@ -3342,107 +3335,27 @@ function formatTime24(value) {
   return `${String(Number(match[1])).padStart(2, "0")}:${match[2]}`;
 }
 
-function personWorkWindow(person, store, dateValue, override = null) {
-  return resolvePersonWorkWindow({ person, store, dateValue, override });
-}
-
-function buildStaffingSegments(store) {
-  return [
-    {
-      key: "lunchPeak",
-      label: "午峰",
-      start: timeToMinutes("11:00", 11 * 60),
-      end: timeToMinutes("14:00", 14 * 60),
-      critical: true,
-    },
-    {
-      key: "dinnerPeak",
-      label: "晚峰",
-      start: timeToMinutes("16:30", 16 * 60 + 30),
-      end: timeToMinutes("19:00", 19 * 60),
-      critical: true,
-    },
-    {
-      key: "closing",
-      label: "打烊段",
-      start: timeToMinutes(store.dinner_report_time, 19 * 60),
-      end: timeToMinutes(store.close_report_time || store.close_time, 22 * 60),
-      critical: false,
-    },
-  ].filter((segment) => segment.end > segment.start);
-}
-
-function coversStaffingSegment(window, segment) {
-  return Boolean(window) && window.start <= segment.start && window.end >= segment.end;
-}
-
 function staffingCountText(value) {
   return Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 });
 }
 
 function calculateStoreStaffingForDay(store, drafts, leaveMonth, day, dailyShifts = [], allStaff = store.staff) {
   const dateValue = `${leaveMonth}-${String(day).padStart(2, "0")}`;
-  const shiftByStaff = new Map(
-    dailyShifts.filter((shift) => shift.shift_date === dateValue).map((shift) => [String(shift.staff_id), shift]),
-  );
-  const segments = buildStaffingSegments(store);
-  const workingPeople = allStaff.filter((person) => {
-    if (isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, day)) return false;
-    const override = shiftByStaff.get(String(person.id));
-    const assignedStoreCode = override?.assigned_store_code;
-    if (assignedStoreCode) return store.sourceCodes.includes(assignedStoreCode);
-    return store.sourceCodes.includes(canonicalStoreCode(person));
-  });
-  const segmentRows = segments.map((segment) => ({
-    ...segment,
-    count: workingPeople.reduce((sum, person) => {
-      const override = shiftByStaff.get(String(person.id));
-      return sum + calculateSegmentCoverageRatio(personWorkWindow(person, store, dateValue, override), segment);
-    }, 0),
-  }));
-  const criticalRows = segmentRows.filter((segment) => segment.critical);
-  const effectiveCount = criticalRows.length ? Math.min(...criticalRows.map((segment) => segment.count)) : workingPeople.length;
-  const partTimeMissingHours = workingPeople.filter((person) => (
-    person.role === "兼職人員"
-    && !personWorkWindow(person, store, dateValue, shiftByStaff.get(String(person.id)))
-  )).length;
-  return {
-    offCount: store.staff.length - workingPeople.length,
-    workingPeopleCount: workingPeople.length,
-    segmentRows,
-    effectiveCount,
-    partTimeMissingHours,
-    surplus: effectiveCount - store.demand,
-  };
-}
-
-function scheduleGroupForStore(store, relationGroups = STORE_RELATION_GROUPS) {
-  const relationGroup = relationGroups.find((group) => group.sourceCodes.includes(store.code));
-  if (relationGroup) {
-    return {
-      code: relationGroup.code,
-      name: relationGroup.name,
-      sourceCodes: [...relationGroup.sourceCodes],
-      demand: relationGroup.demand,
-      open_time: store.open_time,
-      lunch_report_time: store.lunch_report_time,
-      dinner_report_time: store.dinner_report_time,
-      close_report_time: store.close_report_time,
-      close_time: store.close_time,
-      ruleNote: relationGroup.ruleNote,
-    };
-  }
-  return {
-    code: store.code,
-    name: store.name,
-    sourceCodes: [store.code],
+  const leaveStaffIds = allStaff
+    .filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, day))
+    .map((person) => person.id);
+  const result = calculateDailyStaffing({
+    dateValue,
+    store,
+    people: allStaff,
+    overrides: dailyShifts,
+    leaveStaffIds,
+    storeCodes: store.sourceCodes,
     demand: store.demand,
-    open_time: store.open_time,
-    lunch_report_time: store.lunch_report_time,
-    dinner_report_time: store.dinner_report_time,
-    close_report_time: store.close_report_time,
-    close_time: store.close_time,
-    ruleNote: "",
+  });
+  return {
+    ...result,
+    offCount: Math.max(store.staff.length - result.workingPeopleCount, 0),
   };
 }
 
@@ -3476,14 +3389,6 @@ function buildLeavePlanPayload({ month, person, dates, manualDates, autoDates, l
     leave_type: leaveType,
     note,
   };
-}
-
-function normalizeStoreScopedScheduleCode(storeCode = "") {
-  return storeCode;
-}
-
-function supportVisibleGroupsForTemporarySupport(allStoreGroups) {
-  return allStoreGroups;
 }
 
 function getMonthlyRestDays(role, salaryRows) {
