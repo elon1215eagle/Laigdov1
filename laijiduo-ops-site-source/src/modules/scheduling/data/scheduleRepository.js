@@ -1,0 +1,287 @@
+import { normalizeTemporarySupportRows } from "../../../lib/storeScope.js";
+import { normalizeTime24 } from "../domain/staffingRules.js";
+
+const MONTHLY_LEAVE_FIELDS = [
+  "id", "period_month", "store_code", "store_name", "staff_id",
+  "employee_name", "role_name", "leave_days", "manual_leave_days",
+  "auto_leave_days", "leave_type", "note", "updated_by", "created_at", "updated_at",
+].join(", ");
+
+const MONTHLY_SCHEDULE_LOCK_FIELDS = [
+  "period_month", "is_confirmed", "confirmed_by", "confirmed_at",
+  "note", "created_at", "updated_at",
+].join(", ");
+
+const MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS = [
+  "id", "period_month", "store_code", "store_name", "reason", "status",
+  "requested_by", "reviewed_by", "reviewed_at", "review_note", "created_at", "updated_at",
+].join(", ");
+
+const DAILY_STAFF_SHIFT_FIELDS = [
+  "id", "shift_date", "staff_id", "employee_name", "home_store_code",
+  "assigned_store_code", "start_time", "end_time", "shift_type", "note",
+  "created_by", "created_at", "updated_at",
+].join(", ");
+
+function isMissingTable(error) {
+  return error?.code === "42P01" || /relation .* does not exist/i.test(error?.message || "");
+}
+
+function isMissingFunction(error) {
+  return error?.code === "42883"
+    || error?.code === "PGRST202"
+    || /function .* does not exist|could not find the function/i.test(error?.message || "");
+}
+
+export function normalizeLeaveDays(days) {
+  return [...new Set((Array.isArray(days) ? days : []).map(Number).filter((day) => day >= 1 && day <= 31))]
+    .sort((a, b) => a - b);
+}
+
+function buildLeavePayload(payload, userId) {
+  return {
+    ...payload,
+    leave_days: normalizeLeaveDays(payload.leave_days),
+    manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
+    auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
+    leave_type: payload.leave_type || "排休",
+    updated_by: userId,
+  };
+}
+
+function nextMonthStart(periodMonth) {
+  const [year, month] = String(periodMonth).split("-").map(Number);
+  if (!year || !month) return "";
+  const date = new Date(Date.UTC(year, month, 1));
+  return date.toISOString().slice(0, 10);
+}
+
+export function createScheduleRepository(client = null) {
+  async function currentUserId() {
+    const { data, error } = await client.auth.getUser();
+    if (error) throw error;
+    return data.user?.id || null;
+  }
+
+  return {
+    async fetchMonthlyLeavePlans(periodMonth) {
+      if (!client) return [];
+      const { data, error } = await client
+        .from("monthly_leave_plans")
+        .select(MONTHLY_LEAVE_FIELDS)
+        .eq("period_month", periodMonth)
+        .order("store_code")
+        .order("employee_name");
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+      return data || [];
+    },
+
+    async fetchTemporarySupportSummary(supportDate) {
+      if (!client || !supportDate) return null;
+      const { data, error } = await client.rpc("get_temporary_support_summary", {
+        p_support_date: supportDate,
+      });
+      if (error) {
+        if (isMissingFunction(error)) return null;
+        throw error;
+      }
+      return normalizeTemporarySupportRows(data || []);
+    },
+
+    async upsertMonthlyLeavePlan(payload) {
+      if (!client) return buildLeavePayload(payload, null);
+      const userId = await currentUserId();
+      const { data, error } = await client
+        .from("monthly_leave_plans")
+        .upsert(buildLeavePayload(payload, userId), { onConflict: "period_month,staff_id" })
+        .select(MONTHLY_LEAVE_FIELDS)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async upsertMonthlyLeavePlans(payloads) {
+      if (!payloads.length) return [];
+      if (!client) return payloads.map((payload) => buildLeavePayload(payload, null));
+      const userId = await currentUserId();
+      const { data, error } = await client
+        .from("monthly_leave_plans")
+        .upsert(payloads.map((payload) => buildLeavePayload(payload, userId)), {
+          onConflict: "period_month,staff_id",
+        })
+        .select(MONTHLY_LEAVE_FIELDS);
+      if (error) throw error;
+      return data || [];
+    },
+
+    async fetchMonthlyScheduleControl(periodMonth) {
+      if (!client) return { lock: null, requests: [] };
+      const [lockResult, requestResult] = await Promise.all([
+        client
+          .from("monthly_schedule_locks")
+          .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
+          .eq("period_month", periodMonth)
+          .maybeSingle(),
+        client
+          .from("monthly_schedule_change_requests")
+          .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
+          .eq("period_month", periodMonth)
+          .order("updated_at", { ascending: false }),
+      ]);
+      if (lockResult.error && !isMissingTable(lockResult.error)) throw lockResult.error;
+      if (requestResult.error && !isMissingTable(requestResult.error)) throw requestResult.error;
+      return {
+        lock: lockResult.error ? null : lockResult.data,
+        requests: requestResult.error ? [] : requestResult.data,
+        missingTable: Boolean(lockResult.error || requestResult.error),
+      };
+    },
+
+    async confirmMonthlySchedule(periodMonth, note = "") {
+      if (!client) return { period_month: periodMonth, is_confirmed: true, note };
+      const userId = await currentUserId();
+      const now = new Date().toISOString();
+      const { data, error } = await client
+        .from("monthly_schedule_locks")
+        .upsert({
+          period_month: periodMonth,
+          is_confirmed: true,
+          confirmed_by: userId,
+          confirmed_at: now,
+          note,
+        }, { onConflict: "period_month" })
+        .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
+        .single();
+      if (error) throw error;
+      await client
+        .from("monthly_schedule_change_requests")
+        .update({
+          status: "closed",
+          reviewed_by: userId,
+          reviewed_at: now,
+          review_note: "總部已重新確認排班",
+        })
+        .eq("period_month", periodMonth)
+        .in("status", ["pending", "approved"]);
+      return data;
+    },
+
+    async unlockMonthlySchedule(periodMonth, note = "") {
+      if (!client) return { period_month: periodMonth, is_confirmed: false, note };
+      const userId = await currentUserId();
+      const { data, error } = await client
+        .from("monthly_schedule_locks")
+        .upsert({
+          period_month: periodMonth,
+          is_confirmed: false,
+          confirmed_by: userId,
+          confirmed_at: null,
+          note,
+        }, { onConflict: "period_month" })
+        .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async submitMonthlyScheduleChangeRequest(payload) {
+      if (!client) return { ...payload, status: "pending" };
+      const userId = await currentUserId();
+      const { data, error } = await client
+        .from("monthly_schedule_change_requests")
+        .upsert({
+          period_month: payload.period_month,
+          store_code: payload.store_code,
+          store_name: payload.store_name,
+          reason: payload.reason || "",
+          status: "pending",
+          requested_by: userId,
+          reviewed_by: null,
+          reviewed_at: null,
+          review_note: "",
+        }, { onConflict: "period_month,store_code" })
+        .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async reviewMonthlyScheduleChangeRequest(id, status, reviewNote = "") {
+      if (!client) return { id, status, review_note: reviewNote };
+      const userId = await currentUserId();
+      const { data, error } = await client
+        .from("monthly_schedule_change_requests")
+        .update({
+          status,
+          reviewed_by: userId,
+          reviewed_at: new Date().toISOString(),
+          review_note: reviewNote,
+        })
+        .eq("id", id)
+        .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async fetchDailyStaffShifts(periodMonth) {
+      if (!client || !periodMonth) return [];
+      const startDate = `${periodMonth}-01`;
+      const { data, error } = await client
+        .from("daily_staff_shifts")
+        .select(DAILY_STAFF_SHIFT_FIELDS)
+        .gte("shift_date", startDate)
+        .lt("shift_date", nextMonthStart(periodMonth))
+        .order("shift_date")
+        .order("start_time");
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+      return data || [];
+    },
+
+    async upsertDailyStaffShift(payload) {
+      const startTime = normalizeTime24(payload.start_time);
+      const endTime = normalizeTime24(payload.end_time);
+      if (!payload.shift_date || !payload.staff_id) throw new Error("請選擇日期與人員");
+      if (!startTime || !endTime || endTime <= startTime) {
+        throw new Error("請輸入有效的上班與下班時間");
+      }
+      const cleanPayload = {
+        id: payload.id || globalThis.crypto?.randomUUID?.() || String(Date.now()),
+        shift_date: payload.shift_date,
+        staff_id: payload.staff_id,
+        employee_name: payload.employee_name || "",
+        home_store_code: payload.home_store_code || "",
+        assigned_store_code: payload.assigned_store_code || payload.home_store_code || "",
+        start_time: startTime,
+        end_time: endTime,
+        shift_type: payload.shift_type === "support" ? "support" : "override",
+        note: payload.note || "",
+      };
+      if (!client) return cleanPayload;
+      const userId = await currentUserId();
+      const { data, error } = await client
+        .from("daily_staff_shifts")
+        .upsert({
+          ...cleanPayload,
+          created_by: userId,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "shift_date,staff_id" })
+        .select(DAILY_STAFF_SHIFT_FIELDS)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async deleteDailyStaffShift(shiftId) {
+      if (!client || !shiftId) return;
+      const { error } = await client.from("daily_staff_shifts").delete().eq("id", shiftId);
+      if (error) throw error;
+    },
+  };
+}
