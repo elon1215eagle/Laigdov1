@@ -1,6 +1,20 @@
 import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, staffRosterSeed, storesSeed } from "./mockData";
-import { normalizeTemporarySupportRows } from "./storeScope";
 import { hasSupabaseConfig, supabase } from "./supabase";
+
+export {
+  confirmMonthlySchedule,
+  deleteDailyStaffShift,
+  fetchDailyStaffShifts,
+  fetchMonthlyLeavePlans,
+  fetchMonthlyScheduleControl,
+  fetchTemporarySupportSummary,
+  reviewMonthlyScheduleChangeRequest,
+  submitMonthlyScheduleChangeRequest,
+  unlockMonthlySchedule,
+  upsertDailyStaffShift,
+  upsertMonthlyLeavePlan,
+  upsertMonthlyLeavePlans,
+} from "../modules/scheduling/supabase.js";
 
 const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, operating_status, is_active";
 const COMPATIBLE_STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, is_active";
@@ -150,61 +164,6 @@ const LEGACY_STORE_STAFF_FIELDS = [
   "role_name",
   "sort_order",
   "is_active",
-  "created_at",
-  "updated_at",
-].join(", ");
-const MONTHLY_LEAVE_FIELDS = [
-  "id",
-  "period_month",
-  "store_code",
-  "store_name",
-  "staff_id",
-  "employee_name",
-  "role_name",
-  "leave_days",
-  "manual_leave_days",
-  "auto_leave_days",
-  "leave_type",
-  "note",
-  "updated_by",
-  "created_at",
-  "updated_at",
-].join(", ");
-const MONTHLY_SCHEDULE_LOCK_FIELDS = [
-  "period_month",
-  "is_confirmed",
-  "confirmed_by",
-  "confirmed_at",
-  "note",
-  "created_at",
-  "updated_at",
-].join(", ");
-const MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS = [
-  "id",
-  "period_month",
-  "store_code",
-  "store_name",
-  "reason",
-  "status",
-  "requested_by",
-  "reviewed_by",
-  "reviewed_at",
-  "review_note",
-  "created_at",
-  "updated_at",
-].join(", ");
-const DAILY_STAFF_SHIFT_FIELDS = [
-  "id",
-  "shift_date",
-  "staff_id",
-  "employee_name",
-  "home_store_code",
-  "assigned_store_code",
-  "start_time",
-  "end_time",
-  "shift_type",
-  "note",
-  "created_by",
   "created_at",
   "updated_at",
 ].join(", ");
@@ -774,19 +733,8 @@ function isMissingSupabaseColumn(error) {
   return error?.code === "PGRST204" || message.includes("Could not find") || message.includes("column");
 }
 
-function isMissingSupabaseFunction(error) {
-  const message = String(error?.message || "");
-  return error?.code === "PGRST202" || message.includes("Could not find the function") || message.includes("schema cache");
-}
-
 function migrationRequiredError() {
   return new Error("資料表尚未建立，請先套用 Supabase migration_2026_06_15_handover_performance.sql");
-}
-
-function normalizeLeaveDays(days) {
-  return Array.from(
-    new Set((days || []).map((day) => Number(day)).filter((day) => Number.isInteger(day) && day >= 1 && day <= 31)),
-  ).sort((a, b) => a - b);
 }
 
 export async function fetchSecuritySettings() {
@@ -819,194 +767,6 @@ export async function upsertSecuritySettings(payload) {
     .from("app_security_settings")
     .upsert(cleanPayload, { onConflict: "id" })
     .select(SECURITY_SETTINGS_FIELDS)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function fetchMonthlyLeavePlans(periodMonth) {
-  if (!supabase) return [];
-  const { data, error } = await supabase
-    .from("monthly_leave_plans")
-    .select(MONTHLY_LEAVE_FIELDS)
-    .eq("period_month", periodMonth)
-    .order("store_code")
-    .order("employee_name");
-  if (error) {
-    if (isMissingSupabaseTable(error)) return [];
-    throw error;
-  }
-  return data;
-}
-
-export async function fetchTemporarySupportSummary(supportDate) {
-  if (!supabase || !supportDate) return null;
-  const { data, error } = await supabase.rpc("get_temporary_support_summary", {
-    p_support_date: supportDate,
-  });
-  if (error) {
-    if (isMissingSupabaseFunction(error)) return null;
-    throw error;
-  }
-  return normalizeTemporarySupportRows(data || []);
-}
-
-export async function upsertMonthlyLeavePlan(payload) {
-  if (!supabase) return payload;
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  const { data, error } = await supabase
-    .from("monthly_leave_plans")
-    .upsert(
-      {
-        ...payload,
-        leave_days: normalizeLeaveDays(payload.leave_days),
-        manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
-        auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
-        leave_type: payload.leave_type || "排休",
-        updated_by: userData.user?.id || null,
-      },
-      { onConflict: "period_month,staff_id" },
-    )
-    .select(MONTHLY_LEAVE_FIELDS)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function upsertMonthlyLeavePlans(payloads) {
-  if (!supabase) return payloads;
-  if (!payloads.length) return [];
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  const cleanPayloads = payloads.map((payload) => ({
-    ...payload,
-    leave_days: normalizeLeaveDays(payload.leave_days),
-    manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
-    auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
-    leave_type: payload.leave_type || "排休",
-    updated_by: userData.user?.id || null,
-  }));
-  const { data, error } = await supabase
-    .from("monthly_leave_plans")
-    .upsert(cleanPayloads, { onConflict: "period_month,staff_id" })
-    .select(MONTHLY_LEAVE_FIELDS);
-  if (error) throw error;
-  return data;
-}
-
-export async function fetchMonthlyScheduleControl(periodMonth) {
-  if (!supabase) return { lock: null, requests: [] };
-  const [lockResult, requestResult] = await Promise.all([
-    supabase
-      .from("monthly_schedule_locks")
-      .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
-      .eq("period_month", periodMonth)
-      .maybeSingle(),
-    supabase
-      .from("monthly_schedule_change_requests")
-      .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
-      .eq("period_month", periodMonth)
-      .order("updated_at", { ascending: false }),
-  ]);
-  if (lockResult.error && !isMissingSupabaseTable(lockResult.error)) throw lockResult.error;
-  if (requestResult.error && !isMissingSupabaseTable(requestResult.error)) throw requestResult.error;
-  return {
-    lock: lockResult.error ? null : lockResult.data,
-    requests: requestResult.error ? [] : requestResult.data,
-    missingTable: Boolean(lockResult.error || requestResult.error),
-  };
-}
-
-export async function confirmMonthlySchedule(periodMonth, note = "") {
-  if (!supabase) return { period_month: periodMonth, is_confirmed: true, note };
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  const { data, error } = await supabase
-    .from("monthly_schedule_locks")
-    .upsert(
-      {
-        period_month: periodMonth,
-        is_confirmed: true,
-        confirmed_by: userData.user?.id || null,
-        confirmed_at: new Date().toISOString(),
-        note,
-      },
-      { onConflict: "period_month" },
-    )
-    .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
-    .single();
-  if (error) throw error;
-  await supabase
-    .from("monthly_schedule_change_requests")
-    .update({ status: "closed", reviewed_by: userData.user?.id || null, reviewed_at: new Date().toISOString(), review_note: "總部已重新確認排班" })
-    .eq("period_month", periodMonth)
-    .in("status", ["pending", "approved"]);
-  return data;
-}
-
-export async function unlockMonthlySchedule(periodMonth, note = "") {
-  if (!supabase) return { period_month: periodMonth, is_confirmed: false, note };
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  const { data, error } = await supabase
-    .from("monthly_schedule_locks")
-    .upsert(
-      {
-        period_month: periodMonth,
-        is_confirmed: false,
-        confirmed_by: userData.user?.id || null,
-        confirmed_at: null,
-        note,
-      },
-      { onConflict: "period_month" },
-    )
-    .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function submitMonthlyScheduleChangeRequest(payload) {
-  if (!supabase) return { ...payload, status: "pending" };
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  const { data, error } = await supabase
-    .from("monthly_schedule_change_requests")
-    .upsert(
-      {
-        period_month: payload.period_month,
-        store_code: payload.store_code,
-        store_name: payload.store_name,
-        reason: payload.reason || "",
-        status: "pending",
-        requested_by: userData.user?.id || null,
-        reviewed_by: null,
-        reviewed_at: null,
-        review_note: "",
-      },
-      { onConflict: "period_month,store_code" },
-    )
-    .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function reviewMonthlyScheduleChangeRequest(id, status, reviewNote = "") {
-  if (!supabase) return { id, status, review_note: reviewNote };
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  const { data, error } = await supabase
-    .from("monthly_schedule_change_requests")
-    .update({
-      status,
-      reviewed_by: userData.user?.id || null,
-      reviewed_at: new Date().toISOString(),
-      review_note: reviewNote,
-    })
-    .eq("id", id)
-    .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
     .single();
   if (error) throw error;
   return data;
@@ -1166,63 +926,6 @@ export async function upsertStoreStaffMember(payload) {
   }
   if (error) throw error;
   return normalizeStoreStaffRow(data);
-}
-
-export async function fetchDailyStaffShifts(periodMonth) {
-  if (!supabase || !periodMonth) return [];
-  const startDate = `${periodMonth}-01`;
-  const nextMonthDate = new Date(`${startDate}T12:00:00+08:00`);
-  nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
-  const nextMonth = nextMonthDate.toISOString().slice(0, 10);
-  const { data, error } = await supabase
-    .from("daily_staff_shifts")
-    .select(DAILY_STAFF_SHIFT_FIELDS)
-    .gte("shift_date", startDate)
-    .lt("shift_date", nextMonth)
-    .order("shift_date")
-    .order("start_time");
-  if (error) {
-    if (isMissingSupabaseTable(error)) return [];
-    throw error;
-  }
-  return data || [];
-}
-
-export async function upsertDailyStaffShift(payload) {
-  if (!supabase) return { ...payload, id: payload.id || crypto.randomUUID?.() || String(Date.now()) };
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  const startTime = normalizeTime24(payload.start_time);
-  const endTime = normalizeTime24(payload.end_time);
-  if (!payload.shift_date || !payload.staff_id) throw new Error("請選擇日期與人員");
-  if (!startTime || !endTime || endTime <= startTime) throw new Error("請輸入有效的上班與下班時間");
-  const cleanPayload = {
-    id: payload.id || crypto.randomUUID?.() || String(Date.now()),
-    shift_date: payload.shift_date,
-    staff_id: payload.staff_id,
-    employee_name: payload.employee_name || "",
-    home_store_code: payload.home_store_code || "",
-    assigned_store_code: payload.assigned_store_code || payload.home_store_code || "",
-    start_time: startTime,
-    end_time: endTime,
-    shift_type: payload.shift_type === "support" ? "support" : "override",
-    note: payload.note || "",
-    created_by: userData.user?.id || null,
-    updated_at: new Date().toISOString(),
-  };
-  const { data, error } = await supabase
-    .from("daily_staff_shifts")
-    .upsert(cleanPayload, { onConflict: "shift_date,staff_id" })
-    .select(DAILY_STAFF_SHIFT_FIELDS)
-    .single();
-  if (error) throw error;
-  return data;
-}
-
-export async function deleteDailyStaffShift(shiftId) {
-  if (!supabase || !shiftId) return;
-  const { error } = await supabase.from("daily_staff_shifts").delete().eq("id", shiftId);
-  if (error) throw error;
 }
 
 export async function deleteStoreStaffMember(staffMember) {
