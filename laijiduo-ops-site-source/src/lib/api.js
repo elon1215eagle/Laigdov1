@@ -1,5 +1,6 @@
 import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, staffRosterSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
+import { totalRevenue as calculateTotalRevenue } from "../modules/daily-report";
 
 export {
   confirmMonthlySchedule,
@@ -207,11 +208,7 @@ export const defaultSecuritySettings = {
 
 
 export function totalRevenue(report) {
-  return (
-    Number(report.opened_to_1400_revenue || 0) +
-    Number(report.revenue_1400_to_1900 || 0) +
-    Number(report.revenue_1900_to_close || 0)
-  );
+  return calculateTotalRevenue(report);
 }
 
 export function statusLabel(status) {

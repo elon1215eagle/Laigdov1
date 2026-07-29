@@ -22,7 +22,6 @@ import {
   signIn,
   signOut,
   statusLabel,
-  totalRevenue,
   updateStoreMonthlyTarget,
   upsertDailyReport,
   upsertHandover,
@@ -33,6 +32,11 @@ import {
   upsertStoreStaffMember,
   deleteStoreStaffMember,
 } from "./lib/api";
+import {
+  buildDailyReportPayload,
+  deriveRevenueBreakdown,
+  totalRevenue,
+} from "./modules/daily-report";
 import {
   handoverSeed,
   hrChangeSeed,
@@ -651,24 +655,13 @@ export function App() {
       return false;
     }
     try {
-      const revenue1900ToClose = Math.max(
-        0,
-        numericValue(form.full_day_revenue) -
-          numericValue(form.opened_to_1400_revenue) -
-          numericValue(form.revenue_1400_to_1900),
-      );
-      const payload = {
-        store_id: selectedReport.store_id,
-        report_date: reportDate,
-        opened_to_1400_revenue: numericValue(form.opened_to_1400_revenue),
-        revenue_1400_to_1900: numericValue(form.revenue_1400_to_1900),
-        revenue_1900_to_close: revenue1900ToClose,
-        cash_difference: numericValue(form.cash_difference),
-        manager_note: form.manager_note,
-        status: "submitted",
-        submitted_at: new Date().toISOString(),
-        submitted_by: profile?.id,
-      };
+      const payload = buildDailyReportPayload({
+        storeId: selectedReport.store_id,
+        reportDate,
+        form,
+        submittedAt: new Date().toISOString(),
+        submittedBy: profile?.id,
+      });
       const saved = await upsertDailyReport(payload);
       await upsertInventoryCounts(
         saved.id,
@@ -708,24 +701,13 @@ export function App() {
       return false;
     }
     try {
-      const revenue1900ToClose = Math.max(
-        0,
-        numericValue(form.full_day_revenue) -
-          numericValue(form.opened_to_1400_revenue) -
-          numericValue(form.revenue_1400_to_1900),
-      );
-      const payload = {
-        store_id: report.store_id,
-        report_date: report.report_date || reportDate,
-        opened_to_1400_revenue: numericValue(form.opened_to_1400_revenue),
-        revenue_1400_to_1900: numericValue(form.revenue_1400_to_1900),
-        revenue_1900_to_close: revenue1900ToClose,
-        cash_difference: numericValue(form.cash_difference),
-        manager_note: form.manager_note || "",
-        status: "submitted",
-        submitted_at: new Date().toISOString(),
-        submitted_by: profile?.id,
-      };
+      const payload = buildDailyReportPayload({
+        storeId: report.store_id,
+        reportDate: report.report_date || reportDate,
+        form,
+        submittedAt: new Date().toISOString(),
+        submittedBy: profile?.id,
+      });
       const saved = await upsertDailyReport(payload);
       await upsertInventoryCounts(
         saved.id,
@@ -5589,20 +5571,16 @@ function StoreReport({ report, reportDate, products, currentRole, onDateChange, 
   });
   const [inventory, setInventory] = useState(() => products.map(blankInventoryProduct));
   const [saving, setSaving] = useState(false);
-  const computedCloseRevenue = Math.max(
-    0,
-    numericValue(form.full_day_revenue) -
-      numericValue(form.opened_to_1400_revenue) -
-      numericValue(form.revenue_1400_to_1900),
-  );
-  const currentTotal = numericValue(form.full_day_revenue);
-  const revenueInvalid = currentTotal < numericValue(form.opened_to_1400_revenue) + numericValue(form.revenue_1400_to_1900);
+  const revenueBreakdown = deriveRevenueBreakdown(form);
+  const computedCloseRevenue = revenueBreakdown.revenue1900ToClose;
+  const currentTotal = revenueBreakdown.fullDayRevenue;
+  const revenueInvalid = !revenueBreakdown.isValid;
   const salesSteps = [
     ["1", "14:00", "開店至 14:00 營收", form.opened_to_1400_revenue],
     ["2", "19:00", "14:00 至 19:00 營收", form.revenue_1400_to_1900],
     ["3", "全日", "打烊收銀總額", form.full_day_revenue],
   ];
-  const completedSteps = salesSteps.filter((step) => !isBlankNumber(step[3]) && Number(step[3]) >= 0).length;
+  const completedSteps = revenueBreakdown.completedSteps;
   const isStoreManagerView = currentRole === "store_manager";
   const minReportDate = isStoreManagerView ? storeManagerRevenueMinDate() : "";
 
