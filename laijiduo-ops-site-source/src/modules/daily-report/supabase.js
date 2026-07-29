@@ -1,6 +1,7 @@
 import { dailyReportRepository } from "./data/supabaseDailyReportRepository.js";
 import { dailyOperationsService } from "./data/supabaseDailyOperationsService.js";
 import { inventoryRepository } from "./data/supabaseInventoryRepository.js";
+import { operationsDashboardService } from "./data/supabaseOperationsDashboardService.js";
 
 export const fetchDailyReports = (...args) => dailyReportRepository.fetchByDate(...args);
 export const fetchDailyReportsRange = (...args) => dailyReportRepository.fetchRange(...args);
@@ -11,6 +12,7 @@ export const fetchInventoryCounts = (...args) => inventoryRepository.fetchByRepo
 export const fetchInventoryCountsForReports = (...args) => inventoryRepository.fetchForReports(...args);
 export const upsertInventoryCounts = (...args) => inventoryRepository.upsert(...args);
 export const saveDailyOperations = (...args) => dailyOperationsService.save(...args);
+export const fetchHqDashboardData = (...args) => operationsDashboardService.fetchRange(...args);
 
 function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00Z`);

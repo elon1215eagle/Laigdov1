@@ -16,6 +16,8 @@ headquarters editing.
   legacy schema fallback.
 - `dailyOperationsService` saves the report and inventory through one atomic
   Supabase RPC, with a compatibility fallback until the migration is installed.
+- `operationsDashboardService` loads the requested date range with one context
+  day and returns inventory rows enriched with previous-stock values.
 
 The Supabase implementation and null/local implementation share the same
 interface. UI layout remains outside this seam.
