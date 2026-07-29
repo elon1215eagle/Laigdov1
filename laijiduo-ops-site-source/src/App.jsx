@@ -33,9 +33,11 @@ import {
 } from "./lib/api";
 import {
   buildDailyReportPayload,
+  buildWeeklySameDayRows as buildWeeklyComparisonRows,
   deriveRevenueBreakdown,
   totalRevenue,
 } from "./modules/daily-report";
+import { StoreOperationsView } from "./modules/daily-report/components";
 import {
   PRODUCT_ORDER,
   buildInventorySaveRows,
@@ -2959,61 +2961,12 @@ function reportForStoreCode(reports, storeCode) {
 
 const weekdayLabels = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
 
-function weekdayLabel(dateText) {
-  return weekdayLabels[new Date(`${dateText}T00:00:00Z`).getUTCDay()];
-}
-
-function revenueDeltaTone(delta) {
-  if (delta > 0) return "good";
-  if (delta < 0) return "bad";
-  return "";
-}
-
-function growthPct(current, previous) {
-  if (!previous && current > 0) return 100;
-  if (!previous) return 0;
-  return ((current - previous) / previous) * 100;
-}
-
 function buildWeeklySameDayRows(reports = [], referenceDate = today) {
-  const weekRange = getWeekRange(referenceDate);
-  const currentWeekDates = Array.from({ length: 7 }, (_, index) => addDays(weekRange.start, index));
-  const previousWeekDates = currentWeekDates.map((date) => addDays(date, -7));
-  const reportMap = new Map(
-    reports.map((report) => [`${canonicalStoreCode(report)}:${report.report_date}`, report]),
-  );
-  const storeRows = Array.from(new Map(
-    reports
-      .filter((report) => canonicalStoreCode(report))
-      .map((report) => [canonicalStoreCode(report), {
-        storeCode: canonicalStoreCode(report),
-        storeName: displayStoreName(report),
-      }]),
-  ).values()).sort((a, b) => a.storeCode.localeCompare(b.storeCode));
-
-  return storeRows.flatMap((store) =>
-    currentWeekDates.map((currentDate, index) => {
-      const previousDate = previousWeekDates[index];
-      const current = reportMap.get(`${store.storeCode}:${currentDate}`);
-      const previous = reportMap.get(`${store.storeCode}:${previousDate}`);
-      const currentTotal = totalRevenue(current || {});
-      const previousTotal = totalRevenue(previous || {});
-      return {
-        ...store,
-        weekday: weekdayLabel(currentDate),
-        currentDate,
-        previousDate,
-        current,
-        previous,
-        currentTotal,
-        previousTotal,
-        delta: currentTotal - previousTotal,
-        growth: growthPct(currentTotal, previousTotal),
-      };
-    }),
-  );
+  return buildWeeklyComparisonRows(reports, referenceDate, {
+    resolveStoreCode: canonicalStoreCode,
+    resolveStoreName: displayStoreName,
+  });
 }
-
 function ManagementSystemModule({ systems }) {
   const nextBuildItems = [
     ["排班管理", "依各店營業時間、尖峰時段與值班人數建立週排班表，缺員自動提示。"],
@@ -5571,54 +5524,6 @@ function StoreReport({ report, reportDate, products, currentRole, onDateChange, 
         <Metric label="今日總營收" value={money(currentTotal)} detail={`目標 ${money(report.target)}`} tone="hot" />
         <Metric label="達成率" value={pct((currentTotal / report.target) * 100)} detail="依今日目標計算" tone={currentTotal >= report.target ? "good" : "warn"} />
       </section>
-    </div>
-  );
-}
-
-function StoreOperationsView({ rows, loading }) {
-  const visibleRows = rows.filter((row) => row.currentTotal || row.previousTotal);
-  if (loading) {
-    return <div className="empty-text">門店營運視圖載入中...</div>;
-  }
-  return (
-    <div className="mobile-stack">
-      <div className="target-card">
-        <span>門店營運視圖</span>
-        <strong>本週 vs 上週同日</strong>
-        <p>只顯示自己門店，先看營業額 14:00、19:00、打烊與總額。</p>
-      </div>
-      {visibleRows.map((row) => (
-        <div className="input-card" key={`${row.storeCode}-${row.currentDate}`}>
-          <span>{row.weekday}<small>{row.currentDate} 對 {row.previousDate}</small></span>
-          <div className="table-wrap compact">
-            <table>
-              <thead>
-                <tr><th></th><th>14:00</th><th>19:00</th><th>打烊</th><th>總額</th></tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>本週</td>
-                  <td>{money(row.current?.opened_to_1400_revenue)}</td>
-                  <td>{money(row.current?.revenue_1400_to_1900)}</td>
-                  <td>{money(row.current?.revenue_1900_to_close)}</td>
-                  <td><strong>{money(row.currentTotal)}</strong></td>
-                </tr>
-                <tr>
-                  <td>上週</td>
-                  <td>{money(row.previous?.opened_to_1400_revenue)}</td>
-                  <td>{money(row.previous?.revenue_1400_to_1900)}</td>
-                  <td>{money(row.previous?.revenue_1900_to_close)}</td>
-                  <td><strong>{money(row.previousTotal)}</strong></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-          <strong className={row.delta < 0 ? "negative" : row.delta > 0 ? "positive" : ""}>
-            總額差 {money(row.delta)} / {pct(row.growth)}
-          </strong>
-        </div>
-      ))}
-      {!visibleRows.length && <div className="empty-text">目前尚無足夠資料可做本週與上週同日對比。</div>}
     </div>
   );
 }
