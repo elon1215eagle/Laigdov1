@@ -37,6 +37,15 @@ import {
   totalRevenue,
 } from "./modules/daily-report";
 import {
+  PRODUCT_ORDER,
+  buildInventorySaveRows,
+  defaultUnitForProduct,
+  displayUnitForProduct,
+  productKind,
+  toManagementQuantity,
+  usageCount,
+} from "./modules/inventory";
+import {
   handoverSeed,
   hrChangeSeed,
   hqTaskSeed,
@@ -244,64 +253,6 @@ function canManageDailyReportData(roleName) {
   return ["ceo", "coo", "admin", "hq"].includes(roleName);
 }
 
-const VARIABLE_UNIT_PRODUCTS = ["雞翅", "雞腿", "雞排", "腿排", "雞米花", "三角骨", "雞脖子", "地瓜"];
-const FIXED_PACK_PRODUCTS = ["米血", "花枝丸", "熱狗", "雞塊", "黑輪"];
-const POWDER_PRODUCTS = ["湯翅粉", "醃粉", "薯脆粉"];
-const PRODUCT_ORDER = [
-  ...VARIABLE_UNIT_PRODUCTS,
-  ...FIXED_PACK_PRODUCTS,
-  "雞皮",
-  "炸油",
-  ...POWDER_PRODUCTS,
-];
-
-function productKind(name = "") {
-  if (VARIABLE_UNIT_PRODUCTS.includes(name)) return "variable";
-  if (FIXED_PACK_PRODUCTS.includes(name)) return "pack";
-  if (name === "雞皮") return "skewer";
-  if (name === "炸油") return "barrel";
-  if (POWDER_PRODUCTS.includes(name)) return "powder";
-  return "unit";
-}
-
-function defaultUnitForProduct(name) {
-  const kind = productKind(name);
-  if (kind === "variable") return "箱";
-  if (kind === "pack" || kind === "powder") return "包";
-  if (kind === "skewer") return "串";
-  if (kind === "barrel") return "桶";
-  return "件";
-}
-
-function displayUnitForProduct(name) {
-  const kind = productKind(name);
-  if (kind === "variable") return "件";
-  if (kind === "pack") return "包";
-  if (kind === "skewer") return "串";
-  if (kind === "barrel") return "桶";
-  if (kind === "powder") return "包";
-  return defaultUnitForProduct(name);
-}
-
-function toManagementQuantity(row, field) {
-  const name = row.name || "";
-  const kind = productKind(name);
-  if (kind === "powder") {
-    const boxes = Number(row[`${field}_boxes`] || 0);
-    const packs = Number(row[`${field}_packs`] || 0);
-    return boxes * 10 + packs;
-  }
-  const count = Number(row[field] || 0);
-  const unitField = field === "incoming_count" ? "incoming_unit" : field === "previous_stock" ? "previous_stock_unit" : "stock_unit";
-  const unit = row[unitField] || defaultUnitForProduct(name);
-  if (kind === "variable") return unit === "包" ? count / 3 : count;
-  return count;
-}
-
-function usageCount(row) {
-  return toManagementQuantity(row, "previous_stock") - toManagementQuantity(row, "current_stock");
-}
-
 function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
@@ -359,25 +310,6 @@ function numericInputValue(value) {
 
 function numericValue(value) {
   return isBlankNumber(value) ? 0 : Number(value);
-}
-
-function buildInventorySaveRows(inventoryRows) {
-  return inventoryRows.map((row) => ({
-    product_id: row.product_id || row.id,
-    current_stock: numericValue(row.current_stock),
-    safety_stock: 0,
-    loss_count: numericValue(row.loss_count),
-    incoming_count: numericValue(row.incoming_count),
-    stock_unit: row.stock_unit || defaultUnitForProduct(row.name),
-    incoming_unit: row.incoming_unit || defaultUnitForProduct(row.name),
-    current_stock_boxes: numericValue(row.current_stock_boxes),
-    current_stock_packs: numericValue(row.current_stock_packs),
-    incoming_boxes: numericValue(row.incoming_boxes),
-    incoming_packs: numericValue(row.incoming_packs),
-    incoming_source: row.incoming_source || "廠商進貨",
-    transfer_note: row.transfer_note || "",
-    is_shortage: false,
-  }));
 }
 
 function hasSubmittedReport(report) {
