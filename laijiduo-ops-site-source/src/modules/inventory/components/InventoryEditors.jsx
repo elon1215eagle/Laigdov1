@@ -23,7 +23,7 @@ function updateInventoryRow(rows, onChange, index, row, patch) {
   onChange(next);
 }
 
-function NumberField({ label, value, onChange }) {
+function NumberField({ label, value, onChange, disabled = false }) {
   return (
     <label className="mini-field">
       <span>{label}</span>
@@ -32,18 +32,19 @@ function NumberField({ label, value, onChange }) {
         step="0.1"
         inputMode="decimal"
         value={numericInputValue(value)}
+        disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       />
     </label>
   );
 }
 
-function UnitField({ row, field, onChange }) {
+function UnitField({ row, field, onChange, disabled = false }) {
   if (productKind(row.name) === "variable") {
     return (
       <label className="mini-field">
         <span>單位</span>
-        <select value={row[field] || "箱"} onChange={(event) => onChange(event.target.value)}>
+        <select disabled={disabled} value={row[field] || "箱"} onChange={(event) => onChange(event.target.value)}>
           <option>箱</option>
           <option>包</option>
         </select>
@@ -83,7 +84,7 @@ export function formatInventoryAmount(row, prefix) {
   return `${numberText(row[field])} ${row[unitField] || defaultUnitForProduct(name)}`;
 }
 
-export function InventoryEditor({ rows, onChange }) {
+export function InventoryEditor({ rows, onChange, disabled = false }) {
   return (
     <div className="mobile-stack">
       {rows.map((row, index) => {
@@ -107,16 +108,16 @@ export function InventoryEditor({ rows, onChange }) {
             </div>
             {kind === "powder" ? (
               <>
-                <NumberField label="盤點箱" value={row.current_stock_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_boxes: value })} />
-                <NumberField label="盤點包" value={row.current_stock_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_packs: value })} />
+                <NumberField disabled={disabled} label="盤點箱" value={row.current_stock_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_boxes: value })} />
+                <NumberField disabled={disabled} label="盤點包" value={row.current_stock_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_packs: value })} />
               </>
             ) : (
               <>
-                <NumberField label="盤點" value={row.current_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock: value })} />
-                <UnitField row={row} field="stock_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { stock_unit: value })} />
+                <NumberField disabled={disabled} label="盤點" value={row.current_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock: value })} />
+                <UnitField disabled={disabled} row={row} field="stock_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { stock_unit: value })} />
               </>
             )}
-            <NumberField label="耗損" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
+            <NumberField disabled={disabled} label="耗損" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
             <span className={`chip ${isBlank ? "neutral" : "good"}`}>
               {isBlank ? "未填" : "已填"}
             </span>
@@ -127,7 +128,7 @@ export function InventoryEditor({ rows, onChange }) {
   );
 }
 
-export function IncomingEditor({ rows, onChange }) {
+export function IncomingEditor({ rows, onChange, disabled = false }) {
   return (
     <div className="mobile-stack">
       {rows.map((row, index) => {
@@ -143,18 +144,19 @@ export function IncomingEditor({ rows, onChange }) {
             </div>
             {kind === "powder" ? (
               <>
-                <NumberField label="進貨箱" value={row.incoming_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_boxes: value })} />
-                <NumberField label="進貨包" value={row.incoming_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_packs: value })} />
+                <NumberField disabled={disabled} label="進貨箱" value={row.incoming_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_boxes: value })} />
+                <NumberField disabled={disabled} label="進貨包" value={row.incoming_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_packs: value })} />
               </>
             ) : (
               <>
-                <NumberField label="調撥／進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
-                <UnitField row={row} field="incoming_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_unit: value })} />
+                <NumberField disabled={disabled} label="調撥／進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
+                <UnitField disabled={disabled} row={row} field="incoming_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_unit: value })} />
               </>
             )}
             <label className="mini-field">
               <span>來源</span>
               <select
+                disabled={disabled}
                 value={row.incoming_source || "廠商進貨"}
                 onChange={(event) => updateInventoryRow(rows, onChange, index, row, { incoming_source: event.target.value })}
               >
@@ -165,6 +167,7 @@ export function IncomingEditor({ rows, onChange }) {
             <label className="mini-field">
               <span>備註</span>
               <input
+                disabled={disabled}
                 value={row.transfer_note || ""}
                 onChange={(event) => updateInventoryRow(rows, onChange, index, row, { transfer_note: event.target.value })}
               />

@@ -173,7 +173,7 @@ export function statusLabel(status) {
     draft: "草稿",
     submitted: "待審核",
     needs_revision: "退回修改",
-    approved: "已通過",
+    approved: "總部已確認",
     follow_up: "需追蹤",
   }[status] || status;
 }
@@ -255,6 +255,44 @@ export async function fetchStores() {
     .order("store_code");
   if (legacyResult.error) throw legacyResult.error;
   return legacyResult.data;
+}
+
+export async function fetchDailyReportChangeRequests(reportIds = []) {
+  const ids = reportIds.filter(Boolean);
+  if (!supabase || !ids.length) return [];
+  const { data, error } = await supabase
+    .from("daily_report_change_requests")
+    .select("*")
+    .in("report_id", ids)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
+export async function submitDailyReportChangeRequest(payload) {
+  if (!supabase) return { id: `local-${Date.now()}`, ...payload };
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  if (userError) throw userError;
+  const { data, error } = await supabase
+    .from("daily_report_change_requests")
+    .insert({ ...payload, requested_by: userData.user?.id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function reviewDailyReportChangeRequest(requestId, decision, reviewNote = "") {
+  if (!supabase) {
+    return { id: requestId, status: decision, review_note: reviewNote };
+  }
+  const { data, error } = await supabase.rpc("review_daily_report_change_request", {
+    request_id: requestId,
+    decision,
+    decision_note: reviewNote,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function fetchStoreRelationGroups() {

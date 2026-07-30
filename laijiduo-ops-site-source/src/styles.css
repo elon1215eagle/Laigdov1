@@ -631,6 +631,44 @@ tbody tr.selected,
   min-width: 64px;
 }
 
+.change-request-box,
+.daily-change-request-list {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid #efc8b8;
+  border-radius: 8px;
+  background: #fff8f4;
+}
+
+.change-request-box {
+  margin-top: 14px;
+}
+
+.daily-change-request-list {
+  margin: 14px 0;
+}
+
+.daily-change-request-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid #eaded8;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.daily-change-request-row span {
+  margin-left: 8px;
+  color: #765f55;
+}
+
+.daily-change-request-row p {
+  margin: 4px 0 0;
+}
+
 .report-edit-dialog {
   width: min(920px, calc(100vw - 32px));
   max-height: calc(100vh - 40px);
@@ -2583,11 +2621,16 @@ tbody tr.selected,
   .support-panel,
   .support-list,
   .record-toolbar,
+  .daily-change-request-row,
   .store-today-panel,
   .step-strip,
   .rank-row,
   .priority-item {
     grid-template-columns: 1fr;
+  }
+
+  .daily-change-request-row {
+    display: grid;
   }
 
   .role-actions button,

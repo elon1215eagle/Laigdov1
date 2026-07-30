@@ -4,6 +4,7 @@ import {
   deleteDailyReport,
   deleteDailyReports,
   fetchDailyReports,
+  fetchDailyReportChangeRequests,
   fetchDailyReportsRange,
   fetchHandovers,
   fetchHqDashboardData,
@@ -19,6 +20,7 @@ import {
   getSessionProfile,
   hasSupabaseConfig,
   reviewReport,
+  reviewDailyReportChangeRequest,
   saveDailyOperations,
   signIn,
   signOut,
@@ -64,6 +66,7 @@ import {
   canEditMonthlyTargets,
   canExportRole,
   canManageDailyReportData,
+  canConfirmDailyReports,
   canManageSecurity,
   defaultModuleForRole,
   modulesForRole,
@@ -791,6 +794,7 @@ export function App() {
             securitySettings={securitySettings}
             canEditTargets={canEditMonthlyTargets(currentRole)}
             canManageReports={canManageDailyReportData(currentRole)}
+            canConfirmReports={canConfirmDailyReports(currentRole)}
             onSelect={setSelectedStoreId}
             onOpenModule={openModule}
             onSaveReport={saveHqDailyReport}
@@ -1488,6 +1492,7 @@ function HqDashboard({
   securitySettings,
   canEditTargets,
   canManageReports,
+  canConfirmReports,
   onSelect,
   onOpenModule,
   onSaveReport,
@@ -1617,6 +1622,7 @@ function HqDashboard({
         reports={periodRows.length ? periodRows : reports}
         products={products}
         canManageReports={canManageReports}
+        canConfirmReports={canConfirmReports}
         onSelect={onSelect}
         onSaveReport={onSaveReport}
         onDeleteReport={onDeleteReport}
@@ -1846,7 +1852,18 @@ function HqOperationsView({ rows }) {
   );
 }
 
-function HqReportRecords({ reports, products, canManageReports, onSelect, onSaveReport, onDeleteReport, onBulkDeleteReports, onNotify, onRefresh }) {
+function HqReportRecords({
+  reports,
+  products,
+  canManageReports,
+  canConfirmReports,
+  onSelect,
+  onSaveReport,
+  onDeleteReport,
+  onBulkDeleteReports,
+  onNotify,
+  onRefresh,
+}) {
   const defaultMonth = getMonthRange(today);
   const [dateFrom, setDateFrom] = useState(defaultMonth.start);
   const [dateTo, setDateTo] = useState(today);
@@ -1858,9 +1875,27 @@ function HqReportRecords({ reports, products, canManageReports, onSelect, onSave
   const [tab, setTab] = useState("sales");
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [changeRequests, setChangeRequests] = useState([]);
+  const [workflowBusyId, setWorkflowBusyId] = useState("");
 
   useEffect(() => {
     setRecords(reports);
+  }, [reports]);
+
+  useEffect(() => {
+    let active = true;
+    async function loadChangeRequests() {
+      try {
+        const rows = await fetchDailyReportChangeRequests(reports.map((report) => report.id));
+        if (active) setChangeRequests(rows);
+      } catch {
+        if (active) setChangeRequests([]);
+      }
+    }
+    loadChangeRequests();
+    return () => {
+      active = false;
+    };
   }, [reports]);
 
   async function loadRecords() {
@@ -1868,11 +1903,52 @@ function HqReportRecords({ reports, products, canManageReports, onSelect, onSave
     try {
       const { reports: rows } = await fetchHqDashboardData(dateFrom, dateTo);
       setRecords(rows);
+      setChangeRequests(await fetchDailyReportChangeRequests(rows.map((report) => report.id)));
       onNotify?.("各門店回報紀錄已更新");
     } catch (error) {
       onNotify?.(`回報紀錄讀取失敗：${error.message}`);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function confirmReport(report) {
+    if (!canConfirmReports || !report?.id || report.status !== "submitted") return;
+    setWorkflowBusyId(report.id);
+    try {
+      await reviewReport(report.id, "approve", "總部確認並鎖定", "approved");
+      setRecords((rows) => rows.map((row) => (
+        row.id === report.id ? { ...row, status: "approved" } : row
+      )));
+      onNotify?.(`${report.name} ${report.report_date} 已確認並鎖定`);
+      onRefresh?.();
+    } catch (error) {
+      onNotify?.(`確認失敗：${error.message}`);
+    } finally {
+      setWorkflowBusyId("");
+    }
+  }
+
+  async function reviewChangeRequest(request, decision) {
+    if (!canConfirmReports) return;
+    setWorkflowBusyId(request.id);
+    try {
+      const reviewNote = decision === "approved" ? "核准門店修改" : "維持總部確認資料";
+      await reviewDailyReportChangeRequest(request.id, decision, reviewNote);
+      setChangeRequests((rows) => rows.map((row) => (
+        row.id === request.id ? { ...row, status: decision, review_note: reviewNote } : row
+      )));
+      if (decision === "approved") {
+        setRecords((rows) => rows.map((row) => (
+          row.id === request.report_id ? { ...row, status: "needs_revision" } : row
+        )));
+      }
+      onNotify?.(decision === "approved" ? "修改申請已核准，門店可重新填寫" : "修改申請已駁回");
+      onRefresh?.();
+    } catch (error) {
+      onNotify?.(`申請處理失敗：${error.message}`);
+    } finally {
+      setWorkflowBusyId("");
     }
   }
 
@@ -1949,6 +2025,7 @@ function HqReportRecords({ reports, products, canManageReports, onSelect, onSave
   }
 
   const storeOptions = Array.from(new Map(records.map((row) => [row.store_id, row.name])).entries());
+  const pendingChangeRequests = changeRequests.filter((request) => request.status === "pending");
   const visibleRows = buildDailyRevenueRows(records)
     .filter((row) => storeFilter === "all" || row.store_id === storeFilter);
   const computedCloseRevenue = form
@@ -1986,6 +2063,46 @@ function HqReportRecords({ reports, products, canManageReports, onSelect, onSave
         <button className="primary" onClick={loadRecords} disabled={loading}>{loading ? "讀取中..." : "查詢紀錄"}</button>
         <button className="danger" onClick={clearVisibleRecords} disabled={!canManageReports || !visibleRows.some((row) => row.id)}>一鍵清除</button>
       </div>
+      {pendingChangeRequests.length > 0 && (
+        <div className="daily-change-request-list">
+          <div className="panel-head">
+            <div>
+              <h3>門店修改申請</h3>
+              <p>核准後門店可重新填寫；重新送出後仍需總部再次確認。</p>
+            </div>
+            <span className="chip warn">{pendingChangeRequests.length} 筆待處理</span>
+          </div>
+          {pendingChangeRequests.map((request) => {
+            const targetReport = records.find((report) => report.id === request.report_id);
+            return (
+              <div className="daily-change-request-row" key={request.id}>
+                <div>
+                  <strong>{targetReport?.name || "門店回報"}</strong>
+                  <span>{targetReport?.report_date || ""}</span>
+                  <p>{request.reason}</p>
+                </div>
+                <div className="row-actions">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={!canConfirmReports || workflowBusyId === request.id}
+                    onClick={() => reviewChangeRequest(request, "approved")}
+                  >
+                    核准修改
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!canConfirmReports || workflowBusyId === request.id}
+                    onClick={() => reviewChangeRequest(request, "rejected")}
+                  >
+                    駁回
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
@@ -2013,6 +2130,17 @@ function HqReportRecords({ reports, products, canManageReports, onSelect, onSave
                 <td className={report.cash_difference < 0 ? "negative" : ""}>{report.cash_difference ?? "-"}</td>
                 <td><span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span></td>
                 <td className="row-actions">
+                  <button
+                    type="button"
+                    className="primary"
+                    disabled={!canConfirmReports || report.status !== "submitted" || workflowBusyId === report.id}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      confirmReport(report);
+                    }}
+                  >
+                    {report.status === "approved" ? "已鎖定" : "確認鎖定"}
+                  </button>
                   <button type="button" disabled={!canManageReports || !report.id} onClick={(event) => { event.stopPropagation(); openEdit(report); }}>修改</button>
                   <button type="button" className="danger" disabled={!canManageReports || !report.id} onClick={(event) => { event.stopPropagation(); clearSelected(report); }}>清除</button>
                 </td>

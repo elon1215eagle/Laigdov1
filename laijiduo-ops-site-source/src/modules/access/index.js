@@ -6,6 +6,7 @@ export {
   canEditMonthlyTargets,
   canExportRole,
   canManageDailyReportData,
+  canConfirmDailyReports,
   canManageSecurity,
   defaultModuleForRole,
   modulesForRole,

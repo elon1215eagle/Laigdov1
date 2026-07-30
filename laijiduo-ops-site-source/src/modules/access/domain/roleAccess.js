@@ -121,3 +121,7 @@ export function canManageSecurity(roleName) {
 export function canManageDailyReportData(roleName) {
   return ["ceo", "coo", "admin", "hq"].includes(roleName);
 }
+
+export function canConfirmDailyReports(roleName) {
+  return ["ceo", "coo", "cfo", "admin", "hq", "cso"].includes(roleName);
+}
