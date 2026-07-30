@@ -19,6 +19,15 @@ create unique index if not exists daily_report_change_requests_open_idx
 on public.daily_report_change_requests (report_id)
 where status in ('pending', 'approved');
 
+create index if not exists daily_report_change_requests_store_id_idx
+on public.daily_report_change_requests (store_id);
+
+create index if not exists daily_report_change_requests_requested_by_idx
+on public.daily_report_change_requests (requested_by);
+
+create index if not exists daily_report_change_requests_reviewed_by_idx
+on public.daily_report_change_requests (reviewed_by);
+
 alter table public.daily_report_change_requests enable row level security;
 grant select, insert, update on table public.daily_report_change_requests to authenticated;
 
@@ -35,7 +44,7 @@ on public.review_actions for insert
 to authenticated
 with check (
   public.current_profile_role()::text in ('ceo', 'coo', 'cfo', 'admin', 'hq', 'cso')
-  and created_by = auth.uid()
+  and created_by = (select auth.uid())
 );
 
 drop policy if exists "daily report change requests readable by scope" on public.daily_report_change_requests;
@@ -54,7 +63,7 @@ to authenticated
 with check (
   public.current_profile_role()::text = 'store_manager'
   and store_id = public.current_profile_store_id()
-  and requested_by = auth.uid()
+  and requested_by = (select auth.uid())
   and status = 'pending'
   and exists (
     select 1
@@ -178,6 +187,6 @@ using (
 with check (
   public.current_profile_role()::text = 'store_manager'
   and store_id = public.current_profile_store_id()
-  and submitted_by = auth.uid()
+  and submitted_by = (select auth.uid())
   and status::text in ('draft', 'submitted', 'needs_revision')
 );

@@ -59,6 +59,9 @@ create table if not exists public.daily_report_waste_items (
 create index if not exists daily_report_waste_items_report_idx
 on public.daily_report_waste_items (report_id);
 
+create index if not exists daily_report_waste_items_product_idx
+on public.daily_report_waste_items (product_id);
+
 alter table public.daily_report_waste_items enable row level security;
 grant select, insert, update, delete on table public.daily_report_waste_items to authenticated;
 
