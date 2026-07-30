@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import {
   fetchDailyReportChangeRequests,
+  fetchDailyReportEmployeeMeals,
   fetchDailyReportWasteItems,
   fetchDailyReportsRange,
   fetchDailyStaffShifts,
@@ -16,9 +17,11 @@ import {
   buildDailyReportChangeRequest,
   calculateScheduledHeadcount,
   buildWeeklySameDayRows,
+  createEmployeeMealRows,
   deriveDailyReportAccess,
   deriveRevenueBreakdown,
   normalizeWasteItems,
+  normalizeEmployeeMealItems,
   storeManagerRevenueMinDate,
   totalRevenue,
 } from "../index.js";
@@ -32,6 +35,7 @@ import {
   InventoryEditor,
 } from "../../inventory/components/index.js";
 import { StoreOperationsView } from "./StoreOperationsView.jsx";
+import { EmployeeMealEditor } from "./EmployeeMealEditor.jsx";
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
@@ -144,6 +148,7 @@ export function StoreReportPage({
   const [requestError, setRequestError] = useState("");
   const [scheduledHeadcount, setScheduledHeadcount] = useState(Number(report.scheduled_staff_count || 0));
   const [wasteItems, setWasteItems] = useState([]);
+  const [employeeMealItems, setEmployeeMealItems] = useState(() => createEmployeeMealRows());
 
   const revenueBreakdown = deriveRevenueBreakdown(form);
   const computedCloseRevenue = revenueBreakdown.revenue1900ToClose;
@@ -244,10 +249,11 @@ export function StoreReportPage({
     async function loadOperationalDetails() {
       try {
         const periodMonth = String(reportDate || today).slice(0, 7);
-        const [leavePlans, shifts, savedWaste] = await Promise.all([
+        const [leavePlans, shifts, savedWaste, savedEmployeeMeals] = await Promise.all([
           fetchMonthlyLeavePlans(periodMonth).catch(() => []),
           fetchDailyStaffShifts(periodMonth).catch(() => []),
           fetchDailyReportWasteItems(report.id).catch(() => []),
+          fetchDailyReportEmployeeMeals(report.id).catch(() => []),
         ]);
         if (!active) return;
         const headcount = calculateScheduledHeadcount({
@@ -265,6 +271,7 @@ export function StoreReportPage({
           actual_staff_count: current.actual_staff_count === "" ? headcount : current.actual_staff_count,
         }));
         setWasteItems(savedWaste);
+        setEmployeeMealItems(createEmployeeMealRows(savedEmployeeMeals));
       } catch {
         if (!active) return;
         const fallbackHeadcount = Number(report.scheduled_staff_count || 0);
@@ -274,6 +281,7 @@ export function StoreReportPage({
           actual_staff_count: current.actual_staff_count === "" ? fallbackHeadcount : current.actual_staff_count,
         }));
         setWasteItems([]);
+        setEmployeeMealItems(createEmployeeMealRows());
       }
     }
     loadOperationalDetails();
@@ -285,7 +293,13 @@ export function StoreReportPage({
   async function submit() {
     if (!workflowAccess.canEdit) return;
     setSaving(true);
-    await onSave(form, inventory, normalizeWasteItems(wasteItems), scheduledHeadcount);
+    await onSave(
+      form,
+      inventory,
+      normalizeWasteItems(wasteItems),
+      scheduledHeadcount,
+      normalizeEmployeeMealItems(employeeMealItems),
+    );
     setSaving(false);
   }
 
@@ -495,6 +509,12 @@ export function StoreReportPage({
                 />
               </label>
             )}
+
+            <EmployeeMealEditor
+              rows={employeeMealItems}
+              onChange={setEmployeeMealItems}
+              disabled={!workflowAccess.canEdit}
+            />
 
             <section className="waste-editor">
               <div className="panel-head">

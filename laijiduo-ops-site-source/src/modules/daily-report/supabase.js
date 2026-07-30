@@ -3,6 +3,7 @@ import { dailyOperationsService } from "./data/supabaseDailyOperationsService.js
 import { inventoryRepository } from "./data/supabaseInventoryRepository.js";
 import { operationsDashboardService } from "./data/supabaseOperationsDashboardService.js";
 import { wasteRepository } from "./data/supabaseWasteRepository.js";
+import { employeeMealRepository } from "./data/supabaseEmployeeMealRepository.js";
 
 export const fetchDailyReports = (...args) => dailyReportRepository.fetchByDate(...args);
 export const fetchDailyReportsRange = (...args) => dailyReportRepository.fetchRange(...args);
@@ -13,6 +14,7 @@ export const fetchInventoryCounts = (...args) => inventoryRepository.fetchByRepo
 export const fetchInventoryCountsForReports = (...args) => inventoryRepository.fetchForReports(...args);
 export const upsertInventoryCounts = (...args) => inventoryRepository.upsert(...args);
 export const fetchDailyReportWasteItems = (...args) => wasteRepository.fetchByReport(...args);
+export const fetchDailyReportEmployeeMeals = (...args) => employeeMealRepository.fetchByReport(...args);
 export const saveDailyOperations = (...args) => dailyOperationsService.save(...args);
 export const fetchHqDashboardData = (...args) => operationsDashboardService.fetchRange(...args);
 

@@ -35,6 +35,7 @@ export function buildDailyReportPayload({
   submittedAt,
   submittedBy,
   scheduledHeadcount = 0,
+  employeeMeals = [],
 }) {
   const revenue = deriveRevenueBreakdown(form);
   if (!revenue.isValid) {
@@ -49,7 +50,7 @@ export function buildDailyReportPayload({
     revenue_1900_to_close: revenue.revenue1900ToClose,
     cash_difference: toAmount(form.cash_difference),
     manager_note: form.manager_note || "",
-    ...buildOperationalDetailsPayload(form, scheduledHeadcount),
+    ...buildOperationalDetailsPayload(form, scheduledHeadcount, employeeMeals),
     status: "submitted",
     submitted_at: submittedAt,
     submitted_by: submittedBy,

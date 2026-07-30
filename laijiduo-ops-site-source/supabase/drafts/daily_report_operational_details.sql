@@ -9,7 +9,8 @@ alter table public.daily_reports
   add column if not exists customer_complaint_detail text not null default '',
   add column if not exists equipment_issue boolean not null default false,
   add column if not exists equipment_issue_detail text not null default '',
-  add column if not exists special_event text not null default '';
+  add column if not exists special_event text not null default '',
+  add column if not exists employee_meal_total numeric(12, 2) not null default 0;
 
 create or replace view public.daily_report_totals
 with (security_invoker = true) as
@@ -42,7 +43,8 @@ select
   report.customer_complaint_detail,
   report.equipment_issue,
   report.equipment_issue_detail,
-  report.special_event
+  report.special_event,
+  report.employee_meal_total
 from public.daily_reports report;
 
 create table if not exists public.daily_report_waste_items (
@@ -62,8 +64,42 @@ on public.daily_report_waste_items (report_id);
 create index if not exists daily_report_waste_items_product_idx
 on public.daily_report_waste_items (product_id);
 
+create table if not exists public.daily_report_employee_meals (
+  id uuid primary key default gen_random_uuid(),
+  report_id uuid not null references public.daily_reports(id) on delete cascade,
+  item_code text not null,
+  item_name text not null,
+  unit_price numeric(12, 2) not null check (unit_price >= 0),
+  quantity integer not null check (quantity > 0),
+  subtotal numeric(12, 2) generated always as (unit_price * quantity) stored,
+  created_at timestamptz not null default now(),
+  unique (report_id, item_code),
+  constraint daily_report_employee_meals_catalog_check check (
+    (item_code, item_name, unit_price) in (
+      ('chicken_wing', '雞翅', 20),
+      ('chicken_leg', '雞腿', 35),
+      ('thigh_steak', '腿排', 40),
+      ('chicken_cutlet', '雞排', 65),
+      ('popcorn_chicken_small', '雞米花小份', 60),
+      ('popcorn_chicken_large', '雞米花大份', 100),
+      ('triangle_bone', '三角骨', 50),
+      ('chicken_skin', '雞皮', 20),
+      ('plum_sweet_potato_small', '甘梅地瓜小份', 30),
+      ('plum_sweet_potato_large', '甘梅地瓜大份', 50),
+      ('squid_ball', '花枝丸', 30),
+      ('chicken_nuggets', '麥克雞塊', 30),
+      ('rice_blood', '米血', 15)
+    )
+  )
+);
+
+create index if not exists daily_report_employee_meals_report_idx
+on public.daily_report_employee_meals (report_id);
+
 alter table public.daily_report_waste_items enable row level security;
+alter table public.daily_report_employee_meals enable row level security;
 grant select, insert, update, delete on table public.daily_report_waste_items to authenticated;
+grant select, insert, update, delete on table public.daily_report_employee_meals to authenticated;
 
 drop policy if exists "daily report waste readable by report scope" on public.daily_report_waste_items;
 create policy "daily report waste readable by report scope"
@@ -111,6 +147,52 @@ to authenticated
 using (public.current_profile_role()::text in ('ceo', 'coo', 'admin', 'hq'))
 with check (public.current_profile_role()::text in ('ceo', 'coo', 'admin', 'hq'));
 
+drop policy if exists "daily report employee meals readable by report scope" on public.daily_report_employee_meals;
+create policy "daily report employee meals readable by report scope"
+on public.daily_report_employee_meals for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.daily_reports report
+    where report.id = daily_report_employee_meals.report_id
+      and (
+        report.store_id = public.current_profile_store_id()
+        or public.current_profile_role()::text in ('ceo', 'coo', 'cfo', 'admin', 'hq', 'cso')
+      )
+  )
+);
+
+drop policy if exists "store managers manage own editable employee meals" on public.daily_report_employee_meals;
+create policy "store managers manage own editable employee meals"
+on public.daily_report_employee_meals for all
+to authenticated
+using (
+  exists (
+    select 1
+    from public.daily_reports report
+    where report.id = daily_report_employee_meals.report_id
+      and report.store_id = public.current_profile_store_id()
+      and report.status::text in ('draft', 'needs_revision', 'submitted')
+  )
+)
+with check (
+  exists (
+    select 1
+    from public.daily_reports report
+    where report.id = daily_report_employee_meals.report_id
+      and report.store_id = public.current_profile_store_id()
+      and report.status::text in ('draft', 'needs_revision', 'submitted')
+  )
+);
+
+drop policy if exists "headquarters manage daily report employee meals" on public.daily_report_employee_meals;
+create policy "headquarters manage daily report employee meals"
+on public.daily_report_employee_meals for all
+to authenticated
+using (public.current_profile_role()::text in ('ceo', 'coo', 'admin', 'hq'))
+with check (public.current_profile_role()::text in ('ceo', 'coo', 'admin', 'hq'));
+
 drop function if exists public.save_daily_operations(jsonb, jsonb);
 
 create or replace function public.save_daily_operations(
@@ -125,6 +207,7 @@ set search_path = ''
 as $$
 declare
   v_report public.daily_reports;
+  v_employee_meals jsonb := p_report->'employee_meals';
 begin
   if nullif(p_report->>'store_id', '') is null
     or nullif(p_report->>'report_date', '') is null then
@@ -242,6 +325,36 @@ begin
       product_id uuid, item_name text, quantity numeric, unit text, reason text
     )
     where trim(coalesce(item.item_name, '')) <> '' and item.quantity > 0;
+  end if;
+
+  if v_employee_meals is not null then
+    delete from public.daily_report_employee_meals where report_id = v_report.id;
+    insert into public.daily_report_employee_meals (
+      report_id, item_code, item_name, unit_price, quantity
+    )
+    select
+      v_report.id,
+      trim(item.item_code),
+      trim(item.item_name),
+      item.unit_price,
+      item.quantity
+    from jsonb_to_recordset(v_employee_meals) as item(
+      item_code text,
+      item_name text,
+      unit_price numeric,
+      quantity integer
+    )
+    where trim(coalesce(item.item_code, '')) <> ''
+      and item.quantity > 0;
+
+    update public.daily_reports
+    set employee_meal_total = coalesce((
+      select sum(meal.subtotal)
+      from public.daily_report_employee_meals meal
+      where meal.report_id = v_report.id
+    ), 0)
+    where id = v_report.id
+    returning * into v_report;
   end if;
 
   return v_report;

@@ -10,6 +10,7 @@ import {
   fetchInventoryCounts as fetchInventoryCountsFromRepository,
   fetchInventoryCountsForReports as fetchInventoryCountsForReportsFromRepository,
   fetchDailyReportWasteItems as fetchDailyReportWasteItemsFromRepository,
+  fetchDailyReportEmployeeMeals as fetchDailyReportEmployeeMealsFromRepository,
   fetchPreviousInventoryCounts as fetchPreviousInventoryCountsFromRepository,
   saveDailyOperations as saveDailyOperationsFromService,
   upsertDailyReport as upsertDailyReportFromRepository,
@@ -259,6 +260,7 @@ export async function fetchStores() {
 }
 
 export const fetchDailyReportWasteItems = (...args) => fetchDailyReportWasteItemsFromRepository(...args);
+export const fetchDailyReportEmployeeMeals = (...args) => fetchDailyReportEmployeeMealsFromRepository(...args);
 
 export async function fetchDailyReportChangeRequests(reportIds = []) {
   const ids = reportIds.filter(Boolean);
@@ -379,8 +381,13 @@ export async function upsertInventoryCounts(reportId, rows) {
   return upsertInventoryCountsFromRepository(reportId, rows);
 }
 
-export async function saveDailyOperations(reportPayload, inventoryRows) {
-  return saveDailyOperationsFromService(reportPayload, inventoryRows);
+export async function saveDailyOperations(reportPayload, inventoryRows, wasteRows, employeeMealRows) {
+  return saveDailyOperationsFromService(
+    reportPayload,
+    inventoryRows,
+    wasteRows,
+    employeeMealRows,
+  );
 }
 
 export async function updateStoreMonthlyTarget(storeId, monthlyTarget, dailyTarget) {

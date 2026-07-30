@@ -7,6 +7,7 @@ const REPORT_FIELDS = [
   "revenue_1900_to_close",
   "cash_difference",
   "delivery_revenue",
+  "employee_meal_total",
   "scheduled_staff_count",
   "actual_staff_count",
   "staffing_variance_reason",

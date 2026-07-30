@@ -25,6 +25,12 @@ function createRepositories() {
         return rows;
       },
     },
+    employeeMealRepository: {
+      async replace(reportId, rows) {
+        calls.push(["employeeMeals", reportId, rows]);
+        return rows;
+      },
+    },
   };
 }
 
@@ -36,6 +42,7 @@ test("atomic RPC saves report and inventory in one database operation", async ()
       assert.equal(args.p_report.store_id, "store-1");
       assert.equal(args.p_inventory.length, 1);
       assert.equal(args.p_waste.length, 1);
+      assert.equal(args.p_report.employee_meals.length, 1);
       return { data: { id: "report-1" }, error: null };
     },
   };
@@ -45,6 +52,7 @@ test("atomic RPC saves report and inventory in one database operation", async ()
     { store_id: "store-1", report_date: "2026-07-30" },
     [{ product_id: "product-1" }],
     [{ item_name: "雞翅", quantity: 1 }],
+    [{ item_code: "chicken_wing", quantity: 1 }],
   );
 
   assert.equal(result.atomic, true);
@@ -65,11 +73,13 @@ test("missing RPC falls back to the compatible sequential adapters", async () =>
   const service = createDailyOperationsService({ client, ...repositories });
   const inventoryRows = [{ product_id: "product-1" }];
   const wasteRows = [{ item_name: "雞翅", quantity: 1 }];
+  const employeeMealRows = [{ item_code: "chicken_wing", quantity: 1 }];
 
   const result = await service.save(
     { store_id: "store-1", report_date: "2026-07-30" },
     inventoryRows,
     wasteRows,
+    employeeMealRows,
   );
 
   assert.equal(result.atomic, false);
@@ -77,6 +87,7 @@ test("missing RPC falls back to the compatible sequential adapters", async () =>
     ["report", { store_id: "store-1", report_date: "2026-07-30" }],
     ["inventory", "report-1", inventoryRows],
     ["waste", "report-1", wasteRows],
+    ["employeeMeals", "report-1", employeeMealRows],
   ]);
 });
 

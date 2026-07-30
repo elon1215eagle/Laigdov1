@@ -3,10 +3,12 @@ import { createDailyOperationsService } from "./dailyOperationsService.js";
 import { dailyReportRepository } from "./supabaseDailyReportRepository.js";
 import { inventoryRepository } from "./supabaseInventoryRepository.js";
 import { wasteRepository } from "./supabaseWasteRepository.js";
+import { employeeMealRepository } from "./supabaseEmployeeMealRepository.js";
 
 export const dailyOperationsService = createDailyOperationsService({
   client: supabase,
   dailyReportRepository,
   inventoryRepository,
   wasteRepository,
+  employeeMealRepository,
 });

@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   buildOperationalDetailsPayload,
   calculateScheduledHeadcount,
+  createEmployeeMealRows,
+  employeeMealTotal,
+  normalizeEmployeeMealItems,
   normalizeWasteItems,
 } from "../src/modules/daily-report/index.js";
 
@@ -65,6 +68,7 @@ test("新增營運欄位正規化為可儲存格式", () => {
     equipment_issue: false,
     equipment_issue_detail: "",
     special_event: "臨時大單",
+    employee_meal_total: 0,
   });
 });
 
@@ -79,4 +83,34 @@ test("報廢耗損只保留有品項與正數數量的資料", () => {
     unit: "包",
     reason: "炸焦",
   }]);
+});
+
+test("員工餐固定單價並自動計算各列小計與總價", () => {
+  const rows = createEmployeeMealRows([
+    { item_code: "chicken_wing", quantity: 2, unit_price: 999 },
+    { item_code: "rice_blood", quantity: 3 },
+  ]);
+  const savedRows = normalizeEmployeeMealItems(rows);
+
+  assert.deepEqual(savedRows, [
+    {
+      item_code: "chicken_wing",
+      item_name: "雞翅",
+      unit_price: 20,
+      quantity: 2,
+      subtotal: 40,
+    },
+    {
+      item_code: "rice_blood",
+      item_name: "米血",
+      unit_price: 15,
+      quantity: 3,
+      subtotal: 45,
+    },
+  ]);
+  assert.equal(employeeMealTotal(rows), 85);
+  assert.equal(buildOperationalDetailsPayload({
+    full_day_revenue: 1000,
+    actual_staff_count: 5,
+  }, 5, rows).employee_meal_total, 85);
 });

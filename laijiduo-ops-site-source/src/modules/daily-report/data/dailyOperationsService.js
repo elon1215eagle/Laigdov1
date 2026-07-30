@@ -13,22 +13,37 @@ export function createDailyOperationsService({
   dailyReportRepository,
   inventoryRepository,
   wasteRepository,
+  employeeMealRepository,
 }) {
-  async function saveSequentially(reportPayload, inventoryRows, wasteRows) {
+  async function saveSequentially(reportPayload, inventoryRows, wasteRows, employeeMealRows) {
     const report = await dailyReportRepository.upsert(reportPayload);
     const inventory = await inventoryRepository.upsert(report.id, inventoryRows);
     const waste = wasteRepository && Array.isArray(wasteRows)
       ? await wasteRepository.replace(report.id, wasteRows)
       : [];
-    return { report, inventory, waste, atomic: false };
+    const employeeMeals = employeeMealRepository && Array.isArray(employeeMealRows)
+      ? await employeeMealRepository.replace(report.id, employeeMealRows)
+      : [];
+    return {
+      report,
+      inventory,
+      waste,
+      employeeMeals,
+      atomic: false,
+    };
   }
 
   return {
-    async save(reportPayload, inventoryRows = [], wasteRows = null) {
-      if (!client) return saveSequentially(reportPayload, inventoryRows, wasteRows);
+    async save(reportPayload, inventoryRows = [], wasteRows = null, employeeMealRows = null) {
+      if (!client) {
+        return saveSequentially(reportPayload, inventoryRows, wasteRows, employeeMealRows);
+      }
 
       const { data, error } = await client.rpc("save_daily_operations", {
-        p_report: reportPayload,
+        p_report: {
+          ...reportPayload,
+          employee_meals: employeeMealRows,
+        },
         p_inventory: inventoryRows,
         p_waste: wasteRows,
       });
@@ -36,11 +51,13 @@ export function createDailyOperationsService({
         return {
           report: data,
           inventory: inventoryRows,
+          waste: wasteRows,
+          employeeMeals: employeeMealRows,
           atomic: true,
         };
       }
       if (!isMissingOperationsRpc(error)) throw error;
-      return saveSequentially(reportPayload, inventoryRows, wasteRows);
+      return saveSequentially(reportPayload, inventoryRows, wasteRows, employeeMealRows);
     },
   };
 }

@@ -67,6 +67,7 @@ test("建立門店與總部共用的正式回報 payload", () => {
     equipment_issue: false,
     equipment_issue_detail: "",
     special_event: "",
+    employee_meal_total: 0,
     status: "submitted",
     submitted_at: "2026-07-29T12:00:00.000Z",
     submitted_by: "user-1",

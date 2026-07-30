@@ -19,7 +19,11 @@ export {
   nextReportStatus,
 } from "./domain/reportWorkflow.js";
 export {
+  EMPLOYEE_MEAL_ITEMS,
   buildOperationalDetailsPayload,
   calculateScheduledHeadcount,
+  createEmployeeMealRows,
+  employeeMealTotal,
+  normalizeEmployeeMealItems,
   normalizeWasteItems,
 } from "./domain/operationalDetails.js";

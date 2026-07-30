@@ -486,7 +486,13 @@ export function App() {
     }
   }
 
-  async function saveReport(form, inventoryRows, wasteRows, scheduledHeadcount) {
+  async function saveReport(
+    form,
+    inventoryRows,
+    wasteRows,
+    scheduledHeadcount,
+    employeeMealRows,
+  ) {
     if (!selectedReport?.store_id) {
       show("送出失敗：此帳號尚未綁定門店，請總部確認門店權限");
       return false;
@@ -499,8 +505,14 @@ export function App() {
         submittedAt: new Date().toISOString(),
         submittedBy: profile?.id,
         scheduledHeadcount,
+        employeeMeals: employeeMealRows,
       });
-      await saveDailyOperations(payload, buildInventorySaveRows(inventoryRows), wasteRows);
+      await saveDailyOperations(
+        payload,
+        buildInventorySaveRows(inventoryRows),
+        wasteRows,
+        employeeMealRows,
+      );
       await loadWorkspace(profile, selectedReport.store_id, reportDate);
       show("每日營運回報已上傳完成");
       return true;
@@ -2125,6 +2137,7 @@ function HqReportRecords({
               <th>打烊</th>
               <th>總營收</th>
               <th>外送</th>
+              <th>員工餐</th>
               <th>人力</th>
               <th>客訴</th>
               <th>設備／事件</th>
@@ -2143,6 +2156,7 @@ function HqReportRecords({
                 <td>{money(report.revenue_1900_to_close)}</td>
                 <td><strong>{money(totalRevenue(report))}</strong></td>
                 <td>{money(report.delivery_revenue)}</td>
+                <td>{money(report.employee_meal_total)}</td>
                 <td>
                   <strong>{Number(report.actual_staff_count || 0)} 人</strong>
                   <span>班表 {Number(report.scheduled_staff_count || 0)} 人</span>
