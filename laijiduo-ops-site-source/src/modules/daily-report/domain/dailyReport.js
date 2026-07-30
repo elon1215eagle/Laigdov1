@@ -34,6 +34,7 @@ export function buildDailyReportPayload({
   storeId,
   submittedAt,
   submittedBy,
+  scheduledHeadcount = 0,
 }) {
   const revenue = deriveRevenueBreakdown(form);
   if (!revenue.isValid) {
@@ -48,6 +49,7 @@ export function buildDailyReportPayload({
     revenue_1900_to_close: revenue.revenue1900ToClose,
     cash_difference: toAmount(form.cash_difference),
     manager_note: form.manager_note || "",
+    ...buildOperationalDetailsPayload(form, scheduledHeadcount),
     status: "submitted",
     submitted_at: submittedAt,
     submitted_by: submittedBy,
@@ -61,3 +63,4 @@ export function totalRevenue(report = {}) {
     toAmount(report.revenue_1900_to_close)
   );
 }
+import { buildOperationalDetailsPayload } from "./operationalDetails.js";

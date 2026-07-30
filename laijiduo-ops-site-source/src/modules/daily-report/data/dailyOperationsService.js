@@ -12,20 +12,25 @@ export function createDailyOperationsService({
   client = null,
   dailyReportRepository,
   inventoryRepository,
+  wasteRepository,
 }) {
-  async function saveSequentially(reportPayload, inventoryRows) {
+  async function saveSequentially(reportPayload, inventoryRows, wasteRows) {
     const report = await dailyReportRepository.upsert(reportPayload);
     const inventory = await inventoryRepository.upsert(report.id, inventoryRows);
-    return { report, inventory, atomic: false };
+    const waste = wasteRepository && Array.isArray(wasteRows)
+      ? await wasteRepository.replace(report.id, wasteRows)
+      : [];
+    return { report, inventory, waste, atomic: false };
   }
 
   return {
-    async save(reportPayload, inventoryRows = []) {
-      if (!client) return saveSequentially(reportPayload, inventoryRows);
+    async save(reportPayload, inventoryRows = [], wasteRows = null) {
+      if (!client) return saveSequentially(reportPayload, inventoryRows, wasteRows);
 
       const { data, error } = await client.rpc("save_daily_operations", {
         p_report: reportPayload,
         p_inventory: inventoryRows,
+        p_waste: wasteRows,
       });
       if (!error) {
         return {
@@ -35,7 +40,7 @@ export function createDailyOperationsService({
         };
       }
       if (!isMissingOperationsRpc(error)) throw error;
-      return saveSequentially(reportPayload, inventoryRows);
+      return saveSequentially(reportPayload, inventoryRows, wasteRows);
     },
   };
 }

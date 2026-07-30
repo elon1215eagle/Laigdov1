@@ -669,6 +669,59 @@ tbody tr.selected,
   margin: 4px 0 0;
 }
 
+.operational-details,
+.waste-editor {
+  display: grid;
+  gap: 12px;
+}
+
+.staffing-report-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.waste-editor {
+  padding: 14px;
+  border: 1px solid #eaded8;
+  border-radius: 8px;
+  background: #fffaf7;
+}
+
+.waste-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.5fr) minmax(90px, 0.7fr) minmax(90px, 0.7fr) minmax(160px, 1.5fr) auto;
+  gap: 8px;
+  align-items: end;
+  padding: 10px 0;
+  border-top: 1px solid #eaded8;
+}
+
+.waste-row label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #604235;
+}
+
+.binary-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 12px;
+  border: 1px solid #eaded8;
+  border-radius: 8px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.binary-field input {
+  width: 20px;
+  height: 20px;
+}
+
 .report-edit-dialog {
   width: min(920px, calc(100vw - 32px));
   max-height: calc(100vh - 40px);
@@ -2631,6 +2684,11 @@ tbody tr.selected,
 
   .daily-change-request-row {
     display: grid;
+  }
+
+  .staffing-report-grid,
+  .waste-row {
+    grid-template-columns: 1fr;
   }
 
   .role-actions button,

@@ -486,7 +486,7 @@ export function App() {
     }
   }
 
-  async function saveReport(form, inventoryRows) {
+  async function saveReport(form, inventoryRows, wasteRows, scheduledHeadcount) {
     if (!selectedReport?.store_id) {
       show("送出失敗：此帳號尚未綁定門店，請總部確認門店權限");
       return false;
@@ -498,8 +498,9 @@ export function App() {
         form,
         submittedAt: new Date().toISOString(),
         submittedBy: profile?.id,
+        scheduledHeadcount,
       });
-      await saveDailyOperations(payload, buildInventorySaveRows(inventoryRows));
+      await saveDailyOperations(payload, buildInventorySaveRows(inventoryRows), wasteRows);
       await loadWorkspace(profile, selectedReport.store_id, reportDate);
       show("每日營運回報已上傳完成");
       return true;
@@ -525,6 +526,7 @@ export function App() {
         form,
         submittedAt: new Date().toISOString(),
         submittedBy: profile?.id,
+        scheduledHeadcount: Number(report.scheduled_staff_count || 0),
       });
       await saveDailyOperations(payload, buildInventorySaveRows(inventoryRows));
       await loadWorkspace(profile, report.store_id, reportDate);
@@ -809,6 +811,7 @@ export function App() {
             reportDate={reportDate}
             products={products}
             currentRole={currentRole}
+            staffRoster={staffRoster}
             today={today}
             onDateChange={changeReportDate}
             onSave={saveReport}
@@ -1965,6 +1968,14 @@ function HqReportRecords({
       full_day_revenue: totalRevenue(report) || "",
       cash_difference: report.cash_difference ?? "",
       manager_note: report.manager_note || "",
+      delivery_revenue: report.delivery_revenue ?? 0,
+      actual_staff_count: report.actual_staff_count ?? report.scheduled_staff_count ?? 0,
+      staffing_variance_reason: report.staffing_variance_reason || "",
+      customer_complaint_count: report.customer_complaint_count ?? 0,
+      customer_complaint_detail: report.customer_complaint_detail || "",
+      equipment_issue: Boolean(report.equipment_issue),
+      equipment_issue_detail: report.equipment_issue_detail || "",
+      special_event: report.special_event || "",
     });
     setInventory(products.map(blankInventoryProduct));
     try {
@@ -2113,6 +2124,10 @@ function HqReportRecords({
               <th>19:00</th>
               <th>打烊</th>
               <th>總營收</th>
+              <th>外送</th>
+              <th>人力</th>
+              <th>客訴</th>
+              <th>設備／事件</th>
               <th>現金差異</th>
               <th>狀態</th>
               <th>總部操作</th>
@@ -2127,6 +2142,19 @@ function HqReportRecords({
                 <td>{money(report.revenue_1400_to_1900)}</td>
                 <td>{money(report.revenue_1900_to_close)}</td>
                 <td><strong>{money(totalRevenue(report))}</strong></td>
+                <td>{money(report.delivery_revenue)}</td>
+                <td>
+                  <strong>{Number(report.actual_staff_count || 0)} 人</strong>
+                  <span>班表 {Number(report.scheduled_staff_count || 0)} 人</span>
+                </td>
+                <td className={Number(report.customer_complaint_count || 0) > 0 ? "negative" : ""}>
+                  {Number(report.customer_complaint_count || 0)} 件
+                </td>
+                <td>
+                  {report.equipment_issue ? <span className="chip warn">設備異常</span> : null}
+                  {report.special_event ? <span className="chip neutral">特殊事件</span> : null}
+                  {!report.equipment_issue && !report.special_event ? "-" : null}
+                </td>
                 <td className={report.cash_difference < 0 ? "negative" : ""}>{report.cash_difference ?? "-"}</td>
                 <td><span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span></td>
                 <td className="row-actions">
@@ -2146,7 +2174,7 @@ function HqReportRecords({
                 </td>
               </tr>
             ))}
-            {!visibleRows.length && <tr><td colSpan="9">目前查無回報紀錄</td></tr>}
+            {!visibleRows.length && <tr><td colSpan="13">目前查無回報紀錄</td></tr>}
           </tbody>
         </table>
       </div>

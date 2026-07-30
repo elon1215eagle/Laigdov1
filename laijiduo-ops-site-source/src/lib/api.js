@@ -9,6 +9,7 @@ import {
   fetchHqDashboardData as fetchHqDashboardDataFromService,
   fetchInventoryCounts as fetchInventoryCountsFromRepository,
   fetchInventoryCountsForReports as fetchInventoryCountsForReportsFromRepository,
+  fetchDailyReportWasteItems as fetchDailyReportWasteItemsFromRepository,
   fetchPreviousInventoryCounts as fetchPreviousInventoryCountsFromRepository,
   saveDailyOperations as saveDailyOperationsFromService,
   upsertDailyReport as upsertDailyReportFromRepository,
@@ -256,6 +257,8 @@ export async function fetchStores() {
   if (legacyResult.error) throw legacyResult.error;
   return legacyResult.data;
 }
+
+export const fetchDailyReportWasteItems = (...args) => fetchDailyReportWasteItemsFromRepository(...args);
 
 export async function fetchDailyReportChangeRequests(reportIds = []) {
   const ids = reportIds.filter(Boolean);

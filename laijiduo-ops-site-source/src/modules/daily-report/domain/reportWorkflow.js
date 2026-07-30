@@ -46,8 +46,10 @@ export function deriveDailyReportAccess({
     canConfirm,
     canEdit: canConfirm
       || (isStoreManager && (EDITABLE_REPORT_STATUSES.has(reportStatus) || hasApprovedChangeRequest)),
-    canSubmit: isStoreManager
-      && (EDITABLE_REPORT_STATUSES.has(reportStatus) || hasApprovedChangeRequest),
+    canSubmit: canConfirm || (
+      isStoreManager
+      && (EDITABLE_REPORT_STATUSES.has(reportStatus) || hasApprovedChangeRequest)
+    ),
     canRequestChange: isStoreManager
       && Boolean(reportId)
       && reportStatus === REPORT_STATUS.APPROVED

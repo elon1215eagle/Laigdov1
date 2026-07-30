@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 
 import {
   fetchDailyReportChangeRequests,
+  fetchDailyReportWasteItems,
   fetchDailyReportsRange,
+  fetchDailyStaffShifts,
   fetchInventoryCounts,
+  fetchMonthlyLeavePlans,
   fetchPreviousInventoryCounts,
   statusLabel,
   submitDailyReportChangeRequest,
@@ -11,14 +14,17 @@ import {
 import {
   STORE_MANAGER_REVENUE_LOOKBACK_DAYS,
   buildDailyReportChangeRequest,
+  calculateScheduledHeadcount,
   buildWeeklySameDayRows,
   deriveDailyReportAccess,
   deriveRevenueBreakdown,
+  normalizeWasteItems,
   storeManagerRevenueMinDate,
   totalRevenue,
 } from "../index.js";
 import {
   blankInventoryProduct,
+  defaultUnitForProduct,
   mergeInventoryRows,
 } from "../../inventory/index.js";
 import {
@@ -102,6 +108,14 @@ function initialForm(report) {
     revenue_1400_to_1900: submitted ? report.revenue_1400_to_1900 : "",
     full_day_revenue: submitted ? totalRevenue(report) : "",
     cash_difference: submitted ? (report.cash_difference ?? "") : "",
+    delivery_revenue: submitted ? (report.delivery_revenue ?? "") : "",
+    actual_staff_count: submitted ? (report.actual_staff_count ?? "") : "",
+    staffing_variance_reason: report.staffing_variance_reason || "",
+    customer_complaint_count: submitted ? (report.customer_complaint_count ?? 0) : 0,
+    customer_complaint_detail: report.customer_complaint_detail || "",
+    equipment_issue: Boolean(report.equipment_issue),
+    equipment_issue_detail: report.equipment_issue_detail || "",
+    special_event: report.special_event || "",
     manager_note: report.manager_note || "",
   };
 }
@@ -111,6 +125,7 @@ export function StoreReportPage({
   reportDate,
   products,
   currentRole,
+  staffRoster,
   today,
   onDateChange,
   onSave,
@@ -127,6 +142,8 @@ export function StoreReportPage({
   const [changeReason, setChangeReason] = useState("");
   const [requestingChange, setRequestingChange] = useState(false);
   const [requestError, setRequestError] = useState("");
+  const [scheduledHeadcount, setScheduledHeadcount] = useState(Number(report.scheduled_staff_count || 0));
+  const [wasteItems, setWasteItems] = useState([]);
 
   const revenueBreakdown = deriveRevenueBreakdown(form);
   const computedCloseRevenue = revenueBreakdown.revenue1900ToClose;
@@ -222,10 +239,53 @@ export function StoreReportPage({
     };
   }, [report.id, report.status]);
 
+  useEffect(() => {
+    let active = true;
+    async function loadOperationalDetails() {
+      try {
+        const periodMonth = String(reportDate || today).slice(0, 7);
+        const [leavePlans, shifts, savedWaste] = await Promise.all([
+          fetchMonthlyLeavePlans(periodMonth).catch(() => []),
+          fetchDailyStaffShifts(periodMonth).catch(() => []),
+          fetchDailyReportWasteItems(report.id).catch(() => []),
+        ]);
+        if (!active) return;
+        const headcount = calculateScheduledHeadcount({
+          staff: staffRoster,
+          leavePlans,
+          shifts,
+          storeCode: report.store_code,
+          storeCodes: report.sourceCodes || [],
+          storeName: report.name,
+          reportDate,
+        });
+        setScheduledHeadcount(headcount);
+        setForm((current) => ({
+          ...current,
+          actual_staff_count: current.actual_staff_count === "" ? headcount : current.actual_staff_count,
+        }));
+        setWasteItems(savedWaste);
+      } catch {
+        if (!active) return;
+        const fallbackHeadcount = Number(report.scheduled_staff_count || 0);
+        setScheduledHeadcount(fallbackHeadcount);
+        setForm((current) => ({
+          ...current,
+          actual_staff_count: current.actual_staff_count === "" ? fallbackHeadcount : current.actual_staff_count,
+        }));
+        setWasteItems([]);
+      }
+    }
+    loadOperationalDetails();
+    return () => {
+      active = false;
+    };
+  }, [report.id, report.scheduled_staff_count, report.store_code, reportDate, staffRoster, today]);
+
   async function submit() {
     if (!workflowAccess.canEdit) return;
     setSaving(true);
-    await onSave(form, inventory);
+    await onSave(form, inventory, normalizeWasteItems(wasteItems), scheduledHeadcount);
     setSaving(false);
   }
 
@@ -261,6 +321,27 @@ export function StoreReportPage({
       || !isBlankNumber(row.current_stock_packs)
     ),
   );
+  const staffingDiffers = Number(form.actual_staff_count || 0) !== scheduledHeadcount;
+
+  function addWasteItem() {
+    setWasteItems((rows) => [
+      ...rows,
+      {
+        id: `draft-${Date.now()}`,
+        product_id: products[0]?.id || null,
+        item_name: products[0]?.name || "",
+        quantity: "",
+        unit: defaultUnitForProduct(products[0]?.name),
+        reason: "",
+      },
+    ]);
+  }
+
+  function updateWasteItem(index, patch) {
+    setWasteItems((rows) => rows.map((row, rowIndex) => (
+      rowIndex === index ? { ...row, ...patch } : row
+    )));
+  }
 
   return (
     <div className="workspace mobile-layout">
@@ -346,6 +427,7 @@ export function StoreReportPage({
 
         <div className="segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
+          <button className={tab === "details" ? "active" : ""} onClick={() => setTab("details")}>營運補充</button>
           <button className={tab === "ops" ? "active" : ""} onClick={() => setTab("ops")}>門店營運視圖</button>
           <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
           <button className={tab === "incoming" ? "active" : ""} onClick={() => setTab("incoming")}>進貨</button>
@@ -380,6 +462,122 @@ export function StoreReportPage({
               <Progress value={(currentTotal / target) * 100} />
               <p>今日目標 {money(report.target)}</p>
             </div>
+          </div>
+        ) : tab === "details" ? (
+          <div className="mobile-stack operational-details">
+            <RevenueInput
+              disabled={!workflowAccess.canEdit}
+              label="外送總營收"
+              helper="已包含在全日總營收，不重複加總"
+              value={form.delivery_revenue}
+              onChange={(value) => setForm({ ...form, delivery_revenue: value })}
+            />
+            <div className="staffing-report-grid">
+              <div className="input-card calculated-card">
+                <span>班表預計人數<small>人資主檔、排假及支援班次自動計算</small></span>
+                <strong>{scheduledHeadcount} 人</strong>
+              </div>
+              <RevenueInput
+                disabled={!workflowAccess.canEdit}
+                label="實際上班人數"
+                helper="如與班表不同，請填寫原因"
+                value={form.actual_staff_count}
+                onChange={(value) => setForm({ ...form, actual_staff_count: value })}
+              />
+            </div>
+            {staffingDiffers && (
+              <label className="note-box">
+                <span>人數差異原因</span>
+                <textarea
+                  disabled={!workflowAccess.canEdit}
+                  value={form.staffing_variance_reason}
+                  onChange={(event) => setForm({ ...form, staffing_variance_reason: event.target.value })}
+                />
+              </label>
+            )}
+
+            <section className="waste-editor">
+              <div className="panel-head">
+                <div>
+                  <h3>報廢／耗損</h3>
+                  <p>沒有報廢可不填；品項可選庫存清單或其他。</p>
+                </div>
+                <button type="button" disabled={!workflowAccess.canEdit} onClick={addWasteItem}>新增品項</button>
+              </div>
+              {wasteItems.map((item, index) => (
+                <div className="waste-row" key={item.id || index}>
+                  <label>
+                    <span>品項</span>
+                    <select
+                      disabled={!workflowAccess.canEdit}
+                      value={item.product_id || "other"}
+                      onChange={(event) => {
+                        const product = products.find((row) => row.id === event.target.value);
+                        updateWasteItem(index, product ? {
+                          product_id: product.id,
+                          item_name: product.name,
+                          unit: defaultUnitForProduct(product.name),
+                        } : {
+                          product_id: null,
+                          item_name: "",
+                          unit: "",
+                        });
+                      }}
+                    >
+                      {products.map((product) => <option value={product.id} key={product.id}>{product.name}</option>)}
+                      <option value="other">其他</option>
+                    </select>
+                  </label>
+                  {!item.product_id && (
+                    <label>
+                      <span>自填品項</span>
+                      <input disabled={!workflowAccess.canEdit} value={item.item_name || ""} onChange={(event) => updateWasteItem(index, { item_name: event.target.value })} />
+                    </label>
+                  )}
+                  <label>
+                    <span>數量</span>
+                    <input type="number" step="0.01" inputMode="decimal" disabled={!workflowAccess.canEdit} value={numericInputValue(item.quantity)} onChange={(event) => updateWasteItem(index, { quantity: event.target.value })} />
+                  </label>
+                  <label>
+                    <span>單位</span>
+                    <input disabled={!workflowAccess.canEdit} value={item.unit || ""} onChange={(event) => updateWasteItem(index, { unit: event.target.value })} />
+                  </label>
+                  <label className="wide-field">
+                    <span>原因</span>
+                    <input disabled={!workflowAccess.canEdit} value={item.reason || ""} onChange={(event) => updateWasteItem(index, { reason: event.target.value })} />
+                  </label>
+                  <button type="button" disabled={!workflowAccess.canEdit} onClick={() => setWasteItems((rows) => rows.filter((_, rowIndex) => rowIndex !== index))}>移除</button>
+                </div>
+              ))}
+            </section>
+
+            <RevenueInput
+              disabled={!workflowAccess.canEdit}
+              label="客訴件數"
+              helper="沒有客訴請填 0"
+              value={form.customer_complaint_count}
+              onChange={(value) => setForm({ ...form, customer_complaint_count: value })}
+            />
+            {Number(form.customer_complaint_count || 0) > 0 && (
+              <label className="note-box">
+                <span>客訴內容</span>
+                <textarea disabled={!workflowAccess.canEdit} value={form.customer_complaint_detail} onChange={(event) => setForm({ ...form, customer_complaint_detail: event.target.value })} />
+              </label>
+            )}
+            <label className="binary-field">
+              <input type="checkbox" disabled={!workflowAccess.canEdit} checked={form.equipment_issue} onChange={(event) => setForm({ ...form, equipment_issue: event.target.checked })} />
+              <span>今日有設備異常</span>
+            </label>
+            {form.equipment_issue && (
+              <label className="note-box">
+                <span>設備異常內容</span>
+                <textarea disabled={!workflowAccess.canEdit} value={form.equipment_issue_detail} onChange={(event) => setForm({ ...form, equipment_issue_detail: event.target.value })} />
+              </label>
+            )}
+            <label className="note-box">
+              <span>今日特殊事件</span>
+              <textarea disabled={!workflowAccess.canEdit} placeholder="例如臨時大單、停電、道路施工；沒有可留白" value={form.special_event} onChange={(event) => setForm({ ...form, special_event: event.target.value })} />
+            </label>
           </div>
         ) : tab === "ops" ? (
           <StoreOperationsView rows={operationsRows} loading={operationsLoading} />

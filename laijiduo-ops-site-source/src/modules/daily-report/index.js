@@ -18,3 +18,8 @@ export {
   findOpenChangeRequest,
   nextReportStatus,
 } from "./domain/reportWorkflow.js";
+export {
+  buildOperationalDetailsPayload,
+  calculateScheduledHeadcount,
+  normalizeWasteItems,
+} from "./domain/operationalDetails.js";
