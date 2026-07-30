@@ -93,3 +93,41 @@ export function buildInventorySaveRows(inventoryRows) {
     is_shortage: false,
   }));
 }
+
+export function blankInventoryProduct(product) {
+  return {
+    ...product,
+    previous_stock: "",
+    previous_stock_boxes: "",
+    previous_stock_packs: "",
+    current_stock: "",
+    loss_count: "",
+    incoming_count: "",
+    current_stock_boxes: "",
+    current_stock_packs: "",
+    incoming_boxes: "",
+    incoming_packs: "",
+  };
+}
+
+export function mergeInventoryRows(products, savedRows, previousRows) {
+  const savedByProduct = new Map(savedRows.map((row) => [row.product_id, row]));
+  const previousByProduct = new Map(previousRows.map((row) => [row.product_id, row]));
+  return products.map((product) => {
+    const saved = savedByProduct.get(product.id);
+    const previous = previousByProduct.get(product.id);
+    return {
+      ...blankInventoryProduct(product),
+      ...saved,
+      previous_stock: previous?.current_stock ?? "",
+      previous_stock_boxes: previous?.current_stock_boxes ?? "",
+      previous_stock_packs: previous?.current_stock_packs ?? "",
+      previous_stock_unit: (
+        previous?.stock_unit
+        || previous?.unit
+        || product.unit
+        || defaultUnitForProduct(product.name)
+      ),
+    };
+  });
+}

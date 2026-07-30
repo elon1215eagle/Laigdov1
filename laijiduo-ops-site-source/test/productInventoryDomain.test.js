@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  blankInventoryProduct,
   buildInventorySaveRows,
   defaultUnitForProduct,
   displayUnitForProduct,
+  mergeInventoryRows,
   productKind,
   toManagementQuantity,
   usageCount,
@@ -67,4 +69,18 @@ test("save rows normalize decimals, units, and incoming defaults", () => {
   assert.equal(row.stock_unit, "包");
   assert.equal(row.incoming_source, "廠商進貨");
   assert.equal(row.safety_stock, 0);
+});
+
+test("inventory merge preserves saved values and adds previous-day context", () => {
+  const products = [{ id: "p1", name: "雞翅", unit: "箱" }];
+  const rows = mergeInventoryRows(
+    products,
+    [{ product_id: "p1", current_stock: 2, stock_unit: "箱" }],
+    [{ product_id: "p1", current_stock: 5, stock_unit: "包" }],
+  );
+
+  assert.equal(rows[0].current_stock, 2);
+  assert.equal(rows[0].previous_stock, 5);
+  assert.equal(rows[0].previous_stock_unit, "包");
+  assert.equal(blankInventoryProduct(products[0]).incoming_count, "");
 });

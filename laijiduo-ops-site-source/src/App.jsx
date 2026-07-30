@@ -32,17 +32,21 @@ import {
   deleteStoreStaffMember,
 } from "./lib/api";
 import {
+  STORE_MANAGER_REVENUE_LOOKBACK_DAYS,
   buildDailyReportPayload,
   buildWeeklySameDayRows as buildWeeklyComparisonRows,
   deriveRevenueBreakdown,
+  isStoreManagerRevenueDateAllowed,
   totalRevenue,
 } from "./modules/daily-report";
-import { StoreOperationsView } from "./modules/daily-report/components";
+import { StoreReportPage } from "./modules/daily-report/components";
 import {
   PRODUCT_ORDER,
+  blankInventoryProduct,
   buildInventorySaveRows,
   defaultUnitForProduct,
   displayUnitForProduct,
+  mergeInventoryRows,
   productKind,
   toManagementQuantity,
   usageCount,
@@ -146,8 +150,6 @@ function getTaipeiBusinessDate(parts = taipeiDateTimeParts) {
 }
 
 const today = getTaipeiBusinessDate();
-const STORE_MANAGER_REVENUE_LOOKBACK_DAYS = 14;
-
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const numberText = (value, digits = 2) => Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: digits });
 const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
@@ -163,14 +165,6 @@ function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00Z`);
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
-}
-
-function storeManagerRevenueMinDate(referenceDate = today) {
-  return addDays(referenceDate, 1 - STORE_MANAGER_REVENUE_LOOKBACK_DAYS);
-}
-
-function isStoreManagerRevenueDateAllowed(dateText, referenceDate = today) {
-  return Boolean(dateText) && dateText >= storeManagerRevenueMinDate(referenceDate) && dateText <= referenceDate;
 }
 
 function getWeekRange(dateText) {
@@ -220,22 +214,6 @@ function numericValue(value) {
 
 function hasSubmittedReport(report) {
   return Boolean(report?.id && report?.updated_at_label !== "尚未回報");
-}
-
-function blankInventoryProduct(product) {
-  return {
-    ...product,
-    previous_stock: "",
-    previous_stock_boxes: "",
-    previous_stock_packs: "",
-    current_stock: "",
-    loss_count: "",
-    incoming_count: "",
-    current_stock_boxes: "",
-    current_stock_packs: "",
-    incoming_boxes: "",
-    incoming_packs: "",
-  };
 }
 
 function normalizeReport(store, report) {
@@ -483,7 +461,7 @@ export function App() {
 
   async function changeReportDate(nextDate, authCode = "") {
     if (!nextDate) return false;
-    if (currentRole === "store_manager" && !isStoreManagerRevenueDateAllowed(nextDate)) {
+    if (currentRole === "store_manager" && !isStoreManagerRevenueDateAllowed(nextDate, today)) {
       show(`店長帳號僅可查閱最近 ${STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天營收資料`);
       return false;
     }
@@ -822,7 +800,15 @@ export function App() {
           />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "store" && selectedReport && (
-          <StoreReport report={selectedReport} reportDate={reportDate} products={products} currentRole={currentRole} onDateChange={changeReportDate} onSave={saveReport} />
+          <StoreReportPage
+            report={selectedReport}
+            reportDate={reportDate}
+            products={products}
+            currentRole={currentRole}
+            today={today}
+            onDateChange={changeReportDate}
+            onSave={saveReport}
+          />
         )}
         {activeModuleAllowed && activeModule === "ops" && role === "review" && selectedReport && (
           <>
@@ -1801,24 +1787,6 @@ function HqDashboard({
       </section>
     </div>
   );
-}
-
-function mergeInventoryRows(products, savedRows, previousRows) {
-  const savedByProduct = new Map(savedRows.map((row) => [row.product_id, row]));
-  const previousByProduct = new Map(previousRows.map((row) => [row.product_id, row]));
-  return products.map((product) => {
-    const saved = savedByProduct.get(product.id);
-    const previous = previousByProduct.get(product.id);
-    return {
-      ...product,
-      ...blankInventoryProduct(product),
-      ...saved,
-      previous_stock: previous?.current_stock ?? "",
-      previous_stock_boxes: previous?.current_stock_boxes ?? "",
-      previous_stock_packs: previous?.current_stock_packs ?? "",
-      previous_stock_unit: previous?.stock_unit || previous?.unit || product.unit || defaultUnitForProduct(product.name),
-    };
-  });
 }
 
 function HqOperationsView({ rows }) {
@@ -5327,219 +5295,6 @@ function IntegerField({ label, value, onChange }) {
         value={numericInputValue(value)}
         onChange={(event) => onChange(event.target.value === "" ? "" : Number.parseInt(event.target.value, 10))}
       />
-    </label>
-  );
-}
-
-function StoreReport({ report, reportDate, products, currentRole, onDateChange, onSave }) {
-  const [tab, setTab] = useState("sales");
-  const [dateDraft, setDateDraft] = useState(reportDate || today);
-  const [authCode, setAuthCode] = useState("");
-  const [operationsRows, setOperationsRows] = useState([]);
-  const [operationsLoading, setOperationsLoading] = useState(false);
-  const reportSubmitted = hasSubmittedReport(report);
-  const [form, setForm] = useState({
-    opened_to_1400_revenue: reportSubmitted ? report.opened_to_1400_revenue : "",
-    revenue_1400_to_1900: reportSubmitted ? report.revenue_1400_to_1900 : "",
-    full_day_revenue: reportSubmitted ? totalRevenue(report) : "",
-    cash_difference: reportSubmitted ? (report.cash_difference ?? "") : "",
-    manager_note: report.manager_note || "",
-  });
-  const [inventory, setInventory] = useState(() => products.map(blankInventoryProduct));
-  const [saving, setSaving] = useState(false);
-  const revenueBreakdown = deriveRevenueBreakdown(form);
-  const computedCloseRevenue = revenueBreakdown.revenue1900ToClose;
-  const currentTotal = revenueBreakdown.fullDayRevenue;
-  const revenueInvalid = !revenueBreakdown.isValid;
-  const salesSteps = [
-    ["1", "14:00", "開店至 14:00 營收", form.opened_to_1400_revenue],
-    ["2", "19:00", "14:00 至 19:00 營收", form.revenue_1400_to_1900],
-    ["3", "全日", "打烊收銀總額", form.full_day_revenue],
-  ];
-  const completedSteps = revenueBreakdown.completedSteps;
-  const isStoreManagerView = currentRole === "store_manager";
-  const minReportDate = isStoreManagerView ? storeManagerRevenueMinDate() : "";
-
-  useEffect(() => {
-    setDateDraft(reportDate || today);
-    setAuthCode("");
-    setForm({
-      opened_to_1400_revenue: hasSubmittedReport(report) ? report.opened_to_1400_revenue : "",
-      revenue_1400_to_1900: hasSubmittedReport(report) ? report.revenue_1400_to_1900 : "",
-      full_day_revenue: hasSubmittedReport(report) ? totalRevenue(report) : "",
-      cash_difference: hasSubmittedReport(report) ? (report.cash_difference ?? "") : "",
-      manager_note: report.manager_note || "",
-    });
-  }, [report, reportDate]);
-
-  useEffect(() => {
-    let active = true;
-    async function loadInventory() {
-      try {
-        const [savedRows, previousRows] = await Promise.all([
-          fetchInventoryCounts(report.id),
-          fetchPreviousInventoryCounts(report.store_id, reportDate),
-        ]);
-        if (!active) return;
-        setInventory(mergeInventoryRows(products, savedRows, previousRows));
-      } catch {
-        if (active) {
-          setInventory(products.map(blankInventoryProduct));
-        }
-      }
-    }
-    loadInventory();
-    return () => {
-      active = false;
-    };
-  }, [products, report.id, report.store_id, reportDate]);
-
-  useEffect(() => {
-    let active = true;
-    async function loadOperationsRows() {
-      const range = getWeekRange(reportDate || today);
-      const requestedStart = addDays(range.start, -7);
-      const accessStart = isStoreManagerView ? storeManagerRevenueMinDate() : requestedStart;
-      const accessEnd = isStoreManagerView ? today : range.end;
-      setOperationsLoading(true);
-      try {
-        const rows = await fetchDailyReportsRange(
-          requestedStart < accessStart ? accessStart : requestedStart,
-          range.end > accessEnd ? accessEnd : range.end,
-        );
-        if (!active) return;
-        const storeCode = canonicalStoreCode(report);
-        const scopedRows = rows.filter((row) => canonicalStoreCode(row) === storeCode);
-        setOperationsRows(buildWeeklySameDayRows(scopedRows, reportDate || today));
-      } catch {
-        if (active) setOperationsRows([]);
-      } finally {
-        if (active) setOperationsLoading(false);
-      }
-    }
-    loadOperationsRows();
-    return () => {
-      active = false;
-    };
-  }, [isStoreManagerView, report, reportDate]);
-
-  async function submit() {
-    setSaving(true);
-    await onSave(form, inventory);
-    setSaving(false);
-  }
-
-  async function applyReportDate() {
-    const ok = await onDateChange(dateDraft, authCode);
-    if (ok) setAuthCode("");
-  }
-
-  const isPastDateDraft = dateDraft < today;
-
-  return (
-    <div className="workspace mobile-layout">
-      <section className="phone-shell">
-        <div className="phone-header">
-          <div>
-            <p>{report.name}</p>
-            <h2>每日回報</h2>
-          </div>
-          <span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span>
-        </div>
-        <div className="report-date-card">
-          <label>
-            回報日期
-            <input type="date" min={minReportDate} max={today} value={dateDraft} onChange={(event) => setDateDraft(event.target.value)} />
-          </label>
-          {isPastDateDraft && (
-            <label>
-              認證碼
-              <input type="password" inputMode="numeric" placeholder="請輸入認證碼" value={authCode} onChange={(event) => setAuthCode(event.target.value)} />
-            </label>
-          )}
-          <button type="button" onClick={applyReportDate} disabled={dateDraft === reportDate || (isPastDateDraft && authCode !== "8599")}>
-            {isPastDateDraft ? "解鎖並載入" : "載入日期"}
-          </button>
-        </div>
-        <div className="alert-line">營收只需填 14:00、19:00 與全日總營收；19:00 至打烊由系統自動倒算。</div>
-        {isStoreManagerView && <div className="alert-line warn">店長帳號僅開放最近 {STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天營收資料；完整歷史由總部查詢。</div>}
-        {reportDate < today && <div className="alert-line warn">目前正在修改過往日期 {reportDate}，已通過認證碼。</div>}
-        {revenueInvalid && <div className="alert-line danger">全日總營收不可小於 14:00 與 19:00 加總，請修正後再送出。</div>}
-        <div className="store-today-panel">
-          <div>
-            <span>今日待完成</span>
-            <strong>{completedSteps}/3 段營收</strong>
-            <p>庫存與進貨可用上一筆庫存作為參考，送出前再確認現金差異。</p>
-          </div>
-          <div className="store-action-chips">
-            <span className={completedSteps >= 3 ? "done" : ""}>營收</span>
-            <span className={inventory.some((row) => !isBlankNumber(row.current_stock) || !isBlankNumber(row.current_stock_boxes) || !isBlankNumber(row.current_stock_packs)) ? "done" : ""}>庫存</span>
-            <span className={!isBlankNumber(form.cash_difference) ? "done" : ""}>現金</span>
-          </div>
-        </div>
-        <div className="segments">
-          <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
-          <button className={tab === "ops" ? "active" : ""} onClick={() => setTab("ops")}>門店營運視圖</button>
-          <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
-          <button className={tab === "incoming" ? "active" : ""} onClick={() => setTab("incoming")}>進貨</button>
-        </div>
-        {tab === "sales" ? (
-          <div className="mobile-stack">
-            <div className="step-strip">
-              {salesSteps.map(([step, title, detail, value]) => (
-                <div className={!isBlankNumber(value) ? "done" : ""} key={title}>
-                  <span>{step}</span>
-                  <strong>{title}</strong>
-                  <small>{detail}</small>
-                </div>
-              ))}
-            </div>
-            <RevenueInput label="14:00" helper="開店至 14:00" value={form.opened_to_1400_revenue} onChange={(value) => setForm({ ...form, opened_to_1400_revenue: value })} />
-            <RevenueInput label="19:00" helper="14:00 至 19:00" value={form.revenue_1400_to_1900} onChange={(value) => setForm({ ...form, revenue_1400_to_1900: value })} />
-            <RevenueInput label="全日總營收" helper="今日收銀總額" value={form.full_day_revenue} onChange={(value) => setForm({ ...form, full_day_revenue: value })} />
-            <div className="input-card calculated-card">
-              <span>19:00 至打烊<small>全日總營收 - 14:00 - 19:00</small></span>
-              <strong>{money(computedCloseRevenue)}</strong>
-            </div>
-            <RevenueInput label="現金差異" helper="正數或負數" value={form.cash_difference} onChange={(value) => setForm({ ...form, cash_difference: value })} />
-            <label className="note-box">
-              <span>店長備註</span>
-              <textarea value={form.manager_note} onChange={(event) => setForm({ ...form, manager_note: event.target.value })} />
-            </label>
-            <div className="target-card">
-              <span>今日總營收</span>
-              <strong>{money(currentTotal)}</strong>
-              <Progress value={(currentTotal / report.target) * 100} />
-              <p>今日目標 {money(report.target)}</p>
-            </div>
-          </div>
-        ) : tab === "ops" ? (
-          <StoreOperationsView rows={operationsRows} loading={operationsLoading} />
-        ) : tab === "inventory" ? (
-          <InventoryEditor rows={inventory} onChange={setInventory} />
-        ) : (
-          <IncomingEditor rows={inventory} onChange={setInventory} />
-        )}
-        {tab !== "ops" && (
-          <button className="submit-button" disabled={saving || revenueInvalid} onClick={submit}>
-            {saving ? "送出中..." : "送出每日回報"}
-          </button>
-        )}
-      </section>
-      <section className="panel companion">
-        <div className="panel-head"><h2>門店狀態</h2><p>{report.manager_name}</p></div>
-        <Metric label="今日總營收" value={money(currentTotal)} detail={`目標 ${money(report.target)}`} tone="hot" />
-        <Metric label="達成率" value={pct((currentTotal / report.target) * 100)} detail="依今日目標計算" tone={currentTotal >= report.target ? "good" : "warn"} />
-      </section>
-    </div>
-  );
-}
-
-function RevenueInput({ label, helper, value, onChange }) {
-  return (
-    <label className="input-card">
-      <span>{label}<small>{helper}</small></span>
-      <input type="number" value={numericInputValue(value)} onChange={(event) => onChange(event.target.value)} />
     </label>
   );
 }
