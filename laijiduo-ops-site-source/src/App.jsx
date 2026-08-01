@@ -43,6 +43,11 @@ import {
 } from "./modules/daily-report";
 import { StoreReportPage } from "./modules/daily-report/components";
 import {
+  buildOperationsOverview,
+  buildOperationsPriorities,
+  hasSubmittedOperationsReport as hasSubmittedReport,
+} from "./modules/dashboard";
+import {
   PRODUCT_ORDER,
   blankInventoryProduct,
   buildInventorySaveRows,
@@ -219,10 +224,6 @@ function numericInputValue(value) {
 
 function numericValue(value) {
   return isBlankNumber(value) ? 0 : Number(value);
-}
-
-function hasSubmittedReport(report) {
-  return Boolean(report?.id && report?.updated_at_label !== "尚未回報");
 }
 
 function normalizeReport(store, report) {
@@ -1276,52 +1277,6 @@ function AccessDeniedModule({ roleName }) {
   );
 }
 
-function buildRoleOpsSummary({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows }) {
-  const reportedRows = reports.filter(hasSubmittedReport);
-  const total = reports.reduce((sum, report) => sum + totalRevenue(report), 0);
-  const target = reports.reduce((sum, report) => sum + Number(report.target || 0), 0);
-  const unreported = reports.filter((report) => !hasSubmittedReport(report));
-  const cashIssues = reports.filter((report) => Math.abs(Number(report.cash_difference || 0)) >= 500);
-  const lowRevenue = reports.filter((report) => totalRevenue(report) < Number(report.target || 0) * 0.8);
-  const shortageRows = scheduleRows.filter((row) => row.status === "人力不足");
-  const overdueTasks = hqTasks.filter((row) => row.status !== "已完成" && isOverdue(row.due_date));
-  const handoverIssues = handovers.filter((row) => row.status === "需追蹤" || row.cash_status !== "正常" || row.cleaning_status !== "完成");
-  const pendingHr = hqTasks.filter((row) => row.status !== "已完成" && (row.scope_type === "人資" || row.task_type === "人資異動"));
-  const activeStaff = staffRoster.filter((row) => row.is_active !== false);
-  const managerStoreCodes = new Set(activeStaff.filter((row) => row.role === "店長" || row.role === "副店長").map(canonicalStoreCode));
-  const managerGaps = reports.filter((report) => report.name !== "鳳山南華店" && !managerStoreCodes.has(canonicalStoreCode(report)));
-  const ranking = [...reports]
-    .map((report) => ({
-      ...report,
-      attainment: (totalRevenue(report) / Math.max(1, Number(report.target || 0))) * 100,
-    }))
-    .sort((a, b) => b.attainment - a.attainment);
-  const riskRows = [...anomalyRows]
-    .sort((a, b) => {
-      const levelScore = (row) => (row.level === "重大" ? 3 : 1) + (isOverdue(row.due_date) ? 2 : 0);
-      return levelScore(b) - levelScore(a) || String(a.due_date).localeCompare(String(b.due_date));
-    })
-    .slice(0, 6);
-
-  return {
-    total,
-    target,
-    reportedRows,
-    reportRate: (reportedRows.length / Math.max(1, reports.length)) * 100,
-    unreported,
-    cashIssues,
-    lowRevenue,
-    shortageRows,
-    overdueTasks,
-    handoverIssues,
-    pendingHr,
-    managerGaps,
-    activeStaff,
-    ranking,
-    riskRows,
-  };
-}
-
 function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettings, onSelect, onOpenModule }) {
   const roleMeta = {
     ceo: {
@@ -1399,32 +1354,10 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
     ["排班缺口", `${summary.shortageRows.length} 筆`, summary.shortageRows[0]?.storeName || "目前足夠", summary.shortageRows.length ? "bad" : "good"],
     ["人員主檔", `${summary.activeStaff.length} 人`, "支援排班與門店管理", "good"],
   ];
-  const priorityRows = [
-    ...summary.unreported.map((row) => ({
-      id: `unreported-${row.store_id || row.id}`,
-      store_id: row.store_id || row.id,
-      storeName: row.name,
-      type: "尚未回報",
-      level: "重大",
-      message: "今日營運回報尚未送出",
-    })),
-    ...summary.shortageRows.map((row) => ({
-      id: `schedule-${row.storeCode || row.storeName}`,
-      store_code: row.storeCode,
-      storeName: row.storeName,
-      type: "排班缺口",
-      level: "提醒",
-      message: row.note || "門店人力需求需確認",
-    })),
-    ...summary.lowRevenue.map((row) => ({
-      id: `low-revenue-${row.store_id || row.id}`,
-      store_id: row.store_id || row.id,
-      storeName: row.name,
-      type: "營收未達標",
-      level: "提醒",
-      message: `目前達成率 ${pct((totalRevenue(row) / Math.max(1, Number(row.target || 0))) * 100)}`,
-    })),
-  ];
+  const priorityRows = buildOperationsPriorities(summary).map((row) => ({
+    ...row,
+    message: row.message || `目前達成率 ${pct(row.attainment)}`,
+  }));
 
   return (
     <section className="panel wide role-home">
@@ -1482,8 +1415,17 @@ function SupervisorOpsHome({ currentRole, reports, handovers, performanceRows, s
     [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks],
   );
   const summary = useMemo(
-    () => buildRoleOpsSummary({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows }),
-    [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows],
+    () => buildOperationsOverview({
+      reports,
+      handovers,
+      staffRoster,
+      scheduleRows,
+      hqTasks,
+      anomalyRows,
+      today,
+      resolveStoreCode: canonicalStoreCode,
+    }),
+    [reports, handovers, staffRoster, scheduleRows, hqTasks, anomalyRows],
   );
 
   return (
@@ -1564,11 +1506,6 @@ function HqDashboard({
     );
   }, [reports]);
 
-  const summary = useMemo(() => {
-    const total = reports.reduce((sum, report) => sum + totalRevenue(report), 0);
-    const target = reports.reduce((sum, report) => sum + Number(report.target || 0), 0);
-    return { total, target };
-  }, [reports]);
   const revenueSummary = useMemo(() => buildRevenueSummary(periodRows.length ? periodRows : reports), [periodRows, reports]);
   const usageSummary = useMemo(() => buildUsageSummary(reports, products, periodRows, usageRows), [reports, products, periodRows, usageRows]);
   const dailyRevenueRows = useMemo(() => buildDailyRevenueRows(periodRows.length ? periodRows : reports), [periodRows, reports]);
@@ -1581,8 +1518,17 @@ function HqDashboard({
     [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks],
   );
   const opsSummary = useMemo(
-    () => buildRoleOpsSummary({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows }),
-    [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks, anomalyRows],
+    () => buildOperationsOverview({
+      reports,
+      handovers,
+      staffRoster,
+      scheduleRows,
+      hqTasks,
+      anomalyRows,
+      today,
+      resolveStoreCode: canonicalStoreCode,
+    }),
+    [reports, handovers, staffRoster, scheduleRows, hqTasks, anomalyRows],
   );
 
   async function saveMonthlyTarget(report) {
@@ -1616,11 +1562,11 @@ function HqDashboard({
         onOpenModule={onOpenModule}
       />
       <section className="kpi-strip">
-        <Metric label="今日總營收" value={money(summary.total)} detail={`目標 ${money(summary.target)}`} tone="hot" />
-        <Metric label="整體達成率" value={pct((summary.total / summary.target) * 100)} detail="依今日目標計算" />
-        <Metric label="已送出" value={`${reports.filter((report) => report.status === "submitted" || report.status === "approved").length} 間`} detail="今日已有回報紀錄" tone="good" />
-        <Metric label="未回報" value={`${reports.filter((report) => report.status === "draft" || !report.id).length} 間`} detail="提醒門店完成日報" tone="warn" />
-        <Metric label="已達標" value={`${reports.filter((report) => totalRevenue(report) >= report.target).length} 間`} detail="營收高於目標" tone="good" />
+        <Metric label="今日總營收" value={money(opsSummary.total)} detail={`目標 ${money(opsSummary.target)}`} tone="hot" />
+        <Metric label="整體達成率" value={pct(opsSummary.attainmentRate)} detail="依今日目標計算" />
+        <Metric label="已送出" value={`${opsSummary.reportedRows.length} 間`} detail="今日已有回報紀錄" tone="good" />
+        <Metric label="未回報" value={`${opsSummary.unreported.length} 間`} detail="提醒門店完成日報" tone="warn" />
+        <Metric label="已達標" value={`${opsSummary.achievedRows.length} 間`} detail="營收高於目標" tone="good" />
       </section>
       <HqOperationsView rows={weeklyComparisonRows} />
       <section className="panel wide">
