@@ -1291,7 +1291,7 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
       actions: [["查看異常", "anomaly"], ["系統安全", "security"], ["營收總覽", "ops"]],
     },
     coo: {
-      title: "營運長今日指揮台",
+      title: "管理層營運指揮中心",
       subtitle: "優先處理逾期異常、巡檢缺失、任務追蹤與排班缺口。",
       metrics: [
         ["逾期任務", `${summary.overdueTasks.length} 件`, summary.overdueTasks[0]?.title || "無逾期", summary.overdueTasks.length ? "bad" : "good"],
