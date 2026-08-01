@@ -2,6 +2,10 @@ import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, staffRosterSee
 import { hasSupabaseConfig, supabase } from "./supabase";
 import { totalRevenue as calculateTotalRevenue } from "../modules/daily-report";
 import {
+  buildStaffProfile,
+  normalizeStoreStaffRow as normalizeStoreStaffProfileRow,
+} from "../modules/hr";
+import {
   deleteDailyReport as deleteDailyReportFromRepository,
   deleteDailyReports as deleteDailyReportsFromRepository,
   fetchDailyReports as fetchDailyReportsFromRepository,
@@ -651,12 +655,12 @@ export async function fetchStoreStaff() {
     if (isMissingSupabaseTable(error)) return staffRosterSeed;
     throw error;
   }
-  const savedRows = (data || []).map(normalizeStoreStaffRow);
+  const savedRows = (data || []).map(normalizeStoreStaffProfileRow);
   const savedById = new Map(savedRows.map((row) => [row.id, row]));
   const inactiveIds = new Set(savedRows.filter((row) => row.is_active === false).map((row) => row.id));
   const seedRows = staffRosterSeed
     .filter((row) => !inactiveIds.has(row.id))
-    .map((row, index) => savedById.get(row.id) || normalizeStoreStaffRow(row, index));
+    .map((row, index) => savedById.get(row.id) || normalizeStoreStaffProfileRow(row, index));
   const customRows = savedRows.filter((row) => row.is_active !== false && !staffRosterSeed.some((seed) => seed.id === row.id));
   return [...seedRows, ...customRows]
     .filter((row) => row.is_active !== false)
@@ -668,6 +672,9 @@ export async function fetchStoreStaff() {
 }
 
 export async function upsertStoreStaffMember(payload) {
+  const profile = buildStaffProfile(payload);
+  if (!profile.valid) throw new Error(profile.message);
+  payload = profile.payload;
   if (!supabase) return normalizeStoreStaffRow({ ...payload, id: payload.id || crypto.randomUUID?.() || Date.now() });
   const roleName = String(payload.role_name || payload.role || "").trim();
   const workStartTime = roleName === "兼職人員" ? normalizeTime24(payload.work_start_time || payload.workStartTime) : null;
@@ -728,7 +735,7 @@ export async function upsertStoreStaffMember(payload) {
     error = compatibleResult.error;
   }
   if (error) throw error;
-  return normalizeStoreStaffRow(data);
+  return normalizeStoreStaffProfileRow(data);
 }
 
 export async function deleteStoreStaffMember(staffMember) {

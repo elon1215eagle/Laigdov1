@@ -74,6 +74,12 @@ import {
   visibleViewModesForRole,
 } from "./modules/access";
 import {
+  STAFF_ROLE_OPTIONS,
+  buildStaffProfile,
+  createStaffForm,
+  staffMemberToForm,
+} from "./modules/hr";
+import {
   handoverSeed,
   hrChangeSeed,
   hqTaskSeed,
@@ -2786,26 +2792,16 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
       .sort((a, b) => a.store_code.localeCompare(b.store_code));
   }, [stores, storeHours]);
   const roleOptions = useMemo(() => {
-    const roles = [...salaryRows.map((row) => row.role), "店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職人員", "兼職後勤", "送貨人員"];
+    const roles = [...salaryRows.map((row) => row.role), ...STAFF_ROLE_OPTIONS];
     return roles.filter(Boolean).filter((roleName, index, rows) => rows.indexOf(roleName) === index);
   }, [salaryRows]);
   const defaultStoreCode = canonicalStoreCode(selectedStore) || canonicalStoreCode({ storeName: selectedStoreName }) || storeOptions[0]?.store_code || "";
   const defaultStoreName = storeOptions.find((store) => store.store_code === defaultStoreCode)?.name || selectedStoreName || storeOptions[0]?.name || "";
-  const [staffForm, setStaffForm] = useState({
-    id: "",
-    store_code: defaultStoreCode,
-    store_name: defaultStoreName,
-    employee_name: "",
-    role_name: roleOptions[0] || "",
-    work_start_time: "",
-    work_end_time: "",
-    weekday_start_time: "",
-    weekday_end_time: "",
-    holiday_start_time: "",
-    holiday_end_time: "",
-    sort_order: 999,
-    is_active: true,
-  });
+  const [staffForm, setStaffForm] = useState(() => createStaffForm({
+    storeCode: defaultStoreCode,
+    storeName: defaultStoreName,
+    roleName: roleOptions[0] || "",
+  }));
 
   useEffect(() => {
     if (staffForm.store_code || !defaultStoreCode) return;
@@ -2815,63 +2811,29 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
   const selectedFormStore = storeOptions.find((store) => store.store_code === staffForm.store_code);
 
   function resetStaffForm() {
-    setStaffForm({
-      id: "",
-      store_code: defaultStoreCode,
-      store_name: defaultStoreName,
-      employee_name: "",
-      role_name: roleOptions[0] || "",
-      work_start_time: "",
-      work_end_time: "",
-      weekday_start_time: "",
-      weekday_end_time: "",
-      holiday_start_time: "",
-      holiday_end_time: "",
-      sort_order: 999,
-      is_active: true,
-    });
+    setStaffForm(createStaffForm({
+      storeCode: defaultStoreCode,
+      storeName: defaultStoreName,
+      roleName: roleOptions[0] || "",
+    }));
   }
 
   function editStaff(row) {
     const code = canonicalStoreCode(row);
     const store = storeOptions.find((item) => item.store_code === code);
-    setStaffForm({
-      id: row.id,
-      store_code: code,
-      store_name: store?.name || displayStoreName(row),
-      employee_name: row.employeeName,
-      role_name: row.role,
-      work_start_time: row.work_start_time || row.workStartTime || "",
-      work_end_time: row.work_end_time || row.workEndTime || "",
-      weekday_start_time: row.weekday_start_time || row.work_start_time || row.workStartTime || "",
-      weekday_end_time: row.weekday_end_time || row.work_end_time || row.workEndTime || "",
-      holiday_start_time: row.holiday_start_time || row.weekday_start_time || row.work_start_time || "",
-      holiday_end_time: row.holiday_end_time || row.weekday_end_time || row.work_end_time || "",
-      sort_order: row.sort_order || 999,
-      is_active: row.is_active !== false,
-    });
+    setStaffForm(staffMemberToForm(row, {
+      storeCode: code,
+      storeName: store?.name || displayStoreName(row),
+    }));
   }
 
   async function submitStaffForm(event) {
     event.preventDefault();
-    const weekdayWindow = validateTimeWindow(staffForm.weekday_start_time, staffForm.weekday_end_time);
-    const holidayWindow = validateTimeWindow(staffForm.holiday_start_time, staffForm.holiday_end_time);
-    if (staffForm.role_name === "兼職人員") {
-      if (!weekdayWindow.valid) return window.alert(`平日${weekdayWindow.message}`);
-      if (!holidayWindow.valid) return window.alert(`假日${holidayWindow.message}`);
-    }
-    const saved = await onSaveStaffMember?.({
-      ...staffForm,
-      store_name: selectedFormStore?.name || staffForm.store_name,
-      employee_name: staffForm.employee_name.trim(),
-      role_name: staffForm.role_name.trim(),
-      work_start_time: staffForm.role_name === "兼職人員" ? weekdayWindow.start : "",
-      work_end_time: staffForm.role_name === "兼職人員" ? weekdayWindow.end : "",
-      weekday_start_time: staffForm.role_name === "兼職人員" ? weekdayWindow.start : "",
-      weekday_end_time: staffForm.role_name === "兼職人員" ? weekdayWindow.end : "",
-      holiday_start_time: staffForm.role_name === "兼職人員" ? holidayWindow.start : "",
-      holiday_end_time: staffForm.role_name === "兼職人員" ? holidayWindow.end : "",
+    const profile = buildStaffProfile(staffForm, {
+      storeName: selectedFormStore?.name || staffForm.store_name,
     });
+    if (!profile.valid) return window.alert(profile.message);
+    const saved = await onSaveStaffMember?.(profile.payload);
     if (saved) resetStaffForm();
   }
 
