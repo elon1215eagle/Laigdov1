@@ -28,9 +28,17 @@
 - 自動測試：108/108 通過。
 - Production build：通過。
 - 桌機與手機版：無頁面水平溢出，無瀏覽器錯誤。
-- 開發分支 migration：已含本階段全部 migration。
+- 乾淨發布分支 `workforce-release-2026-08-02`：已從正式基礎重播，並含本階段全部 migration。
 - 正式環境 migration：未含 2026-08-02 人力排班 migration。
 - 開發資料：需求申請、薪資解鎖與排假稽核均無驗收測試殘留資料。
+- 單一寫入者：直接寫入被阻擋，新模組標記寫入成功，測試 transaction 已 rollback。
+- Supabase security advisor：0 個 ERROR；匿名角色無法存取薪資 RPC、角色 RPC 與 LINE 內部表。
+
+## 發布分支修復紀錄
+
+正式專案早期的基礎 schema、`target_monthly_revenue`、人員預設工時及排班鎖定表，曾以 SQL Editor 建立但未納入 migration 歷史，造成新建 Supabase 分支重播失敗。本次已在臨時發布分支補齊基礎後完成全歷史重播；正式資料庫未被修改。
+
+臨時發布分支僅供驗收，驗收完成後刪除以停止計費。正式發布仍須另行核定，不得把「發布分支驗收通過」視為已上線。
 
 ## 切換限制
 
