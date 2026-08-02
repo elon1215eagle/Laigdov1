@@ -20,3 +20,6 @@ export const fetchPersonalScheduleByToken = (...args) => scheduleRepository.fetc
 export const fetchDailyStaffShifts = (...args) => scheduleRepository.fetchDailyStaffShifts(...args);
 export const upsertDailyStaffShift = (...args) => scheduleRepository.upsertDailyStaffShift(...args);
 export const deleteDailyStaffShift = (...args) => scheduleRepository.deleteDailyStaffShift(...args);
+export const fetchStandardShiftTemplates = (...args) => scheduleRepository.fetchStandardShiftTemplates(...args);
+export const upsertStandardShiftTemplate = (...args) => scheduleRepository.upsertStandardShiftTemplate(...args);
+export const archiveStandardShiftTemplate = (...args) => scheduleRepository.archiveStandardShiftTemplate(...args);

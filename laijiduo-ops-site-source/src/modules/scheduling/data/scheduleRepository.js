@@ -36,6 +36,11 @@ const PERSONAL_SCHEDULE_LINK_FIELDS = [
   "home_store_code", "role_name", "expires_at", "revoked_at", "created_by", "created_at",
 ].join(", ");
 
+const STANDARD_SHIFT_TEMPLATE_FIELDS = [
+  "id", "name", "start_time", "end_time", "is_active", "sort_order",
+  "created_by", "created_at", "updated_at",
+].join(", ");
+
 function isMissingTable(error) {
   return error?.code === "42P01" || /relation .* does not exist/i.test(error?.message || "");
 }
@@ -46,6 +51,11 @@ function isMissingFunction(error) {
     || /function .* does not exist|could not find the function/i.test(error?.message || "");
 }
 
+function isQuarterHour(timeValue) {
+  const normalized = normalizeTime24(timeValue);
+  return Boolean(normalized) && Number(normalized.slice(3, 5)) % 15 === 0;
+}
+
 export function normalizeLeaveDays(days) {
   return [...new Set((Array.isArray(days) ? days : []).map(Number).filter((day) => day >= 1 && day <= 31))]
     .sort((a, b) => a - b);
@@ -53,6 +63,60 @@ export function normalizeLeaveDays(days) {
 
 function buildLeavePayload(payload, userId) {
   return {
+    async fetchStandardShiftTemplates() {
+      if (!client) return [];
+      const { data, error } = await client
+        .from("standard_shift_templates")
+        .select(STANDARD_SHIFT_TEMPLATE_FIELDS)
+        .eq("is_active", true)
+        .order("sort_order")
+        .order("start_time");
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+      return data || [];
+    },
+
+    async upsertStandardShiftTemplate(payload) {
+      const startTime = normalizeTime24(payload.start_time);
+      const endTime = normalizeTime24(payload.end_time);
+      if (!String(payload.name || "").trim()) throw new Error("請輸入班次名稱");
+      if (!startTime || !endTime || endTime <= startTime) throw new Error("班次結束時間必須晚於開始時間");
+      if (!isQuarterHour(startTime) || !isQuarterHour(endTime)) {
+        throw new Error("班次時間須以 15 分鐘為單位");
+      }
+      const cleanPayload = {
+        ...(payload.id ? { id: payload.id } : {}),
+        name: String(payload.name).trim(),
+        start_time: startTime,
+        end_time: endTime,
+        is_active: payload.is_active !== false,
+        sort_order: Number(payload.sort_order || 0),
+      };
+      if (!client) return { id: payload.id || globalThis.crypto?.randomUUID?.() || String(Date.now()), ...cleanPayload };
+      const userId = await currentUserId();
+      const { data, error } = await client
+        .from("standard_shift_templates")
+        .upsert({ ...cleanPayload, created_by: userId }, { onConflict: "id" })
+        .select(STANDARD_SHIFT_TEMPLATE_FIELDS)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async archiveStandardShiftTemplate(id) {
+      if (!client) return { id, is_active: false };
+      const { data, error } = await client
+        .from("standard_shift_templates")
+        .update({ is_active: false })
+        .eq("id", id)
+        .select(STANDARD_SHIFT_TEMPLATE_FIELDS)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+
     ...payload,
     leave_days: normalizeLeaveDays(payload.leave_days),
     manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
@@ -388,6 +452,9 @@ export function createScheduleRepository(client = null) {
       if (!payload.shift_date || !payload.staff_id) throw new Error("請選擇日期與人員");
       if (!startTime || !endTime || endTime <= startTime) {
         throw new Error("請輸入有效的上班與下班時間");
+      }
+      if (!isQuarterHour(startTime) || !isQuarterHour(endTime)) {
+        throw new Error("班次時間須以 15 分鐘為單位");
       }
       const cleanPayload = {
         id: payload.id || globalThis.crypto?.randomUUID?.() || String(Date.now()),

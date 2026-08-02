@@ -75,8 +75,12 @@ test("正職不保存兼職預設工時", () => {
     weekday_start_time: "10:00", weekday_end_time: "16:00",
   });
   assert.equal(result.valid, true);
-  assert.equal(result.payload.weekday_start_time, "");
-  assert.equal(result.payload.work_end_time, "");
+  assert.equal(result.payload.weekday_start_time, "10:00");
+  assert.equal(result.payload.weekday_end_time, "16:00");
+  assert.equal(result.payload.work_start_time, "10:00");
+  assert.equal(result.payload.work_end_time, "16:00");
+  assert.equal(result.payload.holiday_start_time, "10:00");
+  assert.equal(result.payload.holiday_end_time, "16:00");
 });
 
 test("資料列與編輯表單使用同一套分類正規化", () => {

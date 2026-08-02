@@ -9,6 +9,30 @@ import {
   validateTimeWindow,
 } from "../src/modules/scheduling/index.js";
 
+test("full-time master default hours take precedence over store hours", () => {
+  const window = resolvePersonWorkWindow({
+    person: {
+      role: "正職人員",
+      weekday_start_time: "12:00",
+      weekday_end_time: "20:00",
+    },
+    dateValue: "2026-07-29",
+    store: { open_time: "10:00", close_time: "23:00" },
+  });
+  assert.equal(window.startTime, "12:00");
+  assert.equal(window.endTime, "20:00");
+});
+
+test("full-time staff without master defaults fall back to store hours", () => {
+  const window = resolvePersonWorkWindow({
+    person: { role: "正職人員" },
+    dateValue: "2026-07-29",
+    store: { open_time: "10:00", close_time: "23:00" },
+  });
+  assert.equal(window.startTime, "10:00");
+  assert.equal(window.endTime, "23:00");
+});
+
 const partTimer = {
   role: "兼職人員",
   weekday_start_time: "10:00",

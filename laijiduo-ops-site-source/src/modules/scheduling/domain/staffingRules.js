@@ -68,7 +68,9 @@ export function resolvePersonWorkWindow({
       source: override.shift_type === "support" ? "跨店支援" : "當日調整",
     };
   }
-  if (person.role === "兼職人員") return getPartTimeDefaultWindow(person, dateValue, holidayDates);
+  const defaultWindow = getPartTimeDefaultWindow(person, dateValue, holidayDates);
+  if (defaultWindow) return defaultWindow;
+  if (person.employment_type === "兼職" || person.role === "兼職人員") return null;
   return {
     start: timeToMinutes(store.open_time, 0),
     end: timeToMinutes(store.close_time, 24 * 60),

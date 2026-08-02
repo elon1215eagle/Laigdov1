@@ -39,6 +39,9 @@ export {
   upsertDailyStaffShift,
   upsertMonthlyLeavePlan,
   upsertMonthlyLeavePlans,
+  fetchStandardShiftTemplates,
+  upsertStandardShiftTemplate,
+  archiveStandardShiftTemplate,
 } from "../modules/scheduling/supabase.js";
 
 const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, operating_status, is_active";
@@ -742,10 +745,10 @@ export async function upsertStoreStaffMember(payload) {
   if (!supabase) return normalizeStoreStaffRow({ ...payload, id: payload.id || crypto.randomUUID?.() || Date.now() });
   const roleName = String(payload.role_name || payload.role || "").trim();
   const isPartTime = payload.employment_type === "兼職";
-  const workStartTime = isPartTime ? normalizeTime24(payload.work_start_time || payload.workStartTime) : null;
-  const workEndTime = isPartTime ? normalizeTime24(payload.work_end_time || payload.workEndTime) : null;
-  const weekdayStartTime = isPartTime ? normalizeTime24(payload.weekday_start_time || workStartTime) : null;
-  const weekdayEndTime = isPartTime ? normalizeTime24(payload.weekday_end_time || workEndTime) : null;
+  const workStartTime = normalizeTime24(payload.work_start_time || payload.workStartTime);
+  const workEndTime = normalizeTime24(payload.work_end_time || payload.workEndTime);
+  const weekdayStartTime = normalizeTime24(payload.weekday_start_time || workStartTime);
+  const weekdayEndTime = normalizeTime24(payload.weekday_end_time || workEndTime);
   const holidayStartTime = isPartTime ? normalizeTime24(payload.holiday_start_time || weekdayStartTime) : null;
   const holidayEndTime = isPartTime ? normalizeTime24(payload.holiday_end_time || weekdayEndTime) : null;
   const cleanPayload = {
@@ -762,8 +765,8 @@ export async function upsertStoreStaffMember(payload) {
     work_end_time: workEndTime,
     weekday_start_time: weekdayStartTime,
     weekday_end_time: weekdayEndTime,
-    holiday_start_time: holidayStartTime,
-    holiday_end_time: holidayEndTime,
+    holiday_start_time: holidayStartTime || weekdayStartTime,
+    holiday_end_time: holidayEndTime || weekdayEndTime,
     estimated_hourly_cost: payload.estimated_hourly_cost == null || payload.estimated_hourly_cost === "" ? null : Number(payload.estimated_hourly_cost),
     estimated_monthly_cost: payload.estimated_monthly_cost == null || payload.estimated_monthly_cost === "" ? null : Number(payload.estimated_monthly_cost),
     sort_order: Number(payload.sort_order || 999),

@@ -111,13 +111,13 @@ export function buildStaffProfile(payload, { storeName = "" } = {}) {
   const weekdayWindow = validateTimeWindow(payload.weekday_start_time, payload.weekday_end_time);
   const holidayWindow = validateTimeWindow(payload.holiday_start_time, payload.holiday_end_time);
   const isPartTime = classification.employmentType === "兼職";
-  if (isPartTime && !weekdayWindow.valid) return { valid: false, message: `平日${weekdayWindow.message}` };
+  if (!weekdayWindow.valid) return { valid: false, message: `${isPartTime ? "平日" : "預設工時"}${weekdayWindow.message}` };
   if (isPartTime && !holidayWindow.valid) return { valid: false, message: `假日${holidayWindow.message}` };
 
-  const weekdayStart = isPartTime ? normalizeTime24(weekdayWindow.start) : "";
-  const weekdayEnd = isPartTime ? normalizeTime24(weekdayWindow.end) : "";
-  const holidayStart = isPartTime ? normalizeTime24(holidayWindow.start) : "";
-  const holidayEnd = isPartTime ? normalizeTime24(holidayWindow.end) : "";
+  const weekdayStart = normalizeTime24(weekdayWindow.start);
+  const weekdayEnd = normalizeTime24(weekdayWindow.end);
+  const holidayStart = isPartTime ? normalizeTime24(holidayWindow.start) : weekdayStart;
+  const holidayEnd = isPartTime ? normalizeTime24(holidayWindow.end) : weekdayEnd;
   return {
     valid: true,
     payload: {

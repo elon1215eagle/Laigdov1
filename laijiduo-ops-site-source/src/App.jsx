@@ -159,6 +159,9 @@ import {
   upsertDailyStaffShift,
   upsertMonthlyLeavePlan,
   upsertMonthlyLeavePlans,
+  fetchStandardShiftTemplates,
+  upsertStandardShiftTemplate,
+  archiveStandardShiftTemplate,
 } from "./modules/scheduling/supabase";
 import { InspectionApp } from "./InspectionApp";
 
@@ -2970,12 +2973,8 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                   setStaffForm({
                     ...staffForm,
                     employment_type: employmentType,
-                    work_start_time: employmentType === "兼職" ? staffForm.work_start_time : "",
-                    work_end_time: employmentType === "兼職" ? staffForm.work_end_time : "",
-                    weekday_start_time: employmentType === "兼職" ? staffForm.weekday_start_time : "",
-                    weekday_end_time: employmentType === "兼職" ? staffForm.weekday_end_time : "",
-                    holiday_start_time: employmentType === "兼職" ? staffForm.holiday_start_time : "",
-                    holiday_end_time: employmentType === "兼職" ? staffForm.holiday_end_time : "",
+                    holiday_start_time: employmentType === "兼職" ? staffForm.holiday_start_time : staffForm.weekday_start_time,
+                    holiday_end_time: employmentType === "兼職" ? staffForm.holiday_end_time : staffForm.weekday_end_time,
                   });
                 }}
               >
@@ -3000,23 +2999,23 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                 {EMPLOYMENT_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
               </select>
             </label>
+            <label>
+              {staffForm.employment_type === "兼職" ? "平日上班（選填）" : "預設上班（選填）"}
+              <input type="time" lang="en-GB" step="900" value={staffForm.weekday_start_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_start_time: formatTime24(event.target.value) })} />
+            </label>
+            <label>
+              {staffForm.employment_type === "兼職" ? "平日下班（選填）" : "預設下班（選填）"}
+              <input type="time" lang="en-GB" step="900" value={staffForm.weekday_end_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_end_time: formatTime24(event.target.value) })} />
+            </label>
             {staffForm.employment_type === "兼職" && (
               <>
                 <label>
-                  平日上班（選填）
-                  <input type="time" lang="en-GB" step="60" value={staffForm.weekday_start_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_start_time: formatTime24(event.target.value) })} />
-                </label>
-                <label>
-                  平日下班（選填）
-                  <input type="time" lang="en-GB" step="60" value={staffForm.weekday_end_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_end_time: formatTime24(event.target.value) })} />
-                </label>
-                <label>
                   假日上班（選填）
-                  <input type="time" lang="en-GB" step="60" value={staffForm.holiday_start_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_start_time: formatTime24(event.target.value) })} />
+                  <input type="time" lang="en-GB" step="900" value={staffForm.holiday_start_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_start_time: formatTime24(event.target.value) })} />
                 </label>
                 <label>
                   假日下班（選填）
-                  <input type="time" lang="en-GB" step="60" value={staffForm.holiday_end_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_end_time: formatTime24(event.target.value) })} />
+                  <input type="time" lang="en-GB" step="900" value={staffForm.holiday_end_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_end_time: formatTime24(event.target.value) })} />
                 </label>
                 <p className="form-help">未設定單日班次時，系統依平日／假日預設時間計算；四個欄位皆可留空。</p>
               </>
@@ -3539,6 +3538,9 @@ function MonthlyLeavePlanner({
   const [issuedPersonalLink, setIssuedPersonalLink] = useState("");
   const [personalLinkSaving, setPersonalLinkSaving] = useState(false);
   const [shiftSaving, setShiftSaving] = useState(false);
+  const [shiftTemplates, setShiftTemplates] = useState([]);
+  const [templateForm, setTemplateForm] = useState({ id: "", name: "", start_time: "", end_time: "" });
+  const [templateSaving, setTemplateSaving] = useState(false);
   const [shiftForm, setShiftForm] = useState({
     id: "",
     shift_date: today,
@@ -3644,6 +3646,44 @@ function MonthlyLeavePlanner({
   useEffect(() => {
     refreshDailyShifts();
   }, [leaveMonth]);
+
+  async function refreshShiftTemplates() {
+    try {
+      setShiftTemplates(await fetchStandardShiftTemplates());
+    } catch (error) {
+      onNotify?.(`標準班次讀取失敗：${error.message}`);
+    }
+  }
+
+  useEffect(() => {
+    refreshShiftTemplates();
+  }, []);
+
+  async function saveShiftTemplate(event) {
+    event.preventDefault();
+    setTemplateSaving(true);
+    try {
+      await upsertStandardShiftTemplate(templateForm);
+      setTemplateForm({ id: "", name: "", start_time: "", end_time: "" });
+      await refreshShiftTemplates();
+      onNotify?.("標準班次已儲存");
+    } catch (error) {
+      onNotify?.(`標準班次儲存失敗：${error.message}`);
+    } finally {
+      setTemplateSaving(false);
+    }
+  }
+
+  async function removeShiftTemplate(template) {
+    if (!window.confirm(`停用標準班次「${template.name}」？`)) return;
+    try {
+      await archiveStandardShiftTemplate(template.id);
+      await refreshShiftTemplates();
+      onNotify?.("標準班次已停用");
+    } catch (error) {
+      onNotify?.(`標準班次停用失敗：${error.message}`);
+    }
+  }
 
   useEffect(() => {
     if (!hasSupabaseConfig) return;
@@ -4721,6 +4761,16 @@ function MonthlyLeavePlanner({
         </div>
         <form className="daily-shift-form" onSubmit={saveDailyShift}>
           <label>
+            標準班次
+            <select value="" onChange={(event) => {
+              const template = shiftTemplates.find((row) => row.id === event.target.value);
+              if (template) setShiftForm({ ...shiftForm, start_time: formatTime24(template.start_time), end_time: formatTime24(template.end_time) });
+            }}>
+              <option value="">自訂班次</option>
+              {shiftTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} {formatTime24(template.start_time)}–{formatTime24(template.end_time)}</option>)}
+            </select>
+          </label>
+          <label>
             日期
             <input
               type="date"
@@ -4758,11 +4808,11 @@ function MonthlyLeavePlanner({
           </label>
           <label>
             上班
-            <input type="time" lang="en-GB" step="60" value={shiftForm.start_time} onChange={(event) => setShiftForm({ ...shiftForm, start_time: formatTime24(event.target.value) })} />
+            <input type="time" lang="en-GB" step="900" value={shiftForm.start_time} onChange={(event) => setShiftForm({ ...shiftForm, start_time: formatTime24(event.target.value) })} />
           </label>
           <label>
             下班
-            <input type="time" lang="en-GB" step="60" value={shiftForm.end_time} onChange={(event) => setShiftForm({ ...shiftForm, end_time: formatTime24(event.target.value) })} />
+            <input type="time" lang="en-GB" step="900" value={shiftForm.end_time} onChange={(event) => setShiftForm({ ...shiftForm, end_time: formatTime24(event.target.value) })} />
           </label>
           <label>
             原因／備註
@@ -4794,6 +4844,19 @@ function MonthlyLeavePlanner({
           </div>
         )}
       </section>
+
+      {!isStoreScoped && (
+        <section className="daily-shift-editor">
+          <div className="panel-head compact-head"><div><h3>標準班次模板</h3><p>總部維護常用班次；門店套用後仍可依當日需要調整為 15 分鐘單位。</p></div></div>
+          <form className="daily-shift-form" onSubmit={saveShiftTemplate}>
+            <label>班次名稱<input value={templateForm.name} onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })} placeholder="例如：早班" /></label>
+            <label>開始時間<input type="time" lang="en-GB" step="900" value={templateForm.start_time} onChange={(event) => setTemplateForm({ ...templateForm, start_time: formatTime24(event.target.value) })} /></label>
+            <label>結束時間<input type="time" lang="en-GB" step="900" value={templateForm.end_time} onChange={(event) => setTemplateForm({ ...templateForm, end_time: formatTime24(event.target.value) })} /></label>
+            <div className="staff-admin-actions"><button className="primary" type="submit" disabled={templateSaving}>{templateSaving ? "儲存中" : "儲存模板"}</button></div>
+          </form>
+          {shiftTemplates.length > 0 && <div className="table-wrap compact"><table><thead><tr><th>名稱</th><th>時間</th><th>操作</th></tr></thead><tbody>{shiftTemplates.map((template) => <tr key={template.id}><td>{template.name}</td><td>{formatTime24(template.start_time)}–{formatTime24(template.end_time)}</td><td><div className="inline-actions"><button type="button" onClick={() => setTemplateForm({ id: template.id, name: template.name, start_time: formatTime24(template.start_time), end_time: formatTime24(template.end_time) })}>編輯</button><button type="button" onClick={() => removeShiftTemplate(template)}>停用</button></div></td></tr>)}</tbody></table></div>}
+        </section>
+      )}
 
       {selectedMatrixGroup && (
         <section className="staffing-matrix">
