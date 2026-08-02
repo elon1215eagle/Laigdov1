@@ -178,17 +178,13 @@ export function projectDailyStaffShifts({
 }
 
 export function isDeliveryStaff(person) {
-  const classification = [
-    person.role,
-    person.role_name,
-    person.employment_type,
-    person.work_category,
-  ].filter(Boolean).join(" ");
-  return /外送|送貨|配送/.test(classification);
+  const workCategory = String(person.work_category || person.workCategory || "").trim();
+  if (workCategory) return /外送|送貨|配送/.test(workCategory);
+  return /外送|送貨|配送/.test(String(person.role || person.role_name || ""));
 }
 
 export function isScheduleExcludedRole(person) {
-  return ["兼職後勤", "送貨人員"].includes(String(person.role || "")) || isDeliveryStaff(person);
+  return String(person.role || person.role_name || "") === "兼職後勤" || isDeliveryStaff(person);
 }
 
 export function isEffectiveScheduleStaff(person) {

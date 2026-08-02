@@ -4845,13 +4845,14 @@ function MonthlyLeavePlanner({
         </div>
       </div>
 
-      <section className="daily-shift-editor">
-        <div className="panel-head compact-head">
+      <details className="daily-shift-editor collapsible-form">
+        <summary className="collapsible-form-summary">
           <div>
             <h3>人力需求調整</h3>
             <p>{isStoreScoped ? "門店提出指定日期與時段的人力需求，總部核准後才會正式套用。" : "審核門店提出的人力需求；核准後自動寫入人力矩陣規則。"}</p>
           </div>
-        </div>
+          <span className="collapsible-form-action">展開</span>
+        </summary>
         {isStoreScoped ? (
           <form className="daily-shift-form" onSubmit={submitDemandRequest}>
             <label>適用日期<input type="date" value={supportDate} onChange={(event) => setSupportDate(event.target.value)} /></label>
@@ -4875,7 +4876,7 @@ function MonthlyLeavePlanner({
             })}</tbody>
           </table></div>
         ) : <p className="form-help">目前沒有待處理的人力需求申請。</p>}
-      </section>
+      </details>
 
       {!isStoreScoped && leaveAuditRows.length > 0 && (
         <section className="daily-shift-editor">
@@ -4893,13 +4894,14 @@ function MonthlyLeavePlanner({
         </section>
       )}
 
-      <section className="daily-shift-editor">
-        <div className="panel-head compact-head">
+      <details className="daily-shift-editor collapsible-form">
+        <summary className="collapsible-form-summary">
           <div>
             <h3>單日多段班次調整</h3>
             <p>同一天可新增多段班次，時間不可重疊；兼職未設定時自動使用人資主檔平日／假日時間。</p>
           </div>
-        </div>
+          <span className="collapsible-form-action">展開</span>
+        </summary>
         <form className="daily-shift-form" onSubmit={saveDailyShift}>
           <label>
             標準班次
@@ -4984,11 +4986,11 @@ function MonthlyLeavePlanner({
             </table>
           </div>
         )}
-      </section>
+      </details>
 
       {!isStoreScoped && (
-        <section className="daily-shift-editor">
-          <div className="panel-head compact-head"><div><h3>標準班次模板</h3><p>總部維護常用班次；門店套用後仍可依當日需要調整為 15 分鐘單位。</p></div></div>
+        <details className="daily-shift-editor collapsible-form">
+          <summary className="collapsible-form-summary"><div><h3>標準班次模板</h3><p>總部維護常用班次；門店套用後仍可依當日需要調整為 15 分鐘單位。</p></div><span className="collapsible-form-action">展開</span></summary>
           <form className="daily-shift-form" onSubmit={saveShiftTemplate}>
             <label>班次名稱<input value={templateForm.name} onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })} placeholder="例如：早班" /></label>
             <label>開始時間<input type="time" lang="en-GB" step="900" value={templateForm.start_time} onChange={(event) => setTemplateForm({ ...templateForm, start_time: formatTime24(event.target.value) })} /></label>
@@ -4996,7 +4998,7 @@ function MonthlyLeavePlanner({
             <div className="staff-admin-actions"><button className="primary" type="submit" disabled={templateSaving}>{templateSaving ? "儲存中" : "儲存模板"}</button></div>
           </form>
           {shiftTemplates.length > 0 && <div className="table-wrap compact"><table><thead><tr><th>名稱</th><th>時間</th><th>操作</th></tr></thead><tbody>{shiftTemplates.map((template) => <tr key={template.id}><td>{template.name}</td><td>{formatTime24(template.start_time)}–{formatTime24(template.end_time)}</td><td><div className="inline-actions"><button type="button" onClick={() => setTemplateForm({ id: template.id, name: template.name, start_time: formatTime24(template.start_time), end_time: formatTime24(template.end_time) })}>編輯</button><button type="button" onClick={() => removeShiftTemplate(template)}>停用</button></div></td></tr>)}</tbody></table></div>}
-        </section>
+        </details>
       )}
 
       {selectedMatrixGroup && (

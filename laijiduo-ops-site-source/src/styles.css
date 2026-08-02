@@ -1284,6 +1284,50 @@ tbody tr.selected,
   padding: 18px 0;
 }
 
+.collapsible-form-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible-form-summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-form-summary h3 {
+  margin: 0 0 4px;
+}
+
+.collapsible-form-summary p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.collapsible-form-action {
+  flex: 0 0 auto;
+  color: var(--accent);
+  font-weight: 800;
+}
+
+.collapsible-form[open] .collapsible-form-summary {
+  margin-bottom: 16px;
+}
+
+.collapsible-form[open] .collapsible-form-action::before {
+  content: "收合";
+}
+
+.collapsible-form[open] .collapsible-form-action {
+  font-size: 0;
+}
+
+.collapsible-form[open] .collapsible-form-action::before {
+  font-size: 14px;
+}
+
 .daily-shift-form {
   display: grid;
   grid-template-columns: repeat(6, minmax(120px, 1fr));

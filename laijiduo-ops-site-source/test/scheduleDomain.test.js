@@ -23,6 +23,7 @@ test("兼職後勤與送貨角色不列入有效排班", () => {
   assert.equal(isScheduleExcludedRole({ role: "兼職後勤" }), true);
   assert.equal(isScheduleExcludedRole({ role: "送貨人員" }), true);
   assert.equal(isScheduleExcludedRole({ role: "兼職人員", employment_type: "兼職", work_category: "送貨" }), true);
+  assert.equal(isScheduleExcludedRole({ role: "送貨人員", work_category: "門店營運" }), false);
   assert.equal(isScheduleExcludedRole({ role: "兼職人員" }), false);
 });
 
