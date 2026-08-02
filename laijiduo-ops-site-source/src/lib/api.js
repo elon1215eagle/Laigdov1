@@ -42,6 +42,10 @@ export {
   fetchStandardShiftTemplates,
   upsertStandardShiftTemplate,
   archiveStandardShiftTemplate,
+  fetchLeavePlanAudit,
+  fetchStaffingDemandChangeRequests,
+  submitStaffingDemandChangeRequest,
+  reviewStaffingDemandChangeRequest,
 } from "../modules/scheduling/supabase.js";
 
 const STORE_FIELDS = "id, store_code, name, area, manager_name, target_daily_revenue, target_monthly_revenue, operating_status, is_active";

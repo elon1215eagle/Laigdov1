@@ -162,6 +162,10 @@ import {
   fetchStandardShiftTemplates,
   upsertStandardShiftTemplate,
   archiveStandardShiftTemplate,
+  fetchLeavePlanAudit,
+  fetchStaffingDemandChangeRequests,
+  submitStaffingDemandChangeRequest,
+  reviewStaffingDemandChangeRequest,
 } from "./modules/scheduling/supabase";
 import { InspectionApp } from "./InspectionApp";
 
@@ -3541,6 +3545,11 @@ function MonthlyLeavePlanner({
   const [shiftTemplates, setShiftTemplates] = useState([]);
   const [templateForm, setTemplateForm] = useState({ id: "", name: "", start_time: "", end_time: "" });
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [leaveAuditRows, setLeaveAuditRows] = useState([]);
+  const [demandRequests, setDemandRequests] = useState([]);
+  const [demandRequestForm, setDemandRequestForm] = useState({
+    start_time: "11:00", end_time: "14:00", required_count: 1, reason: "",
+  });
   const [shiftForm, setShiftForm] = useState({
     id: "",
     shift_date: today,
@@ -3658,6 +3667,57 @@ function MonthlyLeavePlanner({
   useEffect(() => {
     refreshShiftTemplates();
   }, []);
+
+  async function refreshWorkforceRequests() {
+    try {
+      const [auditRows, requestRows] = await Promise.all([
+        isStoreScoped ? Promise.resolve([]) : fetchLeavePlanAudit(leaveMonth),
+        fetchStaffingDemandChangeRequests(),
+      ]);
+      setLeaveAuditRows(auditRows);
+      setDemandRequests(requestRows);
+    } catch (error) {
+      onNotify?.(`排班稽核資料讀取失敗：${error.message}`);
+    }
+  }
+
+  useEffect(() => {
+    refreshWorkforceRequests();
+  }, [leaveMonth, isStoreScoped]);
+
+  async function submitDemandRequest(event) {
+    event.preventDefault();
+    const storeCode = normalizeStoreScopedScheduleCode(allowedStoreCode);
+    if (!storeCode || demandRequestForm.reason.trim().length < 3) return onNotify?.("請填寫至少 3 個字的調整原因");
+    try {
+      await submitStaffingDemandChangeRequest({
+        store_code: storeCode,
+        reason: demandRequestForm.reason,
+        proposed_rule: {
+          rule_type: "special",
+          special_date: supportDate,
+          start_time: demandRequestForm.start_time,
+          end_time: demandRequestForm.end_time,
+          required_count: Number(demandRequestForm.required_count),
+        },
+      });
+      setDemandRequestForm({ start_time: "11:00", end_time: "14:00", required_count: 1, reason: "" });
+      await refreshWorkforceRequests();
+      onNotify?.("人力需求調整申請已送出");
+    } catch (error) {
+      onNotify?.(`人力需求申請失敗：${error.message}`);
+    }
+  }
+
+  async function reviewDemandRequest(request, status) {
+    try {
+      await reviewStaffingDemandChangeRequest(request.id, status, reviewNote);
+      await Promise.all([refreshWorkforceRequests(), fetchStaffingDemandRules().then(setStaffingDemandRules)]);
+      onNotify?.(status === "approved" ? "人力需求已核准並套用" : "人力需求申請已退回");
+    } catch (error) {
+      onNotify?.(`人力需求審核失敗：${error.message}`);
+    }
+  }
 
   async function saveShiftTemplate(event) {
     event.preventDefault();
@@ -4751,6 +4811,54 @@ function MonthlyLeavePlanner({
           <span><strong>{syncState}</strong></span>
         </div>
       </div>
+
+      <section className="daily-shift-editor">
+        <div className="panel-head compact-head">
+          <div>
+            <h3>人力需求調整</h3>
+            <p>{isStoreScoped ? "門店提出指定日期與時段的人力需求，總部核准後才會正式套用。" : "審核門店提出的人力需求；核准後自動寫入人力矩陣規則。"}</p>
+          </div>
+        </div>
+        {isStoreScoped ? (
+          <form className="daily-shift-form" onSubmit={submitDemandRequest}>
+            <label>適用日期<input type="date" value={supportDate} onChange={(event) => setSupportDate(event.target.value)} /></label>
+            <label>開始時間<input type="time" step="1800" value={demandRequestForm.start_time} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, start_time: event.target.value })} /></label>
+            <label>結束時間<input type="time" step="1800" value={demandRequestForm.end_time} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, end_time: event.target.value })} /></label>
+            <label>需求人數<input type="number" min="0" step="1" value={demandRequestForm.required_count} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, required_count: event.target.value })} /></label>
+            <label>調整原因<input value={demandRequestForm.reason} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, reason: event.target.value })} placeholder="例如：活動訂單增加" /></label>
+            <div className="staff-admin-actions"><button className="primary" type="submit">送出調整申請</button></div>
+          </form>
+        ) : demandRequests.length > 0 ? (
+          <div className="table-wrap compact"><table>
+            <thead><tr><th>門店</th><th>日期／時段</th><th>需求</th><th>原因</th><th>狀態</th><th>操作</th></tr></thead>
+            <tbody>{demandRequests.map((request) => {
+              const rule = request.proposed_rule || {};
+              return <tr key={request.id}>
+                <td>{request.store_code}</td>
+                <td>{rule.special_date || "-"}<small>{rule.start_time}–{rule.end_time}</small></td>
+                <td>{rule.required_count} 人</td><td>{request.reason}</td><td>{request.status}</td>
+                <td><div className="inline-actions"><button type="button" disabled={request.status !== "pending"} onClick={() => reviewDemandRequest(request, "approved")}>核准</button><button type="button" disabled={request.status !== "pending"} onClick={() => reviewDemandRequest(request, "rejected")}>退回</button></div></td>
+              </tr>;
+            })}</tbody>
+          </table></div>
+        ) : <p className="form-help">目前沒有待處理的人力需求申請。</p>}
+      </section>
+
+      {!isStoreScoped && leaveAuditRows.length > 0 && (
+        <section className="daily-shift-editor">
+          <div className="panel-head compact-head"><div><h3>排假異動紀錄</h3><p>保留修改前後內容、原因、操作者與時間，供總部追溯。</p></div></div>
+          <div className="table-wrap compact"><table>
+            <thead><tr><th>時間</th><th>門店</th><th>人員</th><th>動作</th><th>原因</th><th>休假日變更</th></tr></thead>
+            <tbody>{leaveAuditRows.map((row) => <tr key={row.id}>
+              <td>{new Date(row.changed_at).toLocaleString("zh-TW")}</td><td>{row.store_code}</td>
+              <td>{row.after_data?.employee_name || row.before_data?.employee_name || row.staff_id}</td>
+              <td>{row.action === "insert" ? "新增" : row.action === "delete" ? "刪除" : "修改"}</td>
+              <td>{row.reason}</td>
+              <td>{(row.before_data?.leave_days || []).join("、") || "-"} → {(row.after_data?.leave_days || []).join("、") || "-"}</td>
+            </tr>)}</tbody>
+          </table></div>
+        </section>
+      )}
 
       <section className="daily-shift-editor">
         <div className="panel-head compact-head">

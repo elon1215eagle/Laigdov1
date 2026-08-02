@@ -41,6 +41,11 @@ const STANDARD_SHIFT_TEMPLATE_FIELDS = [
   "created_by", "created_at", "updated_at",
 ].join(", ");
 
+const STAFFING_DEMAND_REQUEST_FIELDS = [
+  "id", "store_code", "reason", "proposed_rule", "status", "requested_by",
+  "reviewed_by", "reviewed_at", "review_note", "resulting_rule_id", "created_at", "updated_at",
+].join(", ");
+
 function isMissingTable(error) {
   return error?.code === "42P01" || /relation .* does not exist/i.test(error?.message || "");
 }
@@ -135,6 +140,56 @@ export function createScheduleRepository(client = null) {
         .eq("id", id)
         .select(STANDARD_SHIFT_TEMPLATE_FIELDS)
         .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async fetchLeavePlanAudit(periodMonth) {
+      if (!client) return [];
+      const { data, error } = await client.from("monthly_leave_plan_audit")
+        .select("id, period_month, staff_id, store_code, action, reason, before_data, after_data, changed_by, changed_at")
+        .eq("period_month", periodMonth)
+        .order("changed_at", { ascending: false })
+        .limit(200);
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+      return data || [];
+    },
+
+    async fetchStaffingDemandChangeRequests() {
+      if (!client) return [];
+      const { data, error } = await client.from("staffing_demand_change_requests")
+        .select(STAFFING_DEMAND_REQUEST_FIELDS)
+        .order("created_at", { ascending: false });
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+      return data || [];
+    },
+
+    async submitStaffingDemandChangeRequest(payload) {
+      if (!client) return { ...payload, id: globalThis.crypto?.randomUUID?.() || String(Date.now()), status: "pending" };
+      const userId = await currentUserId();
+      const { data, error } = await client.from("staffing_demand_change_requests").insert({
+        store_code: payload.store_code,
+        reason: String(payload.reason || "").trim(),
+        proposed_rule: payload.proposed_rule,
+        requested_by: userId,
+      }).select(STAFFING_DEMAND_REQUEST_FIELDS).single();
+      if (error) throw error;
+      return data;
+    },
+
+    async reviewStaffingDemandChangeRequest(id, status, reviewNote = "") {
+      if (!client) return { id, status, review_note: reviewNote };
+      const { data, error } = await client.rpc("review_staffing_demand_change_request", {
+        p_request_id: id,
+        p_status: status,
+        p_review_note: reviewNote,
+      });
       if (error) throw error;
       return data;
     },

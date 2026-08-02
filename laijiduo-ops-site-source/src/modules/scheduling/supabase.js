@@ -23,3 +23,7 @@ export const deleteDailyStaffShift = (...args) => scheduleRepository.deleteDaily
 export const fetchStandardShiftTemplates = (...args) => scheduleRepository.fetchStandardShiftTemplates(...args);
 export const upsertStandardShiftTemplate = (...args) => scheduleRepository.upsertStandardShiftTemplate(...args);
 export const archiveStandardShiftTemplate = (...args) => scheduleRepository.archiveStandardShiftTemplate(...args);
+export const fetchLeavePlanAudit = (...args) => scheduleRepository.fetchLeavePlanAudit(...args);
+export const fetchStaffingDemandChangeRequests = (...args) => scheduleRepository.fetchStaffingDemandChangeRequests(...args);
+export const submitStaffingDemandChangeRequest = (...args) => scheduleRepository.submitStaffingDemandChangeRequest(...args);
+export const reviewStaffingDemandChangeRequest = (...args) => scheduleRepository.reviewStaffingDemandChangeRequest(...args);
