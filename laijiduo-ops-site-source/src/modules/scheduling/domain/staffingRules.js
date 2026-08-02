@@ -251,8 +251,7 @@ export function buildHalfHourStaffingMatrix({
   const start = timeToMinutes(store.open_time, 10 * 60);
   const end = timeToMinutes(store.close_time || store.close_report_time, 23 * 60);
   const targetCodes = storeCodes.length ? storeCodes : [store.store_code || store.code].filter(Boolean);
-  const matrixPeople = people.filter((person) => !isDeliveryStaff(person));
-  const projected = projectDailyStaffShifts({ dateValue, store, people: matrixPeople, overrides, leaveStaffIds, holidayDates })
+  const projected = projectDailyStaffShifts({ dateValue, store, people, overrides, leaveStaffIds, holidayDates })
     .filter((shift) => targetCodes.includes(shift.assignedStoreCode));
   const rows = [];
 

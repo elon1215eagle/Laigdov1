@@ -151,7 +151,7 @@ test("同人同日多段班在各時段正確計入且中斷時不在班", () =>
   assert.equal(rows.find((row) => row.startTime === "16:00").actualCount, 1);
 });
 
-test("送貨人員完全不列入人力矩陣", () => {
+test("送貨人員保留在班顯示但不列入有效人力", () => {
   const rows = buildHalfHourStaffingMatrix({
     dateValue: "2026-07-29",
     store: { code: "S01", open_time: "10:00", close_time: "11:00" },
@@ -162,10 +162,10 @@ test("送貨人員完全不列入人力矩陣", () => {
     demand: 2,
     storeCodes: ["S01"],
   });
-  assert.equal(rows[0].actualCount, 1);
+  assert.equal(rows[0].actualCount, 2);
   assert.equal(rows[0].effectiveCount, 1);
   assert.equal(rows[0].gap, 1);
-  assert.deepEqual(rows[0].peopleNames, ["正式人員"]);
+  assert.deepEqual(rows[0].peopleNames, ["正式人員", "送貨人員"]);
 });
 
 test("兼職後勤保留在班紀錄但不列入有效人力", () => {
