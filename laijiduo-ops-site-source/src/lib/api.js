@@ -807,11 +807,20 @@ export async function upsertStoreStaffMember(payload) {
     if (start && end <= start) throw new Error(`${label}下班時間需晚於上班時間`);
   }
 
-  const result = await supabase
-    .from("store_staff")
-    .upsert(cleanPayload, { onConflict: "id" })
-    .select(COMPATIBLE_STORE_STAFF_FIELDS)
-    .single();
+  const secureResult = await supabase.rpc("upsert_store_staff_secure", {
+    p_payload: cleanPayload,
+  });
+  const secureRpcMissing = secureResult.error?.code === "PGRST202" || secureResult.error?.code === "42883";
+  const result = secureRpcMissing
+    ? await supabase
+      .from("store_staff")
+      .upsert(cleanPayload, { onConflict: "id" })
+      .select(COMPATIBLE_STORE_STAFF_FIELDS)
+      .single()
+    : {
+      data: Array.isArray(secureResult.data) ? secureResult.data[0] : secureResult.data,
+      error: secureResult.error,
+    };
   let data = result.data;
   let error = result.error;
   if (error && isMissingSupabaseColumn(error)) {
