@@ -12,6 +12,8 @@ export {
   validateTimeWindow,
 } from "./domain/staffingRules.js";
 
+export { buildStaffingDemandRule, resolveStaffingDemand } from "./domain/staffingDemand.js";
+
 export {
   normalizeStoreScopedScheduleCode,
   scheduleGroupForStore,
