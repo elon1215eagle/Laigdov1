@@ -113,6 +113,8 @@ import {
 } from "./lib/storeScope";
 import {
   buildHalfHourStaffingMatrix,
+  buildPrintableScheduleHtml,
+  buildScheduleExportModel,
   buildDailyShiftCommand,
   buildScheduleChangeRequest,
   buildStaffingSegments,
@@ -125,6 +127,7 @@ import {
   mergeDailyShift,
   normalizeStoreScopedScheduleCode,
   projectDailyStaffShifts,
+  renderScheduleStoreCanvas,
   removeDailyShiftById,
   scheduleApprovalAllows,
   scheduleGroupForStore,
@@ -3714,6 +3717,14 @@ function MonthlyLeavePlanner({
     people: staffRoster,
     salaryRows,
   });
+  const scheduleExportModel = buildScheduleExportModel({
+    periodMonth: leaveMonth,
+    storeGroups,
+    drafts,
+    dailyShifts,
+    version: scheduleControl.lock?.schedule_version || 1,
+    needsReconfirmation: scheduleControl.lock?.needs_reconfirmation,
+  });
   const matrixGapRows = matrixRows.filter((row) => row.gap > 0);
   const matrixPeakGapRows = matrixGapRows.filter((row) => row.isPeak);
   const lockStatusText = scheduleLockStatusText({
@@ -3749,6 +3760,53 @@ function MonthlyLeavePlanner({
       end_time: "",
       note: "",
     });
+  }
+
+  function printSchedule() {
+    const printWindow = window.open("", "_blank");
+    if (!printWindow) return onNotify?.("瀏覽器已阻擋列印視窗，請允許彈出視窗後再試一次");
+    printWindow.document.open();
+    printWindow.document.write(buildPrintableScheduleHtml(scheduleExportModel));
+    printWindow.document.close();
+    printWindow.focus();
+    window.setTimeout(() => printWindow.print(), 250);
+  }
+
+  async function scheduleImageFile() {
+    const selectedIndex = Math.max(0, scheduleExportModel.stores.findIndex((store) => store.code === selectedMatrixGroup?.code));
+    const canvas = renderScheduleStoreCanvas(scheduleExportModel, selectedIndex);
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("班表圖片產生失敗");
+    const store = scheduleExportModel.stores[selectedIndex];
+    return new File([blob], `萊吉多-${leaveMonth}-${store.code}-班表-V${scheduleExportModel.version}.png`, { type: "image/png" });
+  }
+
+  async function downloadScheduleImage() {
+    try {
+      const file = await scheduleImageFile();
+      const url = URL.createObjectURL(file);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = file.name;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      onNotify?.(error.message);
+    }
+  }
+
+  async function shareScheduleImage() {
+    try {
+      const file = await scheduleImageFile();
+      if (navigator.share && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ title: `萊吉多 ${leaveMonth} 班表`, text: `班表 V${scheduleExportModel.version}`, files: [file] });
+      } else {
+        await downloadScheduleImage();
+        onNotify?.("此裝置不支援直接分享，已下載圖片，可傳送至 LINE 群組");
+      }
+    } catch (error) {
+      if (error.name !== "AbortError") onNotify?.(`分享失敗：${error.message}`);
+    }
   }
 
   async function saveDailyShift(event) {
@@ -4242,6 +4300,9 @@ function MonthlyLeavePlanner({
           <button type="button" onClick={() => downloadTextFile(buildLeavePlannerCsv({ month: leaveMonth, rows: plannerRows, drafts, salaryRows }), `萊吉多${leaveMonth}排假表.csv`)}>
             匯出排假
           </button>
+          <button type="button" onClick={printSchedule}>A4／PDF</button>
+          <button type="button" onClick={downloadScheduleImage}>下載圖片</button>
+          <button type="button" onClick={shareScheduleImage}>分享班表</button>
           {!isStoreScoped && <button type="button" onClick={clearMonth} disabled={!canBulkEditSchedule}>清空本月</button>}
         </div>
       </div>

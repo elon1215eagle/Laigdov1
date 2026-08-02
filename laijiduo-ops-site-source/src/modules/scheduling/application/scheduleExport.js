@@ -1,0 +1,94 @@
+function leaveDaysFromDraft(draft = {}) {
+  const source = Array.isArray(draft.dates) ? draft.dates : String(draft.dates || "").split(/[，,\s]+/);
+  return new Set(source.map(Number).filter((day) => day >= 1 && day <= 31));
+}
+
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  })[character]);
+}
+
+export function buildScheduleExportModel({
+  periodMonth,
+  storeGroups,
+  drafts,
+  dailyShifts = [],
+  version = 1,
+  needsReconfirmation = false,
+  generatedAt = new Date().toISOString(),
+}) {
+  const [year, month] = periodMonth.split("-").map(Number);
+  const dayCount = new Date(year, month, 0).getDate();
+  const days = Array.from({ length: dayCount }, (_, index) => index + 1);
+  return {
+    periodMonth,
+    version: Number(version || 1),
+    needsReconfirmation: Boolean(needsReconfirmation),
+    generatedAt,
+    days,
+    stores: storeGroups.map((store) => ({
+      code: store.code,
+      name: store.name,
+      staff: store.staff.map((person) => ({
+        id: String(person.id),
+        name: person.employeeName || person.employee_name || "",
+        role: person.role || person.role_name || "",
+        leaveDays: [...leaveDaysFromDraft(drafts[`${periodMonth}:${person.id}`])],
+      })),
+      shifts: dailyShifts.filter((shift) => store.sourceCodes.includes(shift.home_store_code) || store.sourceCodes.includes(shift.assigned_store_code)),
+    })),
+  };
+}
+
+export function buildPrintableScheduleHtml(model) {
+  const status = model.needsReconfirmation ? "異動後待總部重新確認" : "已核定版本";
+  const stores = model.stores.map((store) => {
+    const rows = store.staff.map((person) => `<tr><th>${escapeHtml(person.name)}<small>${escapeHtml(person.role)}</small></th>${model.days.map((day) => `<td class="${person.leaveDays.includes(day) ? "leave" : ""}">${person.leaveDays.includes(day) ? "休" : ""}</td>`).join("")}</tr>`).join("");
+    const shifts = store.shifts.length ? `<h3>特殊班次／跨店支援</h3><ul>${store.shifts.map((shift) => `<li>${escapeHtml(shift.shift_date)} ${escapeHtml(shift.employee_name)} ${escapeHtml(shift.home_store_code)} → ${escapeHtml(shift.assigned_store_code)} ${escapeHtml(String(shift.start_time).slice(0, 5))}–${escapeHtml(String(shift.end_time).slice(0, 5))}</li>`).join("")}</ul>` : "";
+    return `<section><h2>${escapeHtml(store.code)} ${escapeHtml(store.name)}</h2><table><thead><tr><th>人員</th>${model.days.map((day) => `<th>${day}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>${shifts}</section>`;
+  }).join("");
+  return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>萊吉多 ${escapeHtml(model.periodMonth)} 班表</title><style>
+  @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:"Microsoft JhengHei",sans-serif;color:#231815;margin:0}header{border-bottom:3px solid #e63b21;padding-bottom:8px;margin-bottom:10px}h1{font-size:22px;margin:0 0 5px}header p{margin:2px 0;font-size:11px}section{page-break-after:always}section:last-child{page-break-after:auto}h2{font-size:17px;margin:8px 0}h3{font-size:13px;margin:10px 0 4px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:9px}th,td{border:1px solid #888;text-align:center;padding:3px 1px}th:first-child{width:90px;text-align:left;padding-left:4px}th small{display:block;font-weight:400;color:#666}.leave{background:#ffe0d8;color:#c42e18;font-weight:700}ul{columns:2;font-size:10px;margin-top:4px}.warn{color:#b42318;font-weight:700}@media print{button{display:none}}
+  </style></head><body><header><h1>萊吉多 ${escapeHtml(model.periodMonth)} 月班表</h1><p>版本 V${model.version} · ${status}</p><p>產生時間：${escapeHtml(new Date(model.generatedAt).toLocaleString("zh-TW"))}</p></header>${stores}</body></html>`;
+}
+
+export function renderScheduleStoreCanvas(model, storeIndex = 0) {
+  const store = model.stores[storeIndex];
+  if (!store) throw new Error("目前沒有可輸出的門店班表");
+  const width = 1600;
+  const rowHeight = 54;
+  const height = 150 + Math.max(store.staff.length, 1) * rowHeight + 80;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const context = canvas.getContext("2d");
+  context.fillStyle = "#fff";
+  context.fillRect(0, 0, width, height);
+  context.fillStyle = "#231815";
+  context.font = "bold 34px Microsoft JhengHei";
+  context.fillText(`萊吉多 ${model.periodMonth} ${store.code} ${store.name} 班表`, 36, 48);
+  context.font = "20px Microsoft JhengHei";
+  context.fillText(`V${model.version} · ${model.needsReconfirmation ? "異動後待重新確認" : "已核定"} · ${new Date(model.generatedAt).toLocaleString("zh-TW")}`, 36, 82);
+  const nameWidth = 210;
+  const dayWidth = (width - nameWidth - 40) / model.days.length;
+  context.strokeStyle = "#777";
+  context.font = "18px Microsoft JhengHei";
+  model.days.forEach((day, index) => context.fillText(String(day), nameWidth + index * dayWidth + 8, 125));
+  store.staff.forEach((person, rowIndex) => {
+    const y = 140 + rowIndex * rowHeight;
+    context.fillStyle = "#231815";
+    context.fillText(`${person.name} ${person.role}`, 36, y + 34);
+    model.days.forEach((day, dayIndex) => {
+      const x = nameWidth + dayIndex * dayWidth;
+      context.strokeRect(x, y, dayWidth, rowHeight);
+      if (person.leaveDays.includes(day)) {
+        context.fillStyle = "#ffe0d8";
+        context.fillRect(x + 1, y + 1, dayWidth - 2, rowHeight - 2);
+        context.fillStyle = "#c42e18";
+        context.fillText("休", x + 8, y + 34);
+      }
+    });
+  });
+  return canvas;
+}
