@@ -9,7 +9,13 @@ const MONTHLY_LEAVE_FIELDS = [
 
 const MONTHLY_SCHEDULE_LOCK_FIELDS = [
   "period_month", "is_confirmed", "confirmed_by", "confirmed_at",
-  "note", "created_at", "updated_at",
+  "schedule_version", "needs_reconfirmation", "note", "created_at", "updated_at",
+].join(", ");
+
+const SUPPORT_SHIFT_REQUEST_FIELDS = [
+  "id", "shift_date", "staff_id", "employee_name", "home_store_code", "assigned_store_code",
+  "start_time", "end_time", "note", "status", "requested_by", "reviewed_by", "reviewed_at",
+  "review_note", "resulting_shift_id", "created_at", "updated_at",
 ].join(", ");
 
 const MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS = [
@@ -121,7 +127,7 @@ export function createScheduleRepository(client = null) {
 
     async fetchMonthlyScheduleControl(periodMonth) {
       if (!client) return { lock: null, requests: [] };
-      const [lockResult, requestResult] = await Promise.all([
+      const [lockResult, requestResult, supportResult] = await Promise.all([
         client
           .from("monthly_schedule_locks")
           .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
@@ -132,13 +138,21 @@ export function createScheduleRepository(client = null) {
           .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
           .eq("period_month", periodMonth)
           .order("updated_at", { ascending: false }),
+        client
+          .from("support_shift_requests")
+          .select(SUPPORT_SHIFT_REQUEST_FIELDS)
+          .gte("shift_date", `${periodMonth}-01`)
+          .lt("shift_date", nextMonthStart(periodMonth))
+          .order("created_at", { ascending: false }),
       ]);
       if (lockResult.error && !isMissingTable(lockResult.error)) throw lockResult.error;
       if (requestResult.error && !isMissingTable(requestResult.error)) throw requestResult.error;
+      if (supportResult.error && !isMissingTable(supportResult.error)) throw supportResult.error;
       return {
         lock: lockResult.error ? null : lockResult.data,
         requests: requestResult.error ? [] : requestResult.data,
-        missingTable: Boolean(lockResult.error || requestResult.error),
+        supportRequests: supportResult.error ? [] : supportResult.data,
+        missingTable: Boolean(lockResult.error || requestResult.error || supportResult.error),
       };
     },
 
@@ -153,6 +167,7 @@ export function createScheduleRepository(client = null) {
           is_confirmed: true,
           confirmed_by: userId,
           confirmed_at: now,
+          needs_reconfirmation: false,
           note,
         }, { onConflict: "period_month" })
         .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
@@ -233,6 +248,36 @@ export function createScheduleRepository(client = null) {
         .eq("id", id)
         .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
         .single();
+      if (error) throw error;
+      return data;
+    },
+
+    async submitSupportShiftRequest(payload) {
+      if (!client) return { ...payload, id: globalThis.crypto?.randomUUID?.() || String(Date.now()), status: "pending" };
+      const userId = await currentUserId();
+      const { data, error } = await client.from("support_shift_requests").insert({
+        shift_date: payload.shift_date,
+        staff_id: payload.staff_id,
+        employee_name: payload.employee_name || "",
+        home_store_code: payload.home_store_code,
+        assigned_store_code: payload.assigned_store_code,
+        start_time: payload.start_time,
+        end_time: payload.end_time,
+        note: payload.note || "",
+        status: "pending",
+        requested_by: userId,
+      }).select(SUPPORT_SHIFT_REQUEST_FIELDS).single();
+      if (error) throw error;
+      return data;
+    },
+
+    async reviewSupportShiftRequest(id, status, reviewNote = "") {
+      if (!client) return { id, status, review_note: reviewNote };
+      const { data, error } = await client.rpc("review_support_shift_request", {
+        p_request_id: id,
+        p_status: status,
+        p_review_note: reviewNote,
+      });
       if (error) throw error;
       return data;
     },

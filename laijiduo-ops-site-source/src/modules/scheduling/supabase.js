@@ -9,6 +9,8 @@ export const confirmMonthlySchedule = (...args) => scheduleRepository.confirmMon
 export const unlockMonthlySchedule = (...args) => scheduleRepository.unlockMonthlySchedule(...args);
 export const submitMonthlyScheduleChangeRequest = (...args) => scheduleRepository.submitMonthlyScheduleChangeRequest(...args);
 export const reviewMonthlyScheduleChangeRequest = (...args) => scheduleRepository.reviewMonthlyScheduleChangeRequest(...args);
+export const submitSupportShiftRequest = (...args) => scheduleRepository.submitSupportShiftRequest(...args);
+export const reviewSupportShiftRequest = (...args) => scheduleRepository.reviewSupportShiftRequest(...args);
 export const fetchDailyStaffShifts = (...args) => scheduleRepository.fetchDailyStaffShifts(...args);
 export const upsertDailyStaffShift = (...args) => scheduleRepository.upsertDailyStaffShift(...args);
 export const deleteDailyStaffShift = (...args) => scheduleRepository.deleteDailyStaffShift(...args);

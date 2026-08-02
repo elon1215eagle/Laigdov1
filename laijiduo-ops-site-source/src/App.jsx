@@ -140,7 +140,9 @@ import {
   fetchMonthlyScheduleControl,
   fetchTemporarySupportSummary,
   reviewMonthlyScheduleChangeRequest,
+  reviewSupportShiftRequest,
   submitMonthlyScheduleChangeRequest,
+  submitSupportShiftRequest,
   unlockMonthlySchedule,
   upsertDailyStaffShift,
   upsertMonthlyLeavePlan,
@@ -3433,7 +3435,7 @@ function MonthlyLeavePlanner({
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
   const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
   const [uploadingCode, setUploadingCode] = useState("");
-  const [scheduleControl, setScheduleControl] = useState({ lock: null, requests: [], missingTable: false });
+  const [scheduleControl, setScheduleControl] = useState({ lock: null, requests: [], supportRequests: [], missingTable: false });
   const [controlLoading, setControlLoading] = useState(false);
   const [requestReason, setRequestReason] = useState("");
   const [requestScope, setRequestScope] = useState({ type: "date", date: today, staffId: "", shiftId: "" });
@@ -3513,29 +3515,24 @@ function MonthlyLeavePlanner({
     loadScheduleControl();
   }, [leaveMonth]);
 
-  useEffect(() => {
-    let active = true;
-    async function loadDailyShifts() {
-      if (!hasSupabaseConfig) {
-        try {
-          const rows = JSON.parse(localStorage.getItem(`daily-staff-shifts:${leaveMonth}`) || "[]");
-          if (active) setDailyShifts(rows);
-        } catch {
-          if (active) setDailyShifts([]);
-        }
-        return;
-      }
+  async function refreshDailyShifts() {
+    if (!hasSupabaseConfig) {
       try {
-        const rows = await fetchDailyStaffShifts(leaveMonth);
-        if (active) setDailyShifts(rows);
-      } catch (error) {
-        if (active) onNotify?.(`單日班次讀取失敗：${error.message}`);
+        setDailyShifts(JSON.parse(localStorage.getItem(`daily-staff-shifts:${leaveMonth}`) || "[]"));
+      } catch {
+        setDailyShifts([]);
       }
+      return;
     }
-    loadDailyShifts();
-    return () => {
-      active = false;
-    };
+    try {
+      setDailyShifts(await fetchDailyStaffShifts(leaveMonth));
+    } catch (error) {
+      onNotify?.(`單日班次讀取失敗：${error.message}`);
+    }
+  }
+
+  useEffect(() => {
+    refreshDailyShifts();
   }, [leaveMonth]);
 
   useEffect(() => {
@@ -3783,6 +3780,13 @@ function MonthlyLeavePlanner({
     }
     setShiftSaving(true);
     try {
+      if (isStoreScoped && payload.shift_type === "support") {
+        await submitSupportShiftRequest(payload);
+        resetShiftForm(payload.shift_date);
+        await loadScheduleControl();
+        onNotify?.("跨店支援申請已送出，總部核准後會自動寫入雙方班表");
+        return;
+      }
       const saved = await upsertDailyStaffShift(payload);
       setDailyShifts((current) => {
         const next = mergeDailyShift(current, saved);
@@ -3870,6 +3874,17 @@ function MonthlyLeavePlanner({
       onNotify?.(status === "approved" ? `${request.store_name} 已開放修改` : `${request.store_name} 申請已處理`);
     } catch (error) {
       onNotify?.(`申請處理失敗：${error.message}`);
+    }
+  }
+
+  async function reviewSupportRequest(request, status) {
+    try {
+      await reviewSupportShiftRequest(request.id, status, reviewNote);
+      setReviewNote("");
+      await Promise.all([loadScheduleControl(), refreshDailyShifts()]);
+      onNotify?.(status === "approved" ? `${request.employee_name} 跨店支援已核准並寫入班表` : "跨店支援申請已退回");
+    } catch (error) {
+      onNotify?.(`跨店支援處理失敗：${error.message}`);
     }
   }
 
@@ -4236,6 +4251,7 @@ function MonthlyLeavePlanner({
           <span>排班確認狀態</span>
           <strong>{lockStatusText}</strong>
           {scheduleControl.lock?.confirmed_at && <p>確認時間：{new Date(scheduleControl.lock.confirmed_at).toLocaleString("zh-TW")}</p>}
+          {scheduleControl.lock?.needs_reconfirmation && <p className="warn-text">班表已有核准異動，請總部重新確認最新版本。</p>}
           {scheduleControl.missingTable && <p>請先執行 Supabase migration，才會正式啟用跨裝置鎖版。</p>}
         </div>
         {!isStoreScoped ? (
@@ -4337,6 +4353,38 @@ function MonthlyLeavePlanner({
                         </button>
                       </div>
                     </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {scheduleControl.supportRequests?.length > 0 && (
+        <section className="schedule-request-review">
+          <div className="panel-head compact-head">
+            <div>
+              <h3>跨店支援申請</h3>
+              <p>門店只能提出申請；總部核准後，系統才會把班次正式寫入原店與支援店。</p>
+            </div>
+          </div>
+          <div className="table-wrap compact">
+            <table>
+              <thead><tr><th>日期</th><th>人員</th><th>支援流向</th><th>時間</th><th>原因</th><th>狀態</th>{!isStoreScoped && <th>操作</th>}</tr></thead>
+              <tbody>
+                {scheduleControl.supportRequests.map((request) => (
+                  <tr key={request.id}>
+                    <td>{request.shift_date}</td>
+                    <td>{request.employee_name}</td>
+                    <td>{request.home_store_code} → {request.assigned_store_code}</td>
+                    <td>{formatTime24(request.start_time)}–{formatTime24(request.end_time)}</td>
+                    <td>{request.note || "-"}</td>
+                    <td><span className={`chip ${request.status === "approved" ? "good" : request.status === "pending" ? "warn" : ""}`}>{request.status === "pending" ? "待總部核准" : request.status === "approved" ? "已核准" : request.status === "rejected" ? "已退回" : "已取消"}</span></td>
+                    {!isStoreScoped && <td><div className="inline-actions">
+                      <button type="button" disabled={request.status !== "pending"} onClick={() => reviewSupportRequest(request, "approved")}>核准支援</button>
+                      <button type="button" disabled={request.status !== "pending"} onClick={() => reviewSupportRequest(request, "rejected")}>退回</button>
+                    </div></td>}
                   </tr>
                 ))}
               </tbody>
