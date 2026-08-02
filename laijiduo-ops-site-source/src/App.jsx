@@ -20,6 +20,7 @@ import {
   fetchStoreStaff,
   fetchStores,
   getSessionProfile,
+  hasSalaryAccess,
   hasSupabaseConfig,
   reviewReport,
   reviewDailyReportChangeRequest,
@@ -28,6 +29,7 @@ import {
   saveStaffPositionSkills,
   signIn,
   signOut,
+  requestCooSalaryAccess,
   statusLabel,
   updateStoreMonthlyTarget,
   upsertHandover,
@@ -306,6 +308,7 @@ function AuthenticatedApp() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [securitySettings, setSecuritySettings] = useState(defaultSecuritySettings);
+  const [salaryAccessExpiresAt, setSalaryAccessExpiresAt] = useState("");
 
   function clearWorkspaceState() {
     setStores([]);
@@ -391,6 +394,8 @@ function AuthenticatedApp() {
   }, []);
 
   const currentRole = profileRole(profile);
+  const canViewSalary = ["ceo", "cfo"].includes(currentRole)
+    || (currentRole === "coo" && new Date(salaryAccessExpiresAt).getTime() > Date.now());
   const selectedReport = findStoreScopedRecord(reports, selectedStoreId) || (currentRole === "store_manager" ? null : reports[0]);
   const activeModuleAllowed = canAccessModule(currentRole, activeModule);
 
@@ -400,6 +405,26 @@ function AuthenticatedApp() {
       setActiveModule(defaultModuleForRole(currentRole));
     }
   }, [activeModule, currentRole, profile, role]);
+
+  useEffect(() => {
+    if (!profile || currentRole !== "coo") return;
+    hasSalaryAccess()
+      .then((allowed) => setSalaryAccessExpiresAt(allowed ? new Date(Date.now() + 15 * 60 * 1000).toISOString() : ""))
+      .catch(() => setSalaryAccessExpiresAt(""));
+  }, [currentRole, profile]);
+
+  async function unlockSalaryAccess() {
+    const reason = window.prompt("請輸入本次查看薪資資料的管理原因（至少 3 個字）");
+    if (!reason) return;
+    try {
+      const expiry = await requestCooSalaryAccess(reason);
+      setSalaryAccessExpiresAt(expiry);
+      await loadWorkspace();
+      show("薪資資料已解鎖 15 分鐘，系統已留下稽核紀錄");
+    } catch (error) {
+      show(`薪資解鎖失敗：${error.message}`);
+    }
+  }
 
   if (activeModule === "inspection" && activeModuleAllowed) {
     return <InspectionApp onBack={() => setActiveModule("ops")} />;
@@ -936,6 +961,8 @@ function AuthenticatedApp() {
             storeHours={storeHoursSeed}
             staffRoster={staffRoster}
             currentRole={currentRole}
+            canViewSalary={canViewSalary}
+            onUnlockSalary={unlockSalaryAccess}
             onSaveStaffMember={saveStaffMember}
             onDeleteStaffMember={removeStaffMember}
             onTransferStaffMember={transferStaffMember}
@@ -958,6 +985,7 @@ function AuthenticatedApp() {
             selectedStoreId={selectedStoreId}
             selectedReport={selectedReport}
             currentRole={currentRole}
+            canViewSalary={canViewSalary}
             storeRelationGroups={storeRelationGroups}
             onNotify={show}
           />
@@ -2821,7 +2849,7 @@ function applyPerformanceCalculation(form, patch = {}) {
   };
 }
 
-function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster, currentRole, onSaveStaffMember, onDeleteStaffMember, onTransferStaffMember }) {
+function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster, currentRole, canViewSalary, onUnlockSalary, onSaveStaffMember, onDeleteStaffMember, onTransferStaffMember }) {
   const selectedStore = stores.find((store) => store.store_id === selectedStoreId || store.id === selectedStoreId);
   const normalizedSelectedName = normalizeStoreName(selectedStore?.name);
   const selectedStoreName = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizedSelectedName)?.storeName || storeHours[0]?.storeName || "";
@@ -2831,6 +2859,8 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
   const uncoveredStores = activeStoreNames.filter((storeName) => !managers.some((row) => normalizeStoreName(row.storeName) === normalizeStoreName(storeName)));
   const byRole = salaryRows.map((salary) => ({
     ...salary,
+    base_salary: canViewSalary ? salary.base_salary : "已遮蔽",
+    performance_bonus: canViewSalary ? salary.performance_bonus : "已遮蔽",
     count: staffRoster.filter((row) => row.role === salary.role || (salary.role === "送貨人員" && row.role === "送貨人員")).length,
   }));
 
@@ -3026,11 +3056,13 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             )}
             <label>
               預估時薪成本（選填）
-              <input type="number" min="0" step="1" value={staffForm.estimated_hourly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_hourly_cost: event.target.value })} />
+              {canViewSalary
+                ? <input type="number" min="0" step="1" value={staffForm.estimated_hourly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_hourly_cost: event.target.value })} />
+                : currentRole === "coo" ? <button type="button" onClick={onUnlockSalary}>限時解鎖</button> : <span>已遮蔽</span>}
             </label>
             <label>
               預估月薪成本（選填）
-              <input type="number" min="0" step="1" value={staffForm.estimated_monthly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_monthly_cost: event.target.value })} />
+              {canViewSalary ? <input type="number" min="0" step="1" value={staffForm.estimated_monthly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_monthly_cost: event.target.value })} /> : <span>已遮蔽</span>}
             </label>
             <label>
               排序
@@ -3519,6 +3551,7 @@ function MonthlyLeavePlanner({
   isStoreScoped = false,
   staffRoster,
   salaryRows,
+  canViewSalary = false,
   storeHours,
   storeRelationGroups = STORE_RELATION_GROUPS,
   onNotify,
@@ -4984,9 +5017,9 @@ function MonthlyLeavePlanner({
               )}
               <span className={matrixPeakGapRows.length ? "negative" : "positive"}><strong>{matrixPeakGapRows.length}</strong> 個尖峰缺口</span>
               <span><strong>{matrixGapRows.length}</strong> 個全日缺口</span>
-              <span><strong>{matrixLaborCost.totalHours.toFixed(1)}</strong> 預估工時</span>
-              <span><strong>{money(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>
-              {matrixLaborCost.missingCostStaffCount > 0 && <span className="warn-text"><strong>{matrixLaborCost.missingCostStaffCount}</strong> 人成本待補</span>}
+              {canViewSalary && <span><strong>{matrixLaborCost.totalHours.toFixed(1)}</strong> 預估工時</span>}
+              {canViewSalary && <span><strong>{money(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>}
+              {canViewSalary && matrixLaborCost.missingCostStaffCount > 0 && <span className="warn-text"><strong>{matrixLaborCost.missingCostStaffCount}</strong> 人成本待補</span>}
             </div>
           </div>
           <div className="table-wrap staffing-matrix-wrap">
@@ -5258,6 +5291,7 @@ function ScheduleModule({
   profile,
   storeRelationGroups,
   onNotify,
+  canViewSalary,
 }) {
   const [scheduleView, setScheduleView] = useState("week");
   const isStoreScoped = currentRole === "store_manager";
@@ -5324,6 +5358,7 @@ function ScheduleModule({
         isStoreScoped={isStoreScoped}
         staffRoster={staffRoster}
         salaryRows={salaryRows}
+        canViewSalary={canViewSalary}
         storeHours={storeHours}
         storeRelationGroups={storeRelationGroups}
         onNotify={onNotify}

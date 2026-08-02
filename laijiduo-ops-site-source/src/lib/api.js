@@ -675,12 +675,15 @@ export async function fetchStaffPerformance(periodMonth = new Date().toISOString
 
 export async function fetchStoreStaff() {
   if (!supabase) return staffRosterSeed;
-  const result = await supabase
+  const secureResult = await supabase.rpc("get_store_staff_secure");
+  const result = secureResult.error?.code === "PGRST202" || secureResult.error?.code === "42883"
+    ? await supabase
     .from("store_staff")
     .select(STORE_STAFF_FIELDS)
     .order("store_code")
     .order("sort_order")
-    .order("employee_name");
+    .order("employee_name")
+    : secureResult;
   let data = result.data;
   let error = result.error;
   if (error && isMissingSupabaseColumn(error)) {
@@ -721,6 +724,21 @@ export async function fetchStoreStaff() {
       Number(a.sort_order || 999) - Number(b.sort_order || 999) ||
       String(a.employeeName || "").localeCompare(String(b.employeeName || ""), "zh-Hant")
     ));
+}
+
+export async function hasSalaryAccess() {
+  if (!supabase) return true;
+  const { data, error } = await supabase.rpc("has_salary_access");
+  if (error?.code === "PGRST202" || error?.code === "42883") return false;
+  if (error) throw error;
+  return Boolean(data);
+}
+
+export async function requestCooSalaryAccess(reason) {
+  if (!supabase) return new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  const { data, error } = await supabase.rpc("request_coo_salary_access", { p_reason: reason });
+  if (error) throw error;
+  return data;
 }
 
 const staffStoreAssignmentRepository = createStaffStoreAssignmentRepository(supabase);
@@ -792,7 +810,7 @@ export async function upsertStoreStaffMember(payload) {
   const result = await supabase
     .from("store_staff")
     .upsert(cleanPayload, { onConflict: "id" })
-    .select(STORE_STAFF_FIELDS)
+    .select(COMPATIBLE_STORE_STAFF_FIELDS)
     .single();
   let data = result.data;
   let error = result.error;
