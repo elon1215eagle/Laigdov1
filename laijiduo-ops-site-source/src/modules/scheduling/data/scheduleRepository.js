@@ -239,6 +239,11 @@ export function createScheduleRepository(client = null) {
     async upsertMonthlyLeavePlan(payload) {
       if (!client) return buildLeavePayload(payload, null);
       const userId = await currentUserId();
+      const rpcResult = await client.rpc("upsert_monthly_leave_plans_new", {
+        p_rows: [buildLeavePayload(payload, userId)],
+      });
+      if (!rpcResult.error) return rpcResult.data?.[0];
+      if (!isMissingFunction(rpcResult.error)) throw rpcResult.error;
       const { data, error } = await client
         .from("monthly_leave_plans")
         .upsert(buildLeavePayload(payload, userId), { onConflict: "period_month,staff_id" })
@@ -252,9 +257,13 @@ export function createScheduleRepository(client = null) {
       if (!payloads.length) return [];
       if (!client) return payloads.map((payload) => buildLeavePayload(payload, null));
       const userId = await currentUserId();
+      const cleanRows = payloads.map((payload) => buildLeavePayload(payload, userId));
+      const rpcResult = await client.rpc("upsert_monthly_leave_plans_new", { p_rows: cleanRows });
+      if (!rpcResult.error) return rpcResult.data || [];
+      if (!isMissingFunction(rpcResult.error)) throw rpcResult.error;
       const { data, error } = await client
         .from("monthly_leave_plans")
-        .upsert(payloads.map((payload) => buildLeavePayload(payload, userId)), {
+        .upsert(cleanRows, {
           onConflict: "period_month,staff_id",
         })
         .select(MONTHLY_LEAVE_FIELDS);
@@ -523,15 +532,14 @@ export function createScheduleRepository(client = null) {
       };
       if (!client) return cleanPayload;
       const userId = await currentUserId();
-      const { data, error } = await client
-        .from("daily_staff_shifts")
-        .upsert({
-          ...cleanPayload,
-          created_by: userId,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "id" })
-        .select(DAILY_STAFF_SHIFT_FIELDS)
-        .single();
+      const rpcResult = await client.rpc("upsert_daily_staff_shift_new", {
+        p_row: { ...cleanPayload, created_by: userId },
+      });
+      if (!rpcResult.error) return rpcResult.data;
+      if (!isMissingFunction(rpcResult.error)) throw rpcResult.error;
+      const { data, error } = await client.from("daily_staff_shifts")
+        .upsert({ ...cleanPayload, created_by: userId, updated_at: new Date().toISOString() }, { onConflict: "id" })
+        .select(DAILY_STAFF_SHIFT_FIELDS).single();
       if (error?.code === "23P01") throw new Error("此人員在同一天已有重疊班次，請調整起迄時間");
       if (error) throw error;
       return data;
@@ -539,6 +547,9 @@ export function createScheduleRepository(client = null) {
 
     async deleteDailyStaffShift(shiftId) {
       if (!client || !shiftId) return;
+      const rpcResult = await client.rpc("delete_daily_staff_shift_new", { p_shift_id: shiftId });
+      if (!rpcResult.error) return;
+      if (!isMissingFunction(rpcResult.error)) throw rpcResult.error;
       const { error } = await client.from("daily_staff_shifts").delete().eq("id", shiftId);
       if (error) throw error;
     },
