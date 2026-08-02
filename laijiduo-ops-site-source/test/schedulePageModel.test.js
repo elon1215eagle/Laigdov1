@@ -7,6 +7,7 @@ import {
   deriveScheduleAccess,
   findOverlappingShift,
   mergeDailyShift,
+  scheduleApprovalAllows,
   scheduleLockStatusText,
 } from "../src/modules/scheduling/index.js";
 
@@ -30,7 +31,7 @@ test("總部確認後門店鎖定，核可申請後才可修改", () => {
     requestStoreCode: "S01-S06",
     scheduleControl: {
       lock: { is_confirmed: true },
-      requests: [{ store_code: "S01-S06", status: "approved" }],
+      requests: [{ store_code: "S01-S06", status: "approved", approved_until: new Date(Date.now() + 60_000).toISOString() }],
     },
   });
   assert.equal(locked.canEdit, false);
@@ -102,11 +103,22 @@ test("修改申請需有原因並產生標準命令", () => {
   const valid = buildScheduleChangeRequest({
     periodMonth: "2026-07",
     reason: " 調整兼職支援時段 ",
+    scopeType: "staff",
+    targetStaffId: "staff-1",
     storeCode: "S01-S06",
     storeName: "鳳山五甲店 + 鳳山南華店",
   });
   assert.equal(empty.valid, false);
   assert.equal(valid.payload.reason, "調整兼職支援時段");
+  assert.equal(valid.payload.target_staff_id, "staff-1");
+});
+
+test("精準核准只允許指定範圍且逾時或使用後失效", () => {
+  const active = { status: "approved", scope_type: "date", target_date: "2026-08-02", approved_until: new Date(Date.now() + 60_000).toISOString(), used_at: null };
+  assert.equal(scheduleApprovalAllows(active, { date: "2026-08-02" }), true);
+  assert.equal(scheduleApprovalAllows(active, { date: "2026-08-03" }), false);
+  assert.equal(scheduleApprovalAllows({ ...active, used_at: new Date().toISOString() }, { date: "2026-08-02" }), false);
+  assert.equal(scheduleApprovalAllows({ ...active, approved_until: "2020-01-01T00:00:00Z" }, { date: "2026-08-02" }), false);
 });
 
 test("排班確認狀態文字依環境與鎖定狀態產生", () => {

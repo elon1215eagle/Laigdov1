@@ -35,5 +35,6 @@ export {
   deriveScheduleAccess,
   mergeDailyShift,
   removeDailyShiftById,
+  scheduleApprovalAllows,
   scheduleLockStatusText,
 } from "./application/schedulePageModel.js";

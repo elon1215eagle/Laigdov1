@@ -14,6 +14,8 @@ const MONTHLY_SCHEDULE_LOCK_FIELDS = [
 
 const MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS = [
   "id", "period_month", "store_code", "store_name", "reason", "status",
+  "scope_type", "target_date", "target_staff_id", "target_shift_id",
+  "approved_until", "used_at", "approval_version",
   "requested_by", "reviewed_by", "reviewed_at", "review_note", "created_at", "updated_at",
 ].join(", ");
 
@@ -197,11 +199,17 @@ export function createScheduleRepository(client = null) {
           store_code: payload.store_code,
           store_name: payload.store_name,
           reason: payload.reason || "",
+          scope_type: payload.scope_type,
+          target_date: payload.target_date,
+          target_staff_id: payload.target_staff_id,
+          target_shift_id: payload.target_shift_id,
           status: "pending",
           requested_by: userId,
           reviewed_by: null,
           reviewed_at: null,
           review_note: "",
+          approved_until: null,
+          used_at: null,
         }, { onConflict: "period_month,store_code" })
         .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)
         .single();
@@ -219,6 +227,8 @@ export function createScheduleRepository(client = null) {
           reviewed_by: userId,
           reviewed_at: new Date().toISOString(),
           review_note: reviewNote,
+          approved_until: status === "approved" ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null,
+          used_at: null,
         })
         .eq("id", id)
         .select(MONTHLY_SCHEDULE_CHANGE_REQUEST_FIELDS)

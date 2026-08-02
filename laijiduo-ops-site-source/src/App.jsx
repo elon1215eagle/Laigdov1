@@ -126,6 +126,7 @@ import {
   normalizeStoreScopedScheduleCode,
   projectDailyStaffShifts,
   removeDailyShiftById,
+  scheduleApprovalAllows,
   scheduleGroupForStore,
   scheduleLockStatusText,
   supportVisibleGroupsForTemporarySupport,
@@ -3435,6 +3436,7 @@ function MonthlyLeavePlanner({
   const [scheduleControl, setScheduleControl] = useState({ lock: null, requests: [], missingTable: false });
   const [controlLoading, setControlLoading] = useState(false);
   const [requestReason, setRequestReason] = useState("");
+  const [requestScope, setRequestScope] = useState({ type: "date", date: today, staffId: "", shiftId: "" });
   const [reviewNote, setReviewNote] = useState("");
   const [remoteSupportRows, setRemoteSupportRows] = useState(null);
   const [dailyShifts, setDailyShifts] = useState([]);
@@ -3663,6 +3665,7 @@ function MonthlyLeavePlanner({
     scheduleControl,
     requestStoreCode: currentScheduleRequestCode,
   });
+  const canBulkEditSchedule = !isStoreScoped || !isScheduleConfirmed;
   const editableScheduleStaff = isStoreScoped ? plannerRows : scheduleStaff;
   const visibleDailyShifts = dailyShifts.filter((shift) => (
     !isStoreScoped || plannerRows.some((person) => String(person.id) === String(shift.staff_id))
@@ -3753,7 +3756,12 @@ function MonthlyLeavePlanner({
 
   async function saveDailyShift(event) {
     event.preventDefault();
-    if (!canEditSchedule) {
+    const shiftScopeAllowed = !isStoreScoped || !isScheduleConfirmed || scheduleApprovalAllows(ownScheduleRequest, {
+      date: shiftForm.shift_date,
+      staffId: shiftForm.staff_id,
+      shiftId: shiftForm.id || null,
+    });
+    if (!shiftScopeAllowed) {
       onNotify?.("總部已確認排班，需先取得修改核可");
       return;
     }
@@ -3791,7 +3799,10 @@ function MonthlyLeavePlanner({
   }
 
   async function removeDailyShift(shift) {
-    if (!canEditSchedule) return onNotify?.("總部已確認排班，需先取得修改核可");
+    const shiftScopeAllowed = !isStoreScoped || !isScheduleConfirmed || scheduleApprovalAllows(ownScheduleRequest, {
+      date: shift.shift_date, staffId: shift.staff_id, shiftId: shift.id,
+    });
+    if (!shiftScopeAllowed) return onNotify?.("此班次不在總部核可的修改範圍內");
     if (!window.confirm(`刪除 ${shift.employee_name} ${shift.shift_date} ${formatTime24(shift.start_time)}–${formatTime24(shift.end_time)} 班次？`)) return;
     try {
       await deleteDailyStaffShift(shift.id);
@@ -3830,8 +3841,12 @@ function MonthlyLeavePlanner({
     const command = buildScheduleChangeRequest({
       periodMonth: leaveMonth,
       reason: requestReason,
+      scopeType: requestScope.type,
       storeCode: currentScheduleRequestCode,
       storeName: storeGroups[0]?.name || allowedStoreName || "",
+      targetDate: requestScope.date,
+      targetStaffId: requestScope.staffId,
+      targetShiftId: requestScope.shiftId,
     });
     if (!command.valid) {
       onNotify?.(command.message);
@@ -3859,7 +3874,7 @@ function MonthlyLeavePlanner({
   }
 
   const updateDraft = (staffId, field, value) => {
-    if (!canEditSchedule) return;
+    if (!canEditStaffSchedule(staffId)) return;
     const key = leaveDraftKey(leaveMonth, staffId);
     setDrafts((current) => ({
       ...current,
@@ -3871,7 +3886,7 @@ function MonthlyLeavePlanner({
   };
 
   const saveDraft = async (person, draft) => {
-    if (!canEditSchedule) return;
+    if (!canEditStaffSchedule(person?.id)) return;
     if (!person || !hasSupabaseConfig) return;
     try {
       setSyncState("儲存中");
@@ -3890,6 +3905,10 @@ function MonthlyLeavePlanner({
       onNotify?.(`排假儲存失敗：${error.message}`);
     }
   };
+
+  function canEditStaffSchedule(staffId) {
+    return !isStoreScoped || !isScheduleConfirmed || scheduleApprovalAllows(ownScheduleRequest, { staffId });
+  }
 
   const buildStoreUploadPayloads = (store, sourceDrafts = drafts) => store.staff.map((person) => {
     const draft = sourceDrafts[leaveDraftKey(leaveMonth, person.id)] || {};
@@ -4202,13 +4221,13 @@ function MonthlyLeavePlanner({
           <p>依門店分表排假；最多連續工作 6 天，先點預定休假，再由一鍵排休補足月休與人力需求。</p>
         </div>
         <div className="panel-actions">
-          <button className="primary" type="button" onClick={uploadVisibleStores} disabled={!canEditSchedule || !storeGroups.length || uploadingCode === "all"}>
+          <button className="primary" type="button" onClick={uploadVisibleStores} disabled={!canBulkEditSchedule || !storeGroups.length || uploadingCode === "all"}>
             {uploadingCode === "all" ? "上傳中..." : "上傳目前排假"}
           </button>
           <button type="button" onClick={() => downloadTextFile(buildLeavePlannerCsv({ month: leaveMonth, rows: plannerRows, drafts, salaryRows }), `萊吉多${leaveMonth}排假表.csv`)}>
             匯出排假
           </button>
-          {!isStoreScoped && <button type="button" onClick={clearMonth} disabled={!canEditSchedule}>清空本月</button>}
+          {!isStoreScoped && <button type="button" onClick={clearMonth} disabled={!canBulkEditSchedule}>清空本月</button>}
         </div>
       </div>
 
@@ -4228,6 +4247,29 @@ function MonthlyLeavePlanner({
           </div>
         ) : isScheduleConfirmed && !storeEditApproved ? (
           <div className="schedule-request-box">
+            <label>
+              修改範圍
+              <select value={requestScope.type} onChange={(event) => setRequestScope({ type: event.target.value, date: supportDate, staffId: "", shiftId: "" })}>
+                <option value="date">指定日期</option>
+                <option value="staff">指定人員</option>
+                <option value="shift">指定班次</option>
+              </select>
+            </label>
+            {requestScope.type === "date" && (
+              <label>日期<input type="date" value={requestScope.date} onChange={(event) => setRequestScope({ ...requestScope, date: event.target.value })} /></label>
+            )}
+            {requestScope.type === "staff" && (
+              <label>人員<select value={requestScope.staffId} onChange={(event) => setRequestScope({ ...requestScope, staffId: event.target.value })}>
+                <option value="">請選擇</option>
+                {plannerRows.map((person) => <option key={person.id} value={person.id}>{person.employeeName}</option>)}
+              </select></label>
+            )}
+            {requestScope.type === "shift" && (
+              <label>班次<select value={requestScope.shiftId} onChange={(event) => setRequestScope({ ...requestScope, shiftId: event.target.value })}>
+                <option value="">請選擇</option>
+                {visibleDailyShifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.shift_date} {shift.employee_name} {formatTime24(shift.start_time)}–{formatTime24(shift.end_time)}</option>)}
+              </select></label>
+            )}
             <textarea
               value={requestReason}
               onChange={(event) => setRequestReason(event.target.value)}
@@ -4241,7 +4283,7 @@ function MonthlyLeavePlanner({
         ) : isScheduleConfirmed && storeEditApproved ? (
           <div className="schedule-approved-box">
             <strong>總部已核可本店修改</strong>
-            <p>請完成修改後通知總部重新確認鎖定。</p>
+            <p>限核可範圍使用一次，最晚 24 小時內完成；修改後會自動重新鎖定。</p>
           </div>
         ) : null}
       </section>
@@ -4268,7 +4310,7 @@ function MonthlyLeavePlanner({
                   <tr key={request.id}>
                     <td><strong>{request.store_name}</strong><span>{request.store_code}</span></td>
                     <td><span className={`chip ${request.status === "approved" ? "good" : request.status === "pending" ? "warn" : ""}`}>{request.status}</span></td>
-                    <td>{request.reason || "-"}</td>
+                    <td>{request.reason || "-"}<small>{request.scope_type === "date" ? `日期 ${request.target_date}` : request.scope_type === "staff" ? `人員 ${request.target_staff_id}` : `班次 ${request.target_shift_id}`}</small></td>
                     <td>{new Date(request.updated_at || request.created_at).toLocaleString("zh-TW")}</td>
                     <td>
                       <div className="inline-actions">
@@ -4437,7 +4479,7 @@ function MonthlyLeavePlanner({
               <span className={matrixPeakGapRows.length ? "negative" : "positive"}><strong>{matrixPeakGapRows.length}</strong> 個尖峰缺口</span>
               <span><strong>{matrixGapRows.length}</strong> 個全日缺口</span>
               <span><strong>{matrixLaborCost.totalHours.toFixed(1)}</strong> 預估工時</span>
-              <span><strong>{formatMoney(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>
+              <span><strong>{money(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>
               {matrixLaborCost.missingCostStaffCount > 0 && <span className="warn-text"><strong>{matrixLaborCost.missingCostStaffCount}</strong> 人成本待補</span>}
             </div>
           </div>
@@ -4520,6 +4562,8 @@ function MonthlyLeavePlanner({
             updateDraft={updateDraft}
             uploadStore={uploadStore}
             canEditSchedule={canEditSchedule}
+            canEditStaffSchedule={canEditStaffSchedule}
+            canBulkEditSchedule={canBulkEditSchedule}
           />
         ))}
       </div>
@@ -4527,7 +4571,7 @@ function MonthlyLeavePlanner({
   );
 }
 
-function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dailyShifts, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, scheduleStaff, store, toggleLeaveDay, updateDraft, uploadStore }) {
+function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSchedule, canEditStaffSchedule, clearStore, dailyShifts, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, scheduleStaff, store, toggleLeaveDay, updateDraft, uploadStore }) {
   const totalLeaveDays = store.staff.reduce((sum, person) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates), 0);
   const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
 
@@ -4539,11 +4583,11 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dai
           <p>{store.staff.length} 人計入排班，門店每日需求 {store.demand} 人，每日最多可排休 {maxOffPerDay} 人，本月已排休 {totalLeaveDays} 天。{store.ruleNote}</p>
         </div>
         <div className="panel-actions">
-          <button className="primary" type="button" onClick={() => uploadStore(store)} disabled={!canEditSchedule || isUploading}>
+          <button className="primary" type="button" onClick={() => uploadStore(store)} disabled={!canBulkEditSchedule || isUploading}>
             {isUploading ? "上傳中..." : "上傳本店排假"}
           </button>
-          <button type="button" onClick={() => autoArrangeStore(store)} disabled={!canEditSchedule || !maxOffPerDay}>一鍵平均排休</button>
-          <button type="button" onClick={() => clearStore(store)} disabled={!canEditSchedule}>清空本店</button>
+          <button type="button" onClick={() => autoArrangeStore(store)} disabled={!canBulkEditSchedule || !maxOffPerDay}>一鍵平均排休</button>
+          <button type="button" onClick={() => clearStore(store)} disabled={!canBulkEditSchedule}>清空本店</button>
         </div>
       </div>
       <div className="table-wrap leave-calendar-wrap">
@@ -4570,6 +4614,7 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dai
               const restDays = getSuggestedRestDays(person.role, salaryRows);
               const leaveDays = countLeaveDays(draft.dates);
               const status = getLeaveStatus(draft.dates, restDays, monthDays);
+              const canEditPerson = canEditStaffSchedule(person.id);
               return (
                 <tr key={person.id}>
                   <th className="leave-staff-col">
@@ -4591,7 +4636,7 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dai
                           aria-label={`${person.employeeName} ${day}日${checked ? "取消休假" : "排休"}`}
                           className={checked ? `leave-dot on ${source}` : "leave-dot"}
                           type="button"
-                          disabled={!canEditSchedule}
+                          disabled={!canEditPerson}
                           onClick={() => toggleLeaveDay(person.id, day)}
                         />
                       </td>
@@ -4603,7 +4648,7 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dai
                     <select
                       className="leave-type-select"
                       value={draft.leaveType || "排休"}
-                      disabled={!canEditSchedule}
+                      disabled={!canEditPerson}
                       onChange={(event) => {
                         const nextDraft = { ...draft, leaveType: event.target.value };
                         updateDraft(person.id, "leaveType", event.target.value);
@@ -4618,7 +4663,7 @@ function StoreLeaveCalendar({ autoArrangeStore, canEditSchedule, clearStore, dai
                     <input
                       className="table-input leave-note-input"
                       value={draft.note || ""}
-                      disabled={!canEditSchedule}
+                      disabled={!canEditPerson}
                       onChange={(event) => updateDraft(person.id, "note", event.target.value)}
                       onBlur={(event) => saveDraft(person, { ...draft, note: event.target.value })}
                       placeholder="代班、禁休"
