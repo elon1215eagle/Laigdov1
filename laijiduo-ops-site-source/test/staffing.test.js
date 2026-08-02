@@ -151,7 +151,7 @@ test("同人同日多段班在各時段正確計入且中斷時不在班", () =>
   assert.equal(rows.find((row) => row.startTime === "16:00").actualCount, 1);
 });
 
-test("排除角色可顯示實際在班但不列入有效人力", () => {
+test("送貨人員完全不列入人力矩陣", () => {
   const rows = buildHalfHourStaffingMatrix({
     dateValue: "2026-07-29",
     store: { code: "S01", open_time: "10:00", close_time: "11:00" },
@@ -162,9 +162,26 @@ test("排除角色可顯示實際在班但不列入有效人力", () => {
     demand: 2,
     storeCodes: ["S01"],
   });
-  assert.equal(rows[0].actualCount, 2);
+  assert.equal(rows[0].actualCount, 1);
   assert.equal(rows[0].effectiveCount, 1);
   assert.equal(rows[0].gap, 1);
+  assert.deepEqual(rows[0].peopleNames, ["正式人員"]);
+});
+
+test("兼職後勤保留在班紀錄但不列入有效人力", () => {
+  const rows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-07-29",
+    store: { code: "S01", open_time: "10:00", close_time: "11:00" },
+    people: [
+      { id: "a", employeeName: "正式人員", role: "正式人員", store_code: "S01" },
+      { id: "b", employeeName: "後勤人員", role: "兼職後勤", store_code: "S01", excludedFromStaffing: true },
+    ],
+    demand: 2,
+    storeCodes: ["S01"],
+  });
+  assert.equal(rows[0].actualCount, 2);
+  assert.equal(rows[0].effectiveCount, 1);
+  assert.deepEqual(rows[0].peopleNames, ["正式人員", "後勤人員"]);
 });
 
 test("統一班次投影整合正職預設、兼職預設與跨店多段班", () => {
