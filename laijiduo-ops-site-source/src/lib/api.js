@@ -96,6 +96,10 @@ const STORE_STAFF_FIELDS = [
   "store_name",
   "employee_name",
   "role_name",
+  "employment_type",
+  "work_category",
+  "employment_status",
+  "auth_user_id",
   "work_start_time",
   "work_end_time",
   "weekday_start_time",
@@ -108,6 +112,23 @@ const STORE_STAFF_FIELDS = [
   "updated_at",
 ].join(", ");
 const COMPATIBLE_STORE_STAFF_FIELDS = [
+  "id",
+  "store_code",
+  "store_name",
+  "employee_name",
+  "role_name",
+  "work_start_time",
+  "work_end_time",
+  "weekday_start_time",
+  "weekday_end_time",
+  "holiday_start_time",
+  "holiday_end_time",
+  "sort_order",
+  "is_active",
+  "created_at",
+  "updated_at",
+].join(", ");
+const WORK_TIME_COMPATIBLE_STORE_STAFF_FIELDS = [
   "id",
   "store_code",
   "store_name",
@@ -677,18 +698,23 @@ export async function upsertStoreStaffMember(payload) {
   payload = profile.payload;
   if (!supabase) return normalizeStoreStaffRow({ ...payload, id: payload.id || crypto.randomUUID?.() || Date.now() });
   const roleName = String(payload.role_name || payload.role || "").trim();
-  const workStartTime = roleName === "兼職人員" ? normalizeTime24(payload.work_start_time || payload.workStartTime) : null;
-  const workEndTime = roleName === "兼職人員" ? normalizeTime24(payload.work_end_time || payload.workEndTime) : null;
-  const weekdayStartTime = roleName === "兼職人員" ? normalizeTime24(payload.weekday_start_time || workStartTime) : null;
-  const weekdayEndTime = roleName === "兼職人員" ? normalizeTime24(payload.weekday_end_time || workEndTime) : null;
-  const holidayStartTime = roleName === "兼職人員" ? normalizeTime24(payload.holiday_start_time || weekdayStartTime) : null;
-  const holidayEndTime = roleName === "兼職人員" ? normalizeTime24(payload.holiday_end_time || weekdayEndTime) : null;
+  const isPartTime = payload.employment_type === "兼職";
+  const workStartTime = isPartTime ? normalizeTime24(payload.work_start_time || payload.workStartTime) : null;
+  const workEndTime = isPartTime ? normalizeTime24(payload.work_end_time || payload.workEndTime) : null;
+  const weekdayStartTime = isPartTime ? normalizeTime24(payload.weekday_start_time || workStartTime) : null;
+  const weekdayEndTime = isPartTime ? normalizeTime24(payload.weekday_end_time || workEndTime) : null;
+  const holidayStartTime = isPartTime ? normalizeTime24(payload.holiday_start_time || weekdayStartTime) : null;
+  const holidayEndTime = isPartTime ? normalizeTime24(payload.holiday_end_time || weekdayEndTime) : null;
   const cleanPayload = {
     id: payload.id || crypto.randomUUID?.() || String(Date.now()),
     store_code: payload.store_code || payload.storeCode || "",
     store_name: payload.store_name || payload.storeName || "",
     employee_name: String(payload.employee_name || payload.employeeName || "").trim(),
     role_name: roleName,
+    employment_type: payload.employment_type,
+    work_category: payload.work_category,
+    employment_status: payload.employment_status,
+    auth_user_id: payload.auth_user_id || null,
     work_start_time: workStartTime,
     work_end_time: workEndTime,
     weekday_start_time: weekdayStartTime,
@@ -720,16 +746,36 @@ export async function upsertStoreStaffMember(payload) {
   let error = result.error;
   if (error && isMissingSupabaseColumn(error)) {
     const {
-      weekday_start_time,
-      weekday_end_time,
-      holiday_start_time,
-      holiday_end_time,
+      employment_type,
+      work_category,
+      employment_status,
+      auth_user_id,
       ...compatiblePayload
     } = cleanPayload;
     const compatibleResult = await supabase
       .from("store_staff")
       .upsert(compatiblePayload, { onConflict: "id" })
       .select(COMPATIBLE_STORE_STAFF_FIELDS)
+      .single();
+    data = compatibleResult.data;
+    error = compatibleResult.error;
+  }
+  if (error && isMissingSupabaseColumn(error)) {
+    const {
+      weekday_start_time,
+      weekday_end_time,
+      holiday_start_time,
+      holiday_end_time,
+      ...workTimeCompatiblePayload
+    } = cleanPayload;
+    delete workTimeCompatiblePayload.employment_type;
+    delete workTimeCompatiblePayload.work_category;
+    delete workTimeCompatiblePayload.employment_status;
+    delete workTimeCompatiblePayload.auth_user_id;
+    const compatibleResult = await supabase
+      .from("store_staff")
+      .upsert(workTimeCompatiblePayload, { onConflict: "id" })
+      .select(WORK_TIME_COMPATIBLE_STORE_STAFF_FIELDS)
       .single();
     data = compatibleResult.data;
     error = compatibleResult.error;

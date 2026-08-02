@@ -79,7 +79,10 @@ import {
   visibleViewModesForRole,
 } from "./modules/access";
 import {
+  EMPLOYMENT_STATUS_OPTIONS,
+  EMPLOYMENT_TYPE_OPTIONS,
   STAFF_ROLE_OPTIONS,
+  WORK_CATEGORY_OPTIONS,
   buildStaffProfile,
   createStaffForm,
   staffMemberToForm,
@@ -2738,9 +2741,8 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
       .sort((a, b) => a.store_code.localeCompare(b.store_code));
   }, [stores, storeHours]);
   const roleOptions = useMemo(() => {
-    const roles = [...salaryRows.map((row) => row.role), ...STAFF_ROLE_OPTIONS];
-    return roles.filter(Boolean).filter((roleName, index, rows) => rows.indexOf(roleName) === index);
-  }, [salaryRows]);
+    return STAFF_ROLE_OPTIONS;
+  }, []);
   const defaultStoreCode = canonicalStoreCode(selectedStore) || canonicalStoreCode({ storeName: selectedStoreName }) || storeOptions[0]?.store_code || "";
   const defaultStoreName = storeOptions.find((store) => store.store_code === defaultStoreCode)?.name || selectedStoreName || storeOptions[0]?.name || "";
   const [staffForm, setStaffForm] = useState(() => createStaffForm({
@@ -2830,27 +2832,45 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
               <input value={staffForm.employee_name} onChange={(event) => setStaffForm({ ...staffForm, employee_name: event.target.value })} placeholder="輸入姓名" />
             </label>
             <label>
-              職稱
+              僱用型態
               <select
-                value={staffForm.role_name}
+                value={staffForm.employment_type}
                 onChange={(event) => {
-                  const roleName = event.target.value;
+                  const employmentType = event.target.value;
                   setStaffForm({
                     ...staffForm,
-                    role_name: roleName,
-                    work_start_time: roleName === "兼職人員" ? staffForm.work_start_time : "",
-                    work_end_time: roleName === "兼職人員" ? staffForm.work_end_time : "",
-                    weekday_start_time: roleName === "兼職人員" ? staffForm.weekday_start_time : "",
-                    weekday_end_time: roleName === "兼職人員" ? staffForm.weekday_end_time : "",
-                    holiday_start_time: roleName === "兼職人員" ? staffForm.holiday_start_time : "",
-                    holiday_end_time: roleName === "兼職人員" ? staffForm.holiday_end_time : "",
+                    employment_type: employmentType,
+                    work_start_time: employmentType === "兼職" ? staffForm.work_start_time : "",
+                    work_end_time: employmentType === "兼職" ? staffForm.work_end_time : "",
+                    weekday_start_time: employmentType === "兼職" ? staffForm.weekday_start_time : "",
+                    weekday_end_time: employmentType === "兼職" ? staffForm.weekday_end_time : "",
+                    holiday_start_time: employmentType === "兼職" ? staffForm.holiday_start_time : "",
+                    holiday_end_time: employmentType === "兼職" ? staffForm.holiday_end_time : "",
                   });
                 }}
               >
+                {EMPLOYMENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            <label>
+              職稱
+              <select value={staffForm.role_name} onChange={(event) => setStaffForm({ ...staffForm, role_name: event.target.value })}>
                 {roleOptions.map((roleName) => <option key={roleName} value={roleName}>{roleName}</option>)}
               </select>
             </label>
-            {staffForm.role_name === "兼職人員" && (
+            <label>
+              工作類別
+              <select value={staffForm.work_category} onChange={(event) => setStaffForm({ ...staffForm, work_category: event.target.value })}>
+                {WORK_CATEGORY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            <label>
+              人員狀態
+              <select value={staffForm.employment_status} onChange={(event) => setStaffForm({ ...staffForm, employment_status: event.target.value })}>
+                {EMPLOYMENT_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </label>
+            {staffForm.employment_type === "兼職" && (
               <>
                 <label>
                   平日上班（選填）
@@ -2886,7 +2906,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
         <div className="table-wrap compact">
           <table>
             <thead>
-              <tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>兼職預設工時</th><th>排序</th><th>操作</th></tr>
+              <tr><th>門店</th><th>人員姓名</th><th>僱用型態</th><th>職稱</th><th>工作類別</th><th>人員狀態</th><th>兼職預設工時</th><th>排序</th><th>操作</th></tr>
             </thead>
             <tbody>
               {staffRoster
@@ -2896,9 +2916,12 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                   <tr key={row.id}>
                     <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
                     <td>{row.employeeName}</td>
+                    <td>{row.employment_type}</td>
                     <td>{row.role}</td>
+                    <td>{row.work_category}</td>
+                    <td>{row.employment_status}</td>
                     <td>
-                      {row.role === "兼職人員" ? (
+                      {row.employment_type === "兼職" ? (
                         <>
                           <span>平日 {formatTime24(row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.weekday_end_time || row.work_end_time) || "未填"}</span>
                           <span>假日 {formatTime24(row.holiday_start_time || row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.holiday_end_time || row.weekday_end_time || row.work_end_time) || "未填"}</span>
@@ -2916,7 +2939,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                     </td>
                   </tr>
                 ))}
-              {!staffRoster.length && <tr><td colSpan="6">尚無人員資料，請由總部新增。</td></tr>}
+              {!staffRoster.length && <tr><td colSpan="9">尚無人員資料，請由總部新增。</td></tr>}
             </tbody>
           </table>
         </div>
