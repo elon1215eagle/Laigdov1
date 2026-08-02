@@ -144,6 +144,7 @@ import {
   fetchTemporarySupportSummary,
   reviewMonthlyScheduleChangeRequest,
   reviewSupportShiftRequest,
+  setWorkforceRolloutMode,
   submitMonthlyScheduleChangeRequest,
   submitSupportShiftRequest,
   unlockMonthlySchedule,
@@ -3946,6 +3947,17 @@ function MonthlyLeavePlanner({
     }
   }
 
+  async function changeRolloutMode(mode) {
+    if (mode === "new" && !window.confirm(`確認從 ${leaveMonth} 起切換為新版人力排班模組？此動作會留下稽核紀錄。`)) return;
+    try {
+      await setWorkforceRolloutMode(mode, mode === "new" ? leaveMonth : null, mode === "new" ? "總部完成驗收後切換" : "維持平行驗收");
+      await loadScheduleControl();
+      onNotify?.(mode === "new" ? `已設定 ${leaveMonth} 起使用新版人力排班模組` : "已維持平行驗收模式");
+    } catch (error) {
+      onNotify?.(`安全切換失敗：${error.message}`);
+    }
+  }
+
   const updateDraft = (staffId, field, value) => {
     if (!canEditStaffSchedule(staffId)) return;
     const key = leaveDraftKey(leaveMonth, staffId);
@@ -4364,6 +4376,20 @@ function MonthlyLeavePlanner({
           </div>
         ) : null}
       </section>
+
+      {!isStoreScoped && scheduleControl.rollout && (
+        <section className="schedule-control-panel">
+          <div>
+            <span>人力排班模組切換</span>
+            <strong>{scheduleControl.rollout.rollout_mode === "new" ? `新版正式模式（${scheduleControl.rollout.cutover_month} 起）` : scheduleControl.rollout.rollout_mode === "parallel" ? "平行驗收模式" : "舊版模式"}</strong>
+            <p>{scheduleControl.rollout.note || "切換紀錄由 Supabase 留存"}</p>
+          </div>
+          <div className="schedule-control-actions">
+            <button type="button" onClick={() => changeRolloutMode("parallel")}>維持平行驗收</button>
+            <button className="primary" type="button" onClick={() => changeRolloutMode("new")}>驗收完成，切換新版</button>
+          </div>
+        </section>
+      )}
 
       {!isStoreScoped && scheduleControl.requests.length > 0 && (
         <section className="schedule-request-review">

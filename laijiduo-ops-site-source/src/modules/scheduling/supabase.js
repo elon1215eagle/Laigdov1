@@ -11,6 +11,7 @@ export const submitMonthlyScheduleChangeRequest = (...args) => scheduleRepositor
 export const reviewMonthlyScheduleChangeRequest = (...args) => scheduleRepository.reviewMonthlyScheduleChangeRequest(...args);
 export const submitSupportShiftRequest = (...args) => scheduleRepository.submitSupportShiftRequest(...args);
 export const reviewSupportShiftRequest = (...args) => scheduleRepository.reviewSupportShiftRequest(...args);
+export const setWorkforceRolloutMode = (...args) => scheduleRepository.setWorkforceRolloutMode(...args);
 export const fetchDailyStaffShifts = (...args) => scheduleRepository.fetchDailyStaffShifts(...args);
 export const upsertDailyStaffShift = (...args) => scheduleRepository.upsertDailyStaffShift(...args);
 export const deleteDailyStaffShift = (...args) => scheduleRepository.deleteDailyStaffShift(...args);

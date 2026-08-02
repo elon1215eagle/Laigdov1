@@ -127,7 +127,7 @@ export function createScheduleRepository(client = null) {
 
     async fetchMonthlyScheduleControl(periodMonth) {
       if (!client) return { lock: null, requests: [] };
-      const [lockResult, requestResult, supportResult] = await Promise.all([
+      const [lockResult, requestResult, supportResult, rolloutResult] = await Promise.all([
         client
           .from("monthly_schedule_locks")
           .select(MONTHLY_SCHEDULE_LOCK_FIELDS)
@@ -144,14 +144,21 @@ export function createScheduleRepository(client = null) {
           .gte("shift_date", `${periodMonth}-01`)
           .lt("shift_date", nextMonthStart(periodMonth))
           .order("created_at", { ascending: false }),
+        client
+          .from("workforce_rollout_settings")
+          .select("setting_key, rollout_mode, cutover_month, note, updated_by, updated_at")
+          .eq("setting_key", "workforce")
+          .maybeSingle(),
       ]);
       if (lockResult.error && !isMissingTable(lockResult.error)) throw lockResult.error;
       if (requestResult.error && !isMissingTable(requestResult.error)) throw requestResult.error;
       if (supportResult.error && !isMissingTable(supportResult.error)) throw supportResult.error;
+      if (rolloutResult.error && !isMissingTable(rolloutResult.error)) throw rolloutResult.error;
       return {
         lock: lockResult.error ? null : lockResult.data,
         requests: requestResult.error ? [] : requestResult.data,
         supportRequests: supportResult.error ? [] : supportResult.data,
+        rollout: rolloutResult.error ? null : rolloutResult.data,
         missingTable: Boolean(lockResult.error || requestResult.error || supportResult.error),
       };
     },
@@ -277,6 +284,17 @@ export function createScheduleRepository(client = null) {
         p_request_id: id,
         p_status: status,
         p_review_note: reviewNote,
+      });
+      if (error) throw error;
+      return data;
+    },
+
+    async setWorkforceRolloutMode(mode, cutoverMonth = null, note = "") {
+      if (!client) return { setting_key: "workforce", rollout_mode: mode, cutover_month: cutoverMonth, note };
+      const { data, error } = await client.rpc("set_workforce_rollout_mode", {
+        p_mode: mode,
+        p_cutover_month: cutoverMonth,
+        p_note: note,
       });
       if (error) throw error;
       return data;

@@ -32,6 +32,7 @@ export {
   fetchTemporarySupportSummary,
   reviewMonthlyScheduleChangeRequest,
   reviewSupportShiftRequest,
+  setWorkforceRolloutMode,
   submitMonthlyScheduleChangeRequest,
   submitSupportShiftRequest,
   unlockMonthlySchedule,
