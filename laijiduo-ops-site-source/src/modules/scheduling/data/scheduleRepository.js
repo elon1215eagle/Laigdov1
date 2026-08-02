@@ -63,6 +63,30 @@ export function normalizeLeaveDays(days) {
 
 function buildLeavePayload(payload, userId) {
   return {
+    ...payload,
+    leave_days: normalizeLeaveDays(payload.leave_days),
+    manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
+    auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
+    leave_type: payload.leave_type || "排休",
+    updated_by: userId,
+  };
+}
+
+function nextMonthStart(periodMonth) {
+  const [year, month] = String(periodMonth).split("-").map(Number);
+  if (!year || !month) return "";
+  const date = new Date(Date.UTC(year, month, 1));
+  return date.toISOString().slice(0, 10);
+}
+
+export function createScheduleRepository(client = null) {
+  async function currentUserId() {
+    const { data, error } = await client.auth.getUser();
+    if (error) throw error;
+    return data.user?.id || null;
+  }
+
+  return {
     async fetchStandardShiftTemplates() {
       if (!client) return [];
       const { data, error } = await client
@@ -83,9 +107,7 @@ function buildLeavePayload(payload, userId) {
       const endTime = normalizeTime24(payload.end_time);
       if (!String(payload.name || "").trim()) throw new Error("請輸入班次名稱");
       if (!startTime || !endTime || endTime <= startTime) throw new Error("班次結束時間必須晚於開始時間");
-      if (!isQuarterHour(startTime) || !isQuarterHour(endTime)) {
-        throw new Error("班次時間須以 15 分鐘為單位");
-      }
+      if (!isQuarterHour(startTime) || !isQuarterHour(endTime)) throw new Error("班次時間須以 15 分鐘為單位");
       const cleanPayload = {
         ...(payload.id ? { id: payload.id } : {}),
         name: String(payload.name).trim(),
@@ -117,30 +139,6 @@ function buildLeavePayload(payload, userId) {
       return data;
     },
 
-    ...payload,
-    leave_days: normalizeLeaveDays(payload.leave_days),
-    manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
-    auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
-    leave_type: payload.leave_type || "排休",
-    updated_by: userId,
-  };
-}
-
-function nextMonthStart(periodMonth) {
-  const [year, month] = String(periodMonth).split("-").map(Number);
-  if (!year || !month) return "";
-  const date = new Date(Date.UTC(year, month, 1));
-  return date.toISOString().slice(0, 10);
-}
-
-export function createScheduleRepository(client = null) {
-  async function currentUserId() {
-    const { data, error } = await client.auth.getUser();
-    if (error) throw error;
-    return data.user?.id || null;
-  }
-
-  return {
     async fetchMonthlyLeavePlans(periodMonth) {
       if (!client) return [];
       const { data, error } = await client
