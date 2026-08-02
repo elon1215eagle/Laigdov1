@@ -111,6 +111,8 @@ const STORE_STAFF_FIELDS = [
   "weekday_end_time",
   "holiday_start_time",
   "holiday_end_time",
+  "estimated_hourly_cost",
+  "estimated_monthly_cost",
   "sort_order",
   "is_active",
   "created_at",
@@ -762,6 +764,8 @@ export async function upsertStoreStaffMember(payload) {
     weekday_end_time: weekdayEndTime,
     holiday_start_time: holidayStartTime,
     holiday_end_time: holidayEndTime,
+    estimated_hourly_cost: payload.estimated_hourly_cost == null || payload.estimated_hourly_cost === "" ? null : Number(payload.estimated_hourly_cost),
+    estimated_monthly_cost: payload.estimated_monthly_cost == null || payload.estimated_monthly_cost === "" ? null : Number(payload.estimated_monthly_cost),
     sort_order: Number(payload.sort_order || 999),
     is_active: payload.is_active !== false,
     updated_at: new Date().toISOString(),
@@ -791,6 +795,8 @@ export async function upsertStoreStaffMember(payload) {
       work_category,
       employment_status,
       auth_user_id,
+      estimated_hourly_cost,
+      estimated_monthly_cost,
       ...compatiblePayload
     } = cleanPayload;
     const compatibleResult = await supabase

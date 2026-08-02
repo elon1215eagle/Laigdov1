@@ -99,6 +99,21 @@ export function createScheduleRepository(client = null) {
       return normalizeTemporarySupportRows(data || []);
     },
 
+    async fetchStaffingDemandRules() {
+      if (!client) return [];
+      const { data, error } = await client
+        .from("store_staffing_demand_rules")
+        .select("id, store_code, rule_type, weekday, special_date, start_time, end_time, required_count, is_active")
+        .eq("is_active", true)
+        .order("store_code")
+        .order("start_time");
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+      return data || [];
+    },
+
     async upsertMonthlyLeavePlan(payload) {
       if (!client) return buildLeavePayload(payload, null);
       const userId = await currentUserId();

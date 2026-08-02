@@ -242,6 +242,7 @@ export function buildHalfHourStaffingMatrix({
   overrides = [],
   leaveStaffIds = [],
   demand = 0,
+  demandResolver = null,
   storeCodes = [],
   holidayDates = [],
 }) {
@@ -259,14 +260,15 @@ export function buildHalfHourStaffingMatrix({
     const effectivePeople = presentPeople.filter((shift) => !shift.excludedFromStaffing);
     const isLunchPeak = slotStart < 14 * 60 && slotEnd > 11 * 60;
     const isDinnerPeak = slotStart < 19 * 60 && slotEnd > 16 * 60 + 30;
+    const slotDemand = Number(demandResolver?.(minutesToTime(slotStart)) ?? demand ?? 0);
     rows.push({
       startTime: minutesToTime(slotStart),
       endTime: minutesToTime(slotEnd),
       actualCount: presentPeople.length,
       effectiveCount: effectivePeople.length,
-      demand: Number(demand || 0),
-      gap: Math.max(Number(demand || 0) - effectivePeople.length, 0),
-      surplus: Math.max(effectivePeople.length - Number(demand || 0), 0),
+      demand: slotDemand,
+      gap: Math.max(slotDemand - effectivePeople.length, 0),
+      surplus: Math.max(effectivePeople.length - slotDemand, 0),
       isPeak: isLunchPeak || isDinnerPeak,
       peakLabel: isLunchPeak ? "午峰" : isDinnerPeak ? "晚峰" : "",
       peopleNames: presentPeople.map((shift) => shift.employeeName).filter(Boolean),

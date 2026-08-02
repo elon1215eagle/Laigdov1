@@ -181,3 +181,17 @@ test("統一班次投影排除休假人員且不替明確班次補主檔預設",
   assert.equal(rows.length, 1);
   assert.equal(rows[0].startTime, "15:00");
 });
+
+test("人力矩陣逐時段套用需求規則而非整日固定人數", () => {
+  const rows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-07-29",
+    store: { code: "S01", open_time: "10:00", close_time: "12:00" },
+    people: [],
+    demand: 1,
+    demandResolver: (time) => time >= "11:00" ? 3 : 1,
+    storeCodes: ["S01"],
+  });
+  assert.equal(rows.find((row) => row.startTime === "10:30").demand, 1);
+  assert.equal(rows.find((row) => row.startTime === "11:00").demand, 3);
+  assert.equal(rows.find((row) => row.startTime === "11:00").gap, 3);
+});

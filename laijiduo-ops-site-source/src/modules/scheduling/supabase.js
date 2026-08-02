@@ -2,6 +2,7 @@ import { scheduleRepository } from "./data/supabaseScheduleRepository.js";
 
 export const fetchMonthlyLeavePlans = (...args) => scheduleRepository.fetchMonthlyLeavePlans(...args);
 export const fetchTemporarySupportSummary = (...args) => scheduleRepository.fetchTemporarySupportSummary(...args);
+export const fetchStaffingDemandRules = (...args) => scheduleRepository.fetchStaffingDemandRules(...args);
 export const upsertMonthlyLeavePlan = (...args) => scheduleRepository.upsertMonthlyLeavePlan(...args);
 export const upsertMonthlyLeavePlans = (...args) => scheduleRepository.upsertMonthlyLeavePlans(...args);
 export const fetchMonthlyScheduleControl = (...args) => scheduleRepository.fetchMonthlyScheduleControl(...args);

@@ -127,6 +127,7 @@ import {
   mergeDailyShift,
   normalizeStoreScopedScheduleCode,
   projectDailyStaffShifts,
+  resolveStaffingDemand,
   renderScheduleStoreCanvas,
   removeDailyShiftById,
   scheduleApprovalAllows,
@@ -141,6 +142,7 @@ import {
   fetchDailyStaffShifts,
   fetchMonthlyLeavePlans,
   fetchMonthlyScheduleControl,
+  fetchStaffingDemandRules,
   fetchTemporarySupportSummary,
   reviewMonthlyScheduleChangeRequest,
   reviewSupportShiftRequest,
@@ -2954,6 +2956,14 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
               </>
             )}
             <label>
+              預估時薪成本（選填）
+              <input type="number" min="0" step="1" value={staffForm.estimated_hourly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_hourly_cost: event.target.value })} />
+            </label>
+            <label>
+              預估月薪成本（選填）
+              <input type="number" min="0" step="1" value={staffForm.estimated_monthly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_monthly_cost: event.target.value })} />
+            </label>
+            <label>
               排序
               <input type="number" min="1" value={staffForm.sort_order} onChange={(event) => setStaffForm({ ...staffForm, sort_order: event.target.value })} />
             </label>
@@ -3446,6 +3456,7 @@ function MonthlyLeavePlanner({
   const [reviewNote, setReviewNote] = useState("");
   const [remoteSupportRows, setRemoteSupportRows] = useState(null);
   const [dailyShifts, setDailyShifts] = useState([]);
+  const [staffingDemandRules, setStaffingDemandRules] = useState([]);
   const [shiftSaving, setShiftSaving] = useState(false);
   const [shiftForm, setShiftForm] = useState({
     id: "",
@@ -3538,6 +3549,13 @@ function MonthlyLeavePlanner({
   useEffect(() => {
     refreshDailyShifts();
   }, [leaveMonth]);
+
+  useEffect(() => {
+    if (!hasSupabaseConfig) return;
+    fetchStaffingDemandRules().then(setStaffingDemandRules).catch((error) => {
+      onNotify?.(`人力需求規則讀取失敗：${error.message}`);
+    });
+  }, []);
 
   useEffect(() => {
     if (!supportDate.startsWith(leaveMonth)) setSupportDate(`${leaveMonth}-01`);
@@ -3697,6 +3715,9 @@ function MonthlyLeavePlanner({
         overrides: dailyShifts,
         leaveStaffIds: matrixLeaveStaffIds,
         demand: selectedMatrixGroup.demand || storeDemandMap.get(matrixStoreCode) || 0,
+        demandResolver: staffingDemandRules.length
+          ? (time) => resolveStaffingDemand(staffingDemandRules, { storeCode: matrixStoreCode, date: supportDate, time })
+          : null,
         storeCodes: selectedMatrixGroup.sourceCodes,
       })
     : [];

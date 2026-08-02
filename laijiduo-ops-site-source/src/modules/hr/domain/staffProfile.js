@@ -51,6 +51,8 @@ export function normalizeStoreStaffRow(row, index = 0) {
     weekday_end_time: weekdayEnd,
     holiday_start_time: row.holiday_start_time || row.holidayStartTime || weekdayStart,
     holiday_end_time: row.holiday_end_time || row.holidayEndTime || weekdayEnd,
+    estimated_hourly_cost: row.estimated_hourly_cost ?? row.estimatedHourlyCost ?? "",
+    estimated_monthly_cost: row.estimated_monthly_cost ?? row.estimatedMonthlyCost ?? "",
     sort_order: Number(row.sort_order || index + 1),
     is_active: row.is_active !== false,
   };
@@ -63,7 +65,8 @@ export function createStaffForm({ storeCode = "", storeName = "", roleName = "�
     work_category: roleName === "總部人員" ? "總部" : "門店營運",
     employment_status: "在職", auth_user_id: null,
     work_start_time: "", work_end_time: "", weekday_start_time: "", weekday_end_time: "",
-    holiday_start_time: "", holiday_end_time: "", sort_order: 999, is_active: true,
+    holiday_start_time: "", holiday_end_time: "", estimated_hourly_cost: "", estimated_monthly_cost: "",
+    sort_order: 999, is_active: true,
   };
 }
 
@@ -85,6 +88,8 @@ export function staffMemberToForm(row, { storeCode = "", storeName = "" } = {}) 
     weekday_end_time: normalized.weekday_end_time,
     holiday_start_time: normalized.holiday_start_time,
     holiday_end_time: normalized.holiday_end_time,
+    estimated_hourly_cost: normalized.estimated_hourly_cost,
+    estimated_monthly_cost: normalized.estimated_monthly_cost,
     sort_order: normalized.sort_order || 999,
     is_active: normalized.is_active,
   };
@@ -132,6 +137,8 @@ export function buildStaffProfile(payload, { storeName = "" } = {}) {
       weekday_end_time: weekdayEnd,
       holiday_start_time: holidayStart,
       holiday_end_time: holidayEnd,
+      estimated_hourly_cost: payload.estimated_hourly_cost === "" ? null : Number(payload.estimated_hourly_cost),
+      estimated_monthly_cost: payload.estimated_monthly_cost === "" ? null : Number(payload.estimated_monthly_cost),
       sort_order: Number(payload.sort_order || 999),
       is_active: payload.is_active !== false,
     },
