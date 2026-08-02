@@ -30,15 +30,73 @@ export function buildScheduleExportModel({
     stores: storeGroups.map((store) => ({
       code: store.code,
       name: store.name,
+      sourceCodes: store.sourceCodes || [store.code],
+      openTime: store.open_time || "10:00",
+      closeTime: store.close_time || store.close_report_time || "23:00",
       staff: store.staff.map((person) => ({
         id: String(person.id),
         name: person.employeeName || person.employee_name || "",
         role: person.role || person.role_name || "",
+        homeStoreCode: person.store_code || person.storeCode || store.code,
+        employmentType: person.employment_type || person.employmentType || "",
+        weekdayStartTime: person.weekday_start_time || person.work_start_time || "",
+        weekdayEndTime: person.weekday_end_time || person.work_end_time || "",
+        holidayStartTime: person.holiday_start_time || person.weekday_start_time || person.work_start_time || "",
+        holidayEndTime: person.holiday_end_time || person.weekday_end_time || person.work_end_time || "",
         leaveDays: [...leaveDaysFromDraft(drafts[`${periodMonth}:${person.id}`])],
       })),
       shifts: dailyShifts.filter((shift) => store.sourceCodes.includes(shift.home_store_code) || store.sourceCodes.includes(shift.assigned_store_code)),
     })),
   };
+}
+
+export function personalScheduleExpiry(periodMonth) {
+  const [year, month] = String(periodMonth).split("-").map(Number);
+  if (!year || !month) throw new Error("班表月份格式不正確");
+  return new Date(Date.UTC(year, month, 7, 15, 59, 59, 999)).toISOString();
+}
+
+export function buildPersonalScheduleSnapshot(model, staffId) {
+  for (const store of model.stores) {
+    const person = store.staff.find((row) => String(row.id) === String(staffId));
+    if (!person) continue;
+    const rows = model.days.map((day) => {
+      const date = `${model.periodMonth}-${String(day).padStart(2, "0")}`;
+      if (person.leaveDays.includes(day)) return { date, status: "leave", label: "休假", shifts: [] };
+      const explicit = store.shifts
+        .filter((shift) => String(shift.staff_id) === String(person.id) && shift.shift_date === date)
+        .map((shift) => ({
+          start_time: String(shift.start_time || "").slice(0, 5),
+          end_time: String(shift.end_time || "").slice(0, 5),
+          store_code: shift.assigned_store_code || person.homeStoreCode,
+          shift_type: shift.shift_type || "override",
+        }));
+      if (explicit.length) return { date, status: "work", label: "上班", shifts: explicit };
+      const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+      const isHoliday = weekday === 0 || weekday === 6;
+      const start = person.employmentType === "兼職"
+        ? (isHoliday ? person.holidayStartTime : person.weekdayStartTime)
+        : store.openTime;
+      const end = person.employmentType === "兼職"
+        ? (isHoliday ? person.holidayEndTime : person.weekdayEndTime)
+        : store.closeTime;
+      return {
+        date,
+        status: start && end ? "work" : "unscheduled",
+        label: start && end ? "上班" : "待排",
+        shifts: start && end ? [{ start_time: String(start).slice(0, 5), end_time: String(end).slice(0, 5), store_code: person.homeStoreCode, shift_type: "default" }] : [],
+      };
+    });
+    return {
+      period_month: model.periodMonth,
+      schedule_version: model.version,
+      employee_name: person.name,
+      role_name: person.role,
+      home_store_code: person.homeStoreCode,
+      rows,
+    };
+  }
+  throw new Error("找不到指定人員的班表");
 }
 
 export function buildPrintableScheduleHtml(model) {

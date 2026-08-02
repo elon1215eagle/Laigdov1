@@ -17,7 +17,13 @@ export {
 
 export { buildStaffingDemandRule, resolveStaffingDemand } from "./domain/staffingDemand.js";
 export { calculateProjectedLaborCost, estimatedHourlyCost } from "./domain/laborCost.js";
-export { buildPrintableScheduleHtml, buildScheduleExportModel, renderScheduleStoreCanvas } from "./application/scheduleExport.js";
+export {
+  buildPersonalScheduleSnapshot,
+  buildPrintableScheduleHtml,
+  buildScheduleExportModel,
+  personalScheduleExpiry,
+  renderScheduleStoreCanvas,
+} from "./application/scheduleExport.js";
 
 export {
   normalizeStoreScopedScheduleCode,

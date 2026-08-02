@@ -31,6 +31,11 @@ const DAILY_STAFF_SHIFT_FIELDS = [
   "created_by", "created_at", "updated_at",
 ].join(", ");
 
+const PERSONAL_SCHEDULE_LINK_FIELDS = [
+  "id", "period_month", "schedule_version", "staff_id", "employee_name",
+  "home_store_code", "role_name", "expires_at", "revoked_at", "created_by", "created_at",
+].join(", ");
+
 function isMissingTable(error) {
   return error?.code === "42P01" || /relation .* does not exist/i.test(error?.message || "");
 }
@@ -311,6 +316,51 @@ export function createScheduleRepository(client = null) {
         p_cutover_month: cutoverMonth,
         p_note: note,
       });
+      if (error) throw error;
+      return data;
+    },
+
+    async fetchPersonalScheduleLinks(periodMonth) {
+      if (!client) return [];
+      const { data, error } = await client
+        .from("schedule_personal_links")
+        .select(PERSONAL_SCHEDULE_LINK_FIELDS)
+        .eq("period_month", periodMonth)
+        .order("created_at", { ascending: false });
+      if (error) {
+        if (isMissingTable(error)) return [];
+        throw error;
+      }
+      return data || [];
+    },
+
+    async issuePersonalScheduleLink(payload) {
+      if (!client) return { ...payload, id: globalThis.crypto?.randomUUID?.() || String(Date.now()) };
+      const { data, error } = await client.rpc("issue_personal_schedule_link", {
+        p_period_month: payload.period_month,
+        p_schedule_version: payload.schedule_version,
+        p_staff_id: String(payload.staff_id),
+        p_employee_name: payload.employee_name,
+        p_home_store_code: payload.home_store_code,
+        p_role_name: payload.role_name || "",
+        p_token_hash: payload.token_hash,
+        p_schedule_payload: payload.schedule_payload,
+        p_expires_at: payload.expires_at,
+      });
+      if (error) throw error;
+      return data;
+    },
+
+    async revokePersonalScheduleLink(linkId) {
+      if (!client) return { id: linkId, revoked_at: new Date().toISOString() };
+      const { data, error } = await client.rpc("revoke_personal_schedule_link", { p_link_id: linkId });
+      if (error) throw error;
+      return data;
+    },
+
+    async fetchPersonalScheduleByToken(token) {
+      if (!client || !token) return null;
+      const { data, error } = await client.rpc("get_personal_schedule_by_token", { p_token: token });
       if (error) throw error;
       return data;
     },

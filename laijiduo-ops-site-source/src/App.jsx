@@ -113,6 +113,7 @@ import {
 } from "./lib/storeScope";
 import {
   buildHalfHourStaffingMatrix,
+  buildPersonalScheduleSnapshot,
   buildPrintableScheduleHtml,
   buildScheduleExportModel,
   buildDailyShiftCommand,
@@ -127,6 +128,7 @@ import {
   mergeDailyShift,
   normalizeStoreScopedScheduleCode,
   projectDailyStaffShifts,
+  personalScheduleExpiry,
   resolveStaffingDemand,
   renderScheduleStoreCanvas,
   removeDailyShiftById,
@@ -142,10 +144,14 @@ import {
   fetchDailyStaffShifts,
   fetchMonthlyLeavePlans,
   fetchMonthlyScheduleControl,
+  fetchPersonalScheduleByToken,
+  fetchPersonalScheduleLinks,
   fetchStaffingDemandRules,
   fetchTemporarySupportSummary,
   reviewMonthlyScheduleChangeRequest,
   reviewSupportShiftRequest,
+  issuePersonalScheduleLink,
+  revokePersonalScheduleLink,
   setWorkforceRolloutMode,
   submitMonthlyScheduleChangeRequest,
   submitSupportShiftRequest,
@@ -268,6 +274,13 @@ function normalizeReport(store, report) {
 }
 
 export function App() {
+  const personalScheduleToken = new URLSearchParams(window.location.search).get("schedule");
+  return personalScheduleToken
+    ? <PersonalSchedulePublicPage token={personalScheduleToken} />
+    : <AuthenticatedApp />;
+}
+
+function AuthenticatedApp() {
   const [activeModule, setActiveModule] = useState("ops");
   const [inspectionGateOpen, setInspectionGateOpen] = useState(false);
   const [inspectionPassword, setInspectionPassword] = useState("");
@@ -1099,6 +1112,59 @@ function InspectionPasswordDialog({ password, setPassword, onCancel, onConfirm }
         </div>
       </section>
     </div>
+  );
+}
+
+function PersonalSchedulePublicPage({ token }) {
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetchPersonalScheduleByToken(token)
+      .then((data) => {
+        if (active) setResult(data || { status: "not_found" });
+      })
+      .catch((requestError) => {
+        if (active) setError(requestError.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  if (error) return <main className="personal-schedule-page"><section className="personal-schedule-card"><h1>個人班表無法讀取</h1><p>{error}</p></section></main>;
+  if (!result) return <main className="loading">個人班表載入中...</main>;
+  if (result.status !== "active" || !result.schedule) {
+    const message = result.status === "revoked" ? "此連結已由門店或總部撤銷。" : result.status === "expired" ? "此連結已超過有效期限。" : "找不到此個人班表連結。";
+    return <main className="personal-schedule-page"><section className="personal-schedule-card"><div className="brand-mark">萊</div><h1>個人班表已失效</h1><p>{message}</p></section></main>;
+  }
+
+  const schedule = result.schedule;
+  return (
+    <main className="personal-schedule-page">
+      <section className="personal-schedule-card">
+        <div className="personal-schedule-head">
+          <div><div className="brand-mark">萊</div><h1>{schedule.employee_name} 個人班表</h1></div>
+          <span className="chip good">{schedule.period_month} · V{result.schedule_version}</span>
+        </div>
+        <p>{schedule.home_store_code} · {schedule.role_name || "門店人員"} · 有效至 {new Date(result.expires_at).toLocaleString("zh-TW")}</p>
+        {result.has_newer_version && <div className="notice">此班表已有新版，請向店長取得最新連結。</div>}
+        <div className="personal-schedule-list">
+          {schedule.rows.map((row) => (
+            <article className={`personal-schedule-row ${row.status}`} key={row.date}>
+              <div><strong>{row.date.slice(5).replace("-", "/")}</strong><span>{new Intl.DateTimeFormat("zh-TW", { weekday: "short", timeZone: "UTC" }).format(new Date(`${row.date}T00:00:00Z`))}</span></div>
+              <em>{row.label}</em>
+              <div className="personal-shifts">
+                {row.shifts.map((shift, index) => <span key={`${row.date}-${index}`}><strong>{shift.start_time}–{shift.end_time}</strong><small>{shift.store_code}</small></span>)}
+                {!row.shifts.length && <span>-</span>}
+              </div>
+            </article>
+          ))}
+        </div>
+        <small>本頁僅顯示本人班表，不包含其他員工或薪資資料。</small>
+      </section>
+    </main>
   );
 }
 
@@ -3188,6 +3254,17 @@ function reportForStoreCode(reports, storeCode) {
   return reports.find((report) => canonicalStoreCode(report) === storeCode);
 }
 
+function secureRandomToken() {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
+}
+
+async function sha256Hex(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 const weekdayLabels = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
 
 function buildWeeklySameDayRows(reports = [], referenceDate = today) {
@@ -3457,6 +3534,10 @@ function MonthlyLeavePlanner({
   const [remoteSupportRows, setRemoteSupportRows] = useState(null);
   const [dailyShifts, setDailyShifts] = useState([]);
   const [staffingDemandRules, setStaffingDemandRules] = useState([]);
+  const [personalLinks, setPersonalLinks] = useState([]);
+  const [personalLinkStaffId, setPersonalLinkStaffId] = useState("");
+  const [issuedPersonalLink, setIssuedPersonalLink] = useState("");
+  const [personalLinkSaving, setPersonalLinkSaving] = useState(false);
   const [shiftSaving, setShiftSaving] = useState(false);
   const [shiftForm, setShiftForm] = useState({
     id: "",
@@ -3528,6 +3609,20 @@ function MonthlyLeavePlanner({
 
   useEffect(() => {
     loadScheduleControl();
+  }, [leaveMonth]);
+
+  async function refreshPersonalLinks() {
+    if (!hasSupabaseConfig) return setPersonalLinks([]);
+    try {
+      setPersonalLinks(await fetchPersonalScheduleLinks(leaveMonth));
+    } catch (error) {
+      onNotify?.(`個人班表連結讀取失敗：${error.message}`);
+    }
+  }
+
+  useEffect(() => {
+    refreshPersonalLinks();
+    setIssuedPersonalLink("");
   }, [leaveMonth]);
 
   async function refreshDailyShifts() {
@@ -3747,6 +3842,54 @@ function MonthlyLeavePlanner({
     version: scheduleControl.lock?.schedule_version || 1,
     needsReconfirmation: scheduleControl.lock?.needs_reconfirmation,
   });
+
+  async function createPersonalScheduleLink() {
+    if (!hasSupabaseConfig) return onNotify?.("個人班表連結需在開發 Supabase 驗收環境測試");
+    if (!isScheduleConfirmed || scheduleControl.lock?.needs_reconfirmation) return onNotify?.("請先由總部確認最新班表版本");
+    if (!personalLinkStaffId) return onNotify?.("請選擇要發行個人班表的人員");
+    setPersonalLinkSaving(true);
+    try {
+      const snapshot = buildPersonalScheduleSnapshot(scheduleExportModel, personalLinkStaffId);
+      const token = secureRandomToken();
+      const tokenHash = await sha256Hex(token);
+      await issuePersonalScheduleLink({
+        period_month: leaveMonth,
+        schedule_version: scheduleExportModel.version,
+        staff_id: personalLinkStaffId,
+        employee_name: snapshot.employee_name,
+        home_store_code: snapshot.home_store_code,
+        role_name: snapshot.role_name,
+        token_hash: tokenHash,
+        schedule_payload: snapshot,
+        expires_at: personalScheduleExpiry(leaveMonth),
+      });
+      const url = `${window.location.origin}${window.location.pathname}?schedule=${encodeURIComponent(token)}`;
+      setIssuedPersonalLink(url);
+      await refreshPersonalLinks();
+      try {
+        await navigator.clipboard.writeText(url);
+        onNotify?.("個人班表連結已建立並複製");
+      } catch {
+        onNotify?.("個人班表連結已建立，請由下方欄位複製");
+      }
+    } catch (error) {
+      onNotify?.(`個人班表連結建立失敗：${error.message}`);
+    } finally {
+      setPersonalLinkSaving(false);
+    }
+  }
+
+  async function revokeScheduleLink(link) {
+    if (!window.confirm(`確定撤銷 ${link.employee_name} 的 V${link.schedule_version} 個人班表連結？`)) return;
+    try {
+      await revokePersonalScheduleLink(link.id);
+      await refreshPersonalLinks();
+      onNotify?.("個人班表連結已撤銷");
+    } catch (error) {
+      onNotify?.(`撤銷失敗：${error.message}`);
+    }
+  }
+
   const matrixGapRows = matrixRows.filter((row) => row.gap > 0);
   const matrixPeakGapRows = matrixGapRows.filter((row) => row.isPeak);
   const lockStatusText = scheduleLockStatusText({
@@ -4339,6 +4482,42 @@ function MonthlyLeavePlanner({
           {!isStoreScoped && <button type="button" onClick={clearMonth} disabled={!canBulkEditSchedule}>清空本月</button>}
         </div>
       </div>
+
+      <section className="personal-link-panel">
+        <div>
+          <strong>個人班表連結</strong>
+          <p>只顯示本人日期、時間、工作門店及職稱；網址僅在建立時顯示一次。</p>
+        </div>
+        <div className="personal-link-actions">
+          <label>
+            人員
+            <select value={personalLinkStaffId} onChange={(event) => setPersonalLinkStaffId(event.target.value)}>
+              <option value="">請選擇人員</option>
+              {plannerRows.map((person) => <option key={person.id} value={person.id}>{canonicalStoreCode(person)} {person.employeeName}</option>)}
+            </select>
+          </label>
+          <button className="primary" type="button" onClick={createPersonalScheduleLink} disabled={personalLinkSaving || !isScheduleConfirmed || scheduleControl.lock?.needs_reconfirmation}>
+            {personalLinkSaving ? "建立中..." : "建立並複製連結"}
+          </button>
+        </div>
+        {issuedPersonalLink && <label className="issued-personal-link">剛建立的網址<input readOnly value={issuedPersonalLink} onFocus={(event) => event.target.select()} /></label>}
+        {personalLinks.length > 0 && (
+          <div className="table-wrap compact">
+            <table>
+              <thead><tr><th>人員</th><th>門店</th><th>版本</th><th>有效期限</th><th>狀態</th><th>操作</th></tr></thead>
+              <tbody>{personalLinks.map((link) => {
+                const expired = new Date(link.expires_at).getTime() <= Date.now();
+                const status = link.revoked_at ? "已撤銷" : expired ? "已失效" : link.schedule_version < scheduleExportModel.version ? "已有新版" : "有效";
+                return <tr key={link.id}>
+                  <td>{link.employee_name}</td><td>{link.home_store_code}</td><td>V{link.schedule_version}</td>
+                  <td>{new Date(link.expires_at).toLocaleString("zh-TW")}</td><td>{status}</td>
+                  <td><button type="button" disabled={Boolean(link.revoked_at)} onClick={() => revokeScheduleLink(link)}>撤銷</button></td>
+                </tr>;
+              })}</tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className={`schedule-control-panel ${isScheduleConfirmed ? "locked" : ""}`}>
         <div>

@@ -2879,3 +2879,137 @@ button.danger {
   background: #a72b2b;
   color: #fff;
 }
+
+.personal-link-panel {
+  display: grid;
+  gap: 14px;
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid #ead3c6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.personal-link-panel p {
+  margin: 4px 0 0;
+  color: #76675e;
+}
+
+.personal-link-actions {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.personal-link-actions label {
+  min-width: min(280px, 100%);
+}
+
+.issued-personal-link input {
+  width: 100%;
+}
+
+.personal-schedule-page {
+  min-height: 100vh;
+  padding: 20px;
+  background: #f6f2ea;
+  color: #201a15;
+}
+
+.personal-schedule-card {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding: 22px;
+  border: 1px solid #ead3c6;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.personal-schedule-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.personal-schedule-head > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.personal-schedule-head h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+.personal-schedule-list {
+  display: grid;
+  gap: 6px;
+  margin: 18px 0;
+}
+
+.personal-schedule-row {
+  display: grid;
+  grid-template-columns: 88px 60px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #eee3dc;
+}
+
+.personal-schedule-row.leave {
+  background: #fff1ed;
+}
+
+.personal-schedule-row > div:first-child span,
+.personal-shifts small {
+  display: block;
+  color: #806f64;
+  font-size: 12px;
+}
+
+.personal-schedule-row em {
+  font-style: normal;
+  font-weight: 700;
+}
+
+.personal-shifts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.personal-shifts span {
+  min-width: 105px;
+}
+
+@media (max-width: 600px) {
+  .personal-schedule-page {
+    padding: 0;
+  }
+
+  .personal-schedule-card {
+    min-height: 100vh;
+    padding: 16px;
+    border: 0;
+  }
+
+  .personal-schedule-head {
+    align-items: flex-start;
+  }
+
+  .personal-schedule-head > div {
+    align-items: flex-start;
+  }
+
+  .personal-schedule-head h1 {
+    font-size: 20px;
+  }
+
+  .personal-schedule-row {
+    grid-template-columns: 70px 44px minmax(0, 1fr);
+  }
+}
