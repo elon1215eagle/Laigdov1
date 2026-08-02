@@ -120,6 +120,61 @@ function resolvePersonWindows({ person, store, dateValue, shifts, holidayDates =
   return fallback ? [fallback] : [];
 }
 
+export function projectDailyStaffShifts({
+  dateValue,
+  store,
+  people,
+  overrides = [],
+  leaveStaffIds = [],
+  holidayDates = [],
+}) {
+  const leaveIds = new Set(leaveStaffIds.map(String));
+  const shiftsByStaff = groupDailyShifts(overrides, dateValue);
+  return people.flatMap((person) => {
+    if (leaveIds.has(String(person.id))) return [];
+    const explicitShifts = shiftsByStaff.get(String(person.id)) || [];
+    if (explicitShifts.length) {
+      return explicitShifts.flatMap((shift) => {
+        const window = resolvePersonWorkWindow({ person, store, dateValue, override: shift, holidayDates });
+        if (!window) return [];
+        return [{
+          id: shift.id,
+          shiftDate: dateValue,
+          staffId: String(person.id),
+          employeeName: person.employeeName || person.employee_name || "",
+          homeStoreCode: shift.home_store_code || person.store_code || person.storeCode || "",
+          assignedStoreCode: shift.assigned_store_code || person.store_code || person.storeCode || "",
+          start: window.start,
+          end: window.end,
+          startTime: window.startTime,
+          endTime: window.endTime,
+          source: window.source,
+          shiftType: shift.shift_type || "override",
+          excludedFromStaffing: Boolean(person.excludedFromStaffing),
+        }];
+      });
+    }
+    const window = resolvePersonWorkWindow({ person, store, dateValue, holidayDates });
+    if (!window) return [];
+    const homeStoreCode = person.store_code || person.storeCode || "";
+    return [{
+      id: `default:${dateValue}:${person.id}`,
+      shiftDate: dateValue,
+      staffId: String(person.id),
+      employeeName: person.employeeName || person.employee_name || "",
+      homeStoreCode,
+      assignedStoreCode: homeStoreCode,
+      start: window.start,
+      end: window.end,
+      startTime: window.startTime,
+      endTime: window.endTime,
+      source: window.source,
+      shiftType: "default",
+      excludedFromStaffing: Boolean(person.excludedFromStaffing),
+    }];
+  });
+}
+
 export function isDeliveryStaff(person) {
   return /外送|送貨|配送/.test(String(person.role || ""));
 }
@@ -156,32 +211,23 @@ export function calculateDailyStaffing({
   demand = store.demand,
 }) {
   const targetCodes = storeCodes.length ? storeCodes : store.sourceCodes || [store.code];
-  const leaveIds = new Set(leaveStaffIds.map(String));
-  const shiftsByStaff = groupDailyShifts(overrides, dateValue);
-  const workingPeople = people.filter((person) => {
-    if (leaveIds.has(String(person.id))) return false;
-    const shifts = shiftsByStaff.get(String(person.id)) || [];
-    if (shifts.length) return shifts.some((shift) => targetCodes.includes(shift.assigned_store_code));
-    return targetCodes.includes(person.store_code || person.storeCode);
-  });
+  const projected = projectDailyStaffShifts({ dateValue, store, people, overrides, leaveStaffIds });
+  const targetShifts = projected.filter((shift) => targetCodes.includes(shift.assignedStoreCode));
+  const workingStaffIds = new Set(targetShifts.map((shift) => shift.staffId));
   const segmentRows = buildStaffingSegments(store).map((segment) => ({
     ...segment,
-    count: workingPeople.reduce((sum, person) => {
-      const shifts = (shiftsByStaff.get(String(person.id)) || [])
-        .filter((shift) => targetCodes.includes(shift.assigned_store_code));
-      const windows = resolvePersonWindows({ person, store, dateValue, shifts });
-      return sum + Math.min(1, windows.reduce((total, window) => total + segmentCoverageRatio(window, segment), 0));
-    }, 0),
+    count: [...workingStaffIds].reduce((sum, staffId) => sum + Math.min(1,
+      targetShifts
+        .filter((shift) => shift.staffId === staffId)
+        .reduce((total, shift) => total + segmentCoverageRatio(shift, segment), 0)), 0),
   }));
   const criticalRows = segmentRows.filter((segment) => segment.critical);
-  const effectiveCount = criticalRows.length ? Math.min(...criticalRows.map((segment) => segment.count)) : workingPeople.length;
-  const partTimeMissingHours = workingPeople.filter((person) => {
-    if (person.role !== "兼職人員") return false;
-    const shifts = shiftsByStaff.get(String(person.id)) || [];
-    return resolvePersonWindows({ person, store, dateValue, shifts }).length === 0;
-  }).length;
+  const effectiveCount = criticalRows.length ? Math.min(...criticalRows.map((segment) => segment.count)) : workingStaffIds.size;
+  const partTimeMissingHours = people.filter((person) => person.role === "兼職人員"
+    && targetCodes.includes(person.store_code || person.storeCode)
+    && !projected.some((shift) => shift.staffId === String(person.id))).length;
   return {
-    workingPeopleCount: workingPeople.length,
+    workingPeopleCount: workingStaffIds.size,
     segmentRows,
     effectiveCount,
     partTimeMissingHours,
@@ -202,22 +248,15 @@ export function buildHalfHourStaffingMatrix({
   const start = timeToMinutes(store.open_time, 10 * 60);
   const end = timeToMinutes(store.close_time || store.close_report_time, 23 * 60);
   const targetCodes = storeCodes.length ? storeCodes : [store.store_code || store.code].filter(Boolean);
-  const shiftsByStaff = groupDailyShifts(overrides, dateValue);
-  const leaveIds = new Set(leaveStaffIds.map(String));
+  const projected = projectDailyStaffShifts({ dateValue, store, people, overrides, leaveStaffIds, holidayDates })
+    .filter((shift) => targetCodes.includes(shift.assignedStoreCode));
   const rows = [];
 
   for (let slotStart = start; slotStart < end; slotStart += 30) {
     const slotEnd = Math.min(slotStart + 30, end);
-    const presentPeople = people.filter((person) => {
-      if (leaveIds.has(String(person.id))) return false;
-      const allShifts = shiftsByStaff.get(String(person.id)) || [];
-      const matchingShifts = allShifts.filter((shift) => targetCodes.includes(shift.assigned_store_code));
-      if (allShifts.length && !matchingShifts.length) return false;
-      if (!allShifts.length && !targetCodes.includes(person.store_code || person.storeCode)) return false;
-      const windows = resolvePersonWindows({ person, dateValue, store, shifts: matchingShifts, holidayDates });
-      return windows.some((window) => window.start <= slotStart && window.end >= slotEnd);
-    });
-    const effectivePeople = presentPeople.filter((person) => !person.excludedFromStaffing);
+    const presentShifts = projected.filter((shift) => shift.start <= slotStart && shift.end >= slotEnd);
+    const presentPeople = [...new Map(presentShifts.map((shift) => [shift.staffId, shift])).values()];
+    const effectivePeople = presentPeople.filter((shift) => !shift.excludedFromStaffing);
     const isLunchPeak = slotStart < 14 * 60 && slotEnd > 11 * 60;
     const isDinnerPeak = slotStart < 19 * 60 && slotEnd > 16 * 60 + 30;
     rows.push({
@@ -230,8 +269,8 @@ export function buildHalfHourStaffingMatrix({
       surplus: Math.max(effectivePeople.length - Number(demand || 0), 0),
       isPeak: isLunchPeak || isDinnerPeak,
       peakLabel: isLunchPeak ? "午峰" : isDinnerPeak ? "晚峰" : "",
-      peopleNames: presentPeople.map((person) => person.employeeName || person.employee_name || "").filter(Boolean),
-      effectivePeopleNames: effectivePeople.map((person) => person.employeeName || person.employee_name || "").filter(Boolean),
+      peopleNames: presentPeople.map((shift) => shift.employeeName).filter(Boolean),
+      effectivePeopleNames: effectivePeople.map((shift) => shift.employeeName).filter(Boolean),
     });
   }
   return rows;

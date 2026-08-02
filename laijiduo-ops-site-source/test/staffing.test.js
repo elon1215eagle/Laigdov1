@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildHalfHourStaffingMatrix,
   getPartTimeDefaultWindow,
+  projectDailyStaffShifts,
   resolvePersonWorkWindow,
   segmentCoverageRatio,
   validateTimeWindow,
@@ -140,4 +141,43 @@ test("排除角色可顯示實際在班但不列入有效人力", () => {
   assert.equal(rows[0].actualCount, 2);
   assert.equal(rows[0].effectiveCount, 1);
   assert.equal(rows[0].gap, 1);
+});
+
+test("統一班次投影整合正職預設、兼職預設與跨店多段班", () => {
+  const people = [
+    { id: "full", employeeName: "正職", role: "正職人員", store_code: "S01" },
+    { id: "part", employeeName: "兼職", role: "兼職人員", store_code: "S01", weekday_start_time: "10:00", weekday_end_time: "16:00" },
+  ];
+  const rows = projectDailyStaffShifts({
+    dateValue: "2026-07-29",
+    store: { open_time: "10:00", close_time: "23:00" },
+    people,
+    overrides: [
+      { id: "a", shift_date: "2026-07-29", staff_id: "part", home_store_code: "S01", assigned_store_code: "S09", start_time: "13:00", end_time: "17:00", shift_type: "support" },
+      { id: "b", shift_date: "2026-07-29", staff_id: "part", home_store_code: "S01", assigned_store_code: "S09", start_time: "18:00", end_time: "21:00", shift_type: "support" },
+    ],
+  });
+  assert.deepEqual(rows.map((row) => [row.staffId, row.assignedStoreCode, row.startTime, row.source]), [
+    ["full", "S01", "10:00", "門店營業時間"],
+    ["part", "S09", "13:00", "跨店支援"],
+    ["part", "S09", "18:00", "跨店支援"],
+  ]);
+});
+
+test("統一班次投影排除休假人員且不替明確班次補主檔預設", () => {
+  const people = [
+    { id: "leave", employeeName: "休假", role: "正職人員", store_code: "S01" },
+    { id: "part", employeeName: "兼職", role: "兼職人員", store_code: "S01", weekday_start_time: "10:00", weekday_end_time: "16:00" },
+  ];
+  const rows = projectDailyStaffShifts({
+    dateValue: "2026-07-29",
+    store: { open_time: "10:00", close_time: "23:00" },
+    people,
+    leaveStaffIds: ["leave"],
+    overrides: [
+      { id: "only", shift_date: "2026-07-29", staff_id: "part", assigned_store_code: "S01", start_time: "15:00", end_time: "20:00" },
+    ],
+  });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].startTime, "15:00");
 });

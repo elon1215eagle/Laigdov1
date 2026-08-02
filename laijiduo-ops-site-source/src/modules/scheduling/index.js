@@ -7,6 +7,7 @@ export {
   isEffectiveScheduleStaff,
   isScheduleExcludedRole,
   normalizeTime24,
+  projectDailyStaffShifts,
   resolvePersonWorkWindow,
   segmentCoverageRatio,
   shiftWindowsOverlap,
