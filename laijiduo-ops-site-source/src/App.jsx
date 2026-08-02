@@ -116,6 +116,7 @@ import {
   buildDailyShiftCommand,
   buildScheduleChangeRequest,
   buildStaffingSegments,
+  calculateProjectedLaborCost,
   calculateDailyStaffing,
   deriveScheduleAccess,
   findOverlappingShift,
@@ -123,6 +124,7 @@ import {
   isScheduleExcludedRole,
   mergeDailyShift,
   normalizeStoreScopedScheduleCode,
+  projectDailyStaffShifts,
   removeDailyShiftById,
   scheduleGroupForStore,
   scheduleLockStatusText,
@@ -3694,6 +3696,24 @@ function MonthlyLeavePlanner({
         storeCodes: selectedMatrixGroup.sourceCodes,
       })
     : [];
+  const matrixProjectedShifts = selectedMatrixGroup && supportDate.startsWith(leaveMonth)
+    ? projectDailyStaffShifts({
+        dateValue: supportDate,
+        store: {
+          ...(storeHourMap.get(matrixStoreCode) || {}),
+          open_time: storeHourMap.get(matrixStoreCode)?.open_time || "10:00",
+          close_time: storeHourMap.get(matrixStoreCode)?.close_time || storeHourMap.get(matrixStoreCode)?.close_report_time || "23:00",
+        },
+        people: staffRoster,
+        overrides: dailyShifts,
+        leaveStaffIds: matrixLeaveStaffIds,
+      }).filter((shift) => selectedMatrixGroup.sourceCodes.includes(shift.assignedStoreCode))
+    : [];
+  const matrixLaborCost = calculateProjectedLaborCost({
+    projectedShifts: matrixProjectedShifts,
+    people: staffRoster,
+    salaryRows,
+  });
   const matrixGapRows = matrixRows.filter((row) => row.gap > 0);
   const matrixPeakGapRows = matrixGapRows.filter((row) => row.isPeak);
   const lockStatusText = scheduleLockStatusText({
@@ -4416,6 +4436,9 @@ function MonthlyLeavePlanner({
               )}
               <span className={matrixPeakGapRows.length ? "negative" : "positive"}><strong>{matrixPeakGapRows.length}</strong> 個尖峰缺口</span>
               <span><strong>{matrixGapRows.length}</strong> 個全日缺口</span>
+              <span><strong>{matrixLaborCost.totalHours.toFixed(1)}</strong> 預估工時</span>
+              <span><strong>{formatMoney(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>
+              {matrixLaborCost.missingCostStaffCount > 0 && <span className="warn-text"><strong>{matrixLaborCost.missingCostStaffCount}</strong> 人成本待補</span>}
             </div>
           </div>
           <div className="table-wrap staffing-matrix-wrap">

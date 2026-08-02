@@ -16,6 +16,7 @@ export {
 } from "./domain/staffingRules.js";
 
 export { buildStaffingDemandRule, resolveStaffingDemand } from "./domain/staffingDemand.js";
+export { calculateProjectedLaborCost, estimatedHourlyCost } from "./domain/laborCost.js";
 
 export {
   normalizeStoreScopedScheduleCode,
