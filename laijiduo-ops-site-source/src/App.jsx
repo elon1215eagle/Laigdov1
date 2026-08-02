@@ -118,6 +118,7 @@ import {
   buildStaffingSegments,
   calculateDailyStaffing,
   deriveScheduleAccess,
+  findOverlappingShift,
   isEffectiveScheduleStaff,
   isScheduleExcludedRole,
   mergeDailyShift,
@@ -3659,7 +3660,7 @@ function MonthlyLeavePlanner({
     scheduleControl,
     requestStoreCode: currentScheduleRequestCode,
   });
-  const editablePartTimeStaff = (isStoreScoped ? plannerRows : scheduleStaff).filter((person) => person.role === "兼職人員");
+  const editableScheduleStaff = isStoreScoped ? plannerRows : scheduleStaff;
   const visibleDailyShifts = dailyShifts.filter((shift) => (
     !isStoreScoped || plannerRows.some((person) => String(person.id) === String(shift.staff_id))
   ));
@@ -3732,7 +3733,7 @@ function MonthlyLeavePlanner({
       onNotify?.("總部已確認排班，需先取得修改核可");
       return;
     }
-    const person = editablePartTimeStaff.find((row) => String(row.id) === String(shiftForm.staff_id));
+    const person = editableScheduleStaff.find((row) => String(row.id) === String(shiftForm.staff_id));
     const command = buildDailyShiftCommand({
       form: shiftForm,
       person,
@@ -3743,6 +3744,11 @@ function MonthlyLeavePlanner({
       return;
     }
     const payload = command.payload;
+    const overlap = findOverlappingShift(payload, dailyShifts);
+    if (overlap) {
+      onNotify?.(`班次與 ${formatTime24(overlap.start_time)}–${formatTime24(overlap.end_time)} 重疊，請調整時間`);
+      return;
+    }
     setShiftSaving(true);
     try {
       const saved = await upsertDailyStaffShift(payload);
@@ -3762,7 +3768,7 @@ function MonthlyLeavePlanner({
 
   async function removeDailyShift(shift) {
     if (!canEditSchedule) return onNotify?.("總部已確認排班，需先取得修改核可");
-    if (!window.confirm(`恢復 ${shift.employee_name} ${shift.shift_date} 的主檔預設時間？`)) return;
+    if (!window.confirm(`刪除 ${shift.employee_name} ${shift.shift_date} ${formatTime24(shift.start_time)}–${formatTime24(shift.end_time)} 班次？`)) return;
     try {
       await deleteDailyStaffShift(shift.id);
       setDailyShifts((current) => {
@@ -4308,8 +4314,8 @@ function MonthlyLeavePlanner({
       <section className="daily-shift-editor">
         <div className="panel-head compact-head">
           <div>
-            <h3>兼職單日班次調整</h3>
-            <p>未設定時自動使用人資主檔平日／假日時間；只需處理特殊班次與跨店支援。</p>
+            <h3>單日多段班次調整</h3>
+            <p>同一天可新增多段班次，時間不可重疊；兼職未設定時自動使用人資主檔平日／假日時間。</p>
           </div>
         </div>
         <form className="daily-shift-form" onSubmit={saveDailyShift}>
@@ -4324,11 +4330,11 @@ function MonthlyLeavePlanner({
             />
           </label>
           <label>
-            兼職人員
+            排班人員
             <select
               value={shiftForm.staff_id}
               onChange={(event) => {
-                const person = editablePartTimeStaff.find((row) => String(row.id) === event.target.value);
+                const person = editableScheduleStaff.find((row) => String(row.id) === event.target.value);
                 setShiftForm({
                   ...shiftForm,
                   staff_id: event.target.value,
@@ -4337,7 +4343,7 @@ function MonthlyLeavePlanner({
               }}
             >
               <option value="">請選擇</option>
-              {editablePartTimeStaff.map((person) => (
+              {editableScheduleStaff.map((person) => (
                 <option key={person.id} value={person.id}>{canonicalStoreCode(person)} {person.employeeName}</option>
               ))}
             </select>
@@ -4379,7 +4385,7 @@ function MonthlyLeavePlanner({
                     <td>{formatTime24(shift.start_time)}–{formatTime24(shift.end_time)}</td>
                     <td><span className={`chip ${shift.shift_type === "support" ? "warn" : "good"}`}>{shift.shift_type === "support" ? "跨店支援" : "當日調整"}</span></td>
                     <td>{shift.note || "-"}</td>
-                    <td><button type="button" disabled={!canEditSchedule} onClick={() => removeDailyShift(shift)}>恢復預設</button></td>
+                    <td><button type="button" disabled={!canEditSchedule} onClick={() => removeDailyShift(shift)}>刪除此段</button></td>
                   </tr>
                 ))}
               </tbody>

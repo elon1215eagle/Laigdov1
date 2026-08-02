@@ -84,6 +84,42 @@ export function segmentCoverageRatio(window, segment) {
   return overlap / (segment.end - segment.start);
 }
 
+export function shiftWindowsOverlap(left, right) {
+  if (!left || !right) return false;
+  if (String(left.staff_id) !== String(right.staff_id)) return false;
+  if (left.shift_date !== right.shift_date) return false;
+  if (left.id && right.id && String(left.id) === String(right.id)) return false;
+  const leftStart = timeToMinutes(left.start_time, -1);
+  const leftEnd = timeToMinutes(left.end_time, -1);
+  const rightStart = timeToMinutes(right.start_time, -1);
+  const rightEnd = timeToMinutes(right.end_time, -1);
+  if ([leftStart, leftEnd, rightStart, rightEnd].some((value) => value < 0)) return false;
+  return leftStart < rightEnd && rightStart < leftEnd;
+}
+
+export function findOverlappingShift(candidate, shifts = []) {
+  return shifts.find((shift) => shiftWindowsOverlap(candidate, shift)) || null;
+}
+
+function groupDailyShifts(overrides, dateValue) {
+  const grouped = new Map();
+  overrides.filter((shift) => shift.shift_date === dateValue).forEach((shift) => {
+    const key = String(shift.staff_id);
+    grouped.set(key, [...(grouped.get(key) || []), shift]);
+  });
+  return grouped;
+}
+
+function resolvePersonWindows({ person, store, dateValue, shifts, holidayDates = [] }) {
+  if (shifts.length) {
+    return shifts
+      .map((override) => resolvePersonWorkWindow({ person, store, dateValue, override, holidayDates }))
+      .filter(Boolean);
+  }
+  const fallback = resolvePersonWorkWindow({ person, store, dateValue, holidayDates });
+  return fallback ? [fallback] : [];
+}
+
 export function isDeliveryStaff(person) {
   return /外送|送貨|配送/.test(String(person.role || ""));
 }
@@ -121,33 +157,28 @@ export function calculateDailyStaffing({
 }) {
   const targetCodes = storeCodes.length ? storeCodes : store.sourceCodes || [store.code];
   const leaveIds = new Set(leaveStaffIds.map(String));
-  const shiftByStaff = new Map(
-    overrides.filter((shift) => shift.shift_date === dateValue).map((shift) => [String(shift.staff_id), shift]),
-  );
+  const shiftsByStaff = groupDailyShifts(overrides, dateValue);
   const workingPeople = people.filter((person) => {
     if (leaveIds.has(String(person.id))) return false;
-    const override = shiftByStaff.get(String(person.id));
-    const assignedStoreCode = override?.assigned_store_code || person.store_code || person.storeCode;
-    return targetCodes.includes(assignedStoreCode);
+    const shifts = shiftsByStaff.get(String(person.id)) || [];
+    if (shifts.length) return shifts.some((shift) => targetCodes.includes(shift.assigned_store_code));
+    return targetCodes.includes(person.store_code || person.storeCode);
   });
   const segmentRows = buildStaffingSegments(store).map((segment) => ({
     ...segment,
     count: workingPeople.reduce((sum, person) => {
-      const override = shiftByStaff.get(String(person.id));
-      const window = resolvePersonWorkWindow({ person, store, dateValue, override });
-      return sum + segmentCoverageRatio(window, segment);
+      const shifts = (shiftsByStaff.get(String(person.id)) || [])
+        .filter((shift) => targetCodes.includes(shift.assigned_store_code));
+      const windows = resolvePersonWindows({ person, store, dateValue, shifts });
+      return sum + Math.min(1, windows.reduce((total, window) => total + segmentCoverageRatio(window, segment), 0));
     }, 0),
   }));
   const criticalRows = segmentRows.filter((segment) => segment.critical);
   const effectiveCount = criticalRows.length ? Math.min(...criticalRows.map((segment) => segment.count)) : workingPeople.length;
   const partTimeMissingHours = workingPeople.filter((person) => {
     if (person.role !== "兼職人員") return false;
-    return !resolvePersonWorkWindow({
-      person,
-      store,
-      dateValue,
-      override: shiftByStaff.get(String(person.id)),
-    });
+    const shifts = shiftsByStaff.get(String(person.id)) || [];
+    return resolvePersonWindows({ person, store, dateValue, shifts }).length === 0;
   }).length;
   return {
     workingPeopleCount: workingPeople.length,
@@ -171,9 +202,7 @@ export function buildHalfHourStaffingMatrix({
   const start = timeToMinutes(store.open_time, 10 * 60);
   const end = timeToMinutes(store.close_time || store.close_report_time, 23 * 60);
   const targetCodes = storeCodes.length ? storeCodes : [store.store_code || store.code].filter(Boolean);
-  const overrideByStaff = new Map(
-    overrides.filter((row) => row.shift_date === dateValue).map((row) => [String(row.staff_id), row]),
-  );
+  const shiftsByStaff = groupDailyShifts(overrides, dateValue);
   const leaveIds = new Set(leaveStaffIds.map(String));
   const rows = [];
 
@@ -181,11 +210,12 @@ export function buildHalfHourStaffingMatrix({
     const slotEnd = Math.min(slotStart + 30, end);
     const presentPeople = people.filter((person) => {
       if (leaveIds.has(String(person.id))) return false;
-      const override = overrideByStaff.get(String(person.id));
-      const assignedStoreCode = override?.assigned_store_code || person.store_code || person.storeCode;
-      if (!targetCodes.includes(assignedStoreCode)) return false;
-      const window = resolvePersonWorkWindow({ person, dateValue, store, override, holidayDates });
-      return Boolean(window) && window.start <= slotStart && window.end >= slotEnd;
+      const allShifts = shiftsByStaff.get(String(person.id)) || [];
+      const matchingShifts = allShifts.filter((shift) => targetCodes.includes(shift.assigned_store_code));
+      if (allShifts.length && !matchingShifts.length) return false;
+      if (!allShifts.length && !targetCodes.includes(person.store_code || person.storeCode)) return false;
+      const windows = resolvePersonWindows({ person, dateValue, store, shifts: matchingShifts, holidayDates });
+      return windows.some((window) => window.start <= slotStart && window.end >= slotEnd);
     });
     const effectivePeople = presentPeople.filter((person) => !person.excludedFromStaffing);
     const isLunchPeak = slotStart < 14 * 60 && slotEnd > 11 * 60;

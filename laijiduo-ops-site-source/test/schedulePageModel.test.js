@@ -5,6 +5,7 @@ import {
   buildDailyShiftCommand,
   buildScheduleChangeRequest,
   deriveScheduleAccess,
+  findOverlappingShift,
   mergeDailyShift,
   scheduleLockStatusText,
 } from "../src/modules/scheduling/index.js";
@@ -62,12 +63,33 @@ test("跨店班次命令正規化時間並標示支援", () => {
   assert.equal(command.payload.shift_type, "support");
 });
 
-test("同人同日班次合併時以新資料取代", () => {
+test("同人同日不同班次可同時保留", () => {
   const merged = mergeDailyShift(
     [{ id: "old", shift_date: "2026-07-29", staff_id: "staff-1" }],
     { id: "new", shift_date: "2026-07-29", staff_id: "staff-1" },
   );
-  assert.deepEqual(merged.map((row) => row.id), ["new"]);
+  assert.deepEqual(merged.map((row) => row.id), ["old", "new"]);
+});
+
+test("編輯同一班次時只取代相同 id", () => {
+  const merged = mergeDailyShift(
+    [{ id: "same", shift_date: "2026-07-29", staff_id: "staff-1", note: "舊" }],
+    { id: "same", shift_date: "2026-07-29", staff_id: "staff-1", note: "新" },
+  );
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].note, "新");
+});
+
+test("同人同日相鄰班次可建立，重疊班次會被辨識", () => {
+  const existing = [{
+    id: "morning", shift_date: "2026-07-29", staff_id: "staff-1", start_time: "10:00", end_time: "14:00",
+  }];
+  assert.equal(findOverlappingShift({
+    id: "afternoon", shift_date: "2026-07-29", staff_id: "staff-1", start_time: "14:00", end_time: "20:00",
+  }, existing), null);
+  assert.equal(findOverlappingShift({
+    id: "overlap", shift_date: "2026-07-29", staff_id: "staff-1", start_time: "13:30", end_time: "20:00",
+  }, existing)?.id, "morning");
 });
 
 test("修改申請需有原因並產生標準命令", () => {

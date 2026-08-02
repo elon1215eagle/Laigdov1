@@ -107,6 +107,25 @@ test("跨店支援只計入實際工作門店", () => {
   assert.equal(dingshanRows.find((row) => row.startTime === "15:00").actualCount, 1);
 });
 
+test("同人同日多段班在各時段正確計入且中斷時不在班", () => {
+  const person = { id: "a", employeeName: "多段班", role: "正式人員", store_code: "S01" };
+  const overrides = [
+    { id: "one", shift_date: "2026-07-29", staff_id: "a", assigned_store_code: "S01", start_time: "10:00", end_time: "14:00" },
+    { id: "two", shift_date: "2026-07-29", staff_id: "a", assigned_store_code: "S01", start_time: "16:00", end_time: "20:00" },
+  ];
+  const rows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-07-29",
+    store: { code: "S01", open_time: "10:00", close_time: "20:00" },
+    people: [person],
+    overrides,
+    demand: 1,
+    storeCodes: ["S01"],
+  });
+  assert.equal(rows.find((row) => row.startTime === "10:00").actualCount, 1);
+  assert.equal(rows.find((row) => row.startTime === "14:00").actualCount, 0);
+  assert.equal(rows.find((row) => row.startTime === "16:00").actualCount, 1);
+});
+
 test("排除角色可顯示實際在班但不列入有效人力", () => {
   const rows = buildHalfHourStaffingMatrix({
     dateValue: "2026-07-29",

@@ -34,7 +34,7 @@ export function buildDailyShiftCommand({
   person,
   homeStoreCode,
 }) {
-  if (!person) return { valid: false, message: "請選擇兼職人員" };
+  if (!person) return { valid: false, message: "請選擇排班人員" };
   const validation = validateTimeWindow(form.start_time, form.end_time);
   if (!validation.valid || !validation.start || !validation.end) {
     return {
@@ -60,10 +60,7 @@ export function buildDailyShiftCommand({
 
 export function mergeDailyShift(current, saved) {
   return [
-    ...current.filter((row) => !(
-      row.shift_date === saved.shift_date
-      && String(row.staff_id) === String(saved.staff_id)
-    )),
+    ...current.filter((row) => String(row.id) !== String(saved.id)),
     saved,
   ];
 }

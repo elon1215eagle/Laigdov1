@@ -271,9 +271,10 @@ export function createScheduleRepository(client = null) {
           ...cleanPayload,
           created_by: userId,
           updated_at: new Date().toISOString(),
-        }, { onConflict: "shift_date,staff_id" })
+        }, { onConflict: "id" })
         .select(DAILY_STAFF_SHIFT_FIELDS)
         .single();
+      if (error?.code === "23P01") throw new Error("此人員在同一天已有重疊班次，請調整起迄時間");
       if (error) throw error;
       return data;
     },
