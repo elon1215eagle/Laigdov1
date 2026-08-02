@@ -3,6 +3,7 @@ import { hasSupabaseConfig, supabase } from "./supabase";
 import { totalRevenue as calculateTotalRevenue } from "../modules/daily-report";
 import {
   buildStaffProfile,
+  createStaffPositionRepository,
   createStaffStoreAssignmentRepository,
   normalizeStoreStaffRow as normalizeStoreStaffProfileRow,
 } from "../modules/hr";
@@ -711,6 +712,7 @@ export async function fetchStoreStaff() {
 }
 
 const staffStoreAssignmentRepository = createStaffStoreAssignmentRepository(supabase);
+const staffPositionRepository = createStaffPositionRepository(supabase);
 
 export async function fetchStaffStoreAssignments() {
   return staffStoreAssignmentRepository.fetchAll();
@@ -718,6 +720,14 @@ export async function fetchStaffStoreAssignments() {
 
 export async function recordStaffStoreTransfer(payload) {
   return staffStoreAssignmentRepository.recordTransfer(payload);
+}
+
+export async function fetchStaffPositionSkills() {
+  return staffPositionRepository.fetchSkills();
+}
+
+export async function saveStaffPositionSkills(payload) {
+  return staffPositionRepository.saveSkills(payload);
 }
 
 export async function upsertStoreStaffMember(payload) {

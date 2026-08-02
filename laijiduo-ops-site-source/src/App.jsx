@@ -14,6 +14,7 @@ import {
   fetchProducts,
   fetchSecuritySettings,
   fetchStaffPerformance,
+  fetchStaffPositionSkills,
   fetchStaffStoreAssignments,
   fetchStoreRelationGroups,
   fetchStoreStaff,
@@ -24,6 +25,7 @@ import {
   reviewDailyReportChangeRequest,
   recordStaffStoreTransfer,
   saveDailyOperations,
+  saveStaffPositionSkills,
   signIn,
   signOut,
   statusLabel,
@@ -84,6 +86,7 @@ import {
   EMPLOYMENT_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,
   STAFF_ROLE_OPTIONS,
+  STAFF_POSITION_OPTIONS,
   WORK_CATEGORY_OPTIONS,
   buildStaffProfile,
   createStaffForm,
@@ -2767,6 +2770,8 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     roleName: roleOptions[0] || "",
   }));
   const [staffAssignments, setStaffAssignments] = useState([]);
+  const [staffSkills, setStaffSkills] = useState([]);
+  const [skillForm, setSkillForm] = useState({ staff_id: "", positions: [], primary_position: "" });
   const [transferForm, setTransferForm] = useState({ staff_id: "", store_code: "", effective_from: "", reason: "" });
 
   useEffect(() => {
@@ -2774,6 +2779,9 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     fetchStaffStoreAssignments()
       .then((rows) => { if (active) setStaffAssignments(rows); })
       .catch(() => { if (active) setStaffAssignments([]); });
+    fetchStaffPositionSkills()
+      .then((rows) => { if (active) setStaffSkills(rows); })
+      .catch(() => { if (active) setStaffSkills([]); });
     return () => { active = false; };
   }, []);
 
@@ -2823,6 +2831,16 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     if (!saved) return;
     setStaffAssignments(await fetchStaffStoreAssignments());
     setTransferForm({ staff_id: "", store_code: "", effective_from: "", reason: "" });
+  }
+
+  async function submitStaffSkills(event) {
+    event.preventDefault();
+    try {
+      await saveStaffPositionSkills(skillForm);
+      setStaffSkills(await fetchStaffPositionSkills());
+    } catch (error) {
+      window.alert(error.message);
+    }
   }
 
   return (
@@ -3024,6 +3042,47 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             </tbody>
           </table>
         </div>
+      </section>
+      <section className="panel wide">
+        <div className="panel-head"><div><h2>工作崗位與員工技能</h2><p>每人可具備多項技能，主要崗位用於排班缺口判斷。</p></div></div>
+        {canEditStaff && (
+          <form className="staff-admin-grid" onSubmit={submitStaffSkills}>
+            <label>
+              人員
+              <select value={skillForm.staff_id} onChange={(event) => {
+                const staffId = event.target.value;
+                const current = staffSkills.filter((row) => row.staff_id === staffId);
+                setSkillForm({ staff_id: staffId, positions: current.map((row) => row.position_code), primary_position: current.find((row) => row.is_primary)?.position_code || "" });
+              }} required>
+                <option value="">請選擇</option>
+                {staffRoster.map((row) => <option key={row.id} value={row.id}>{canonicalStoreCode(row)} {row.employeeName}</option>)}
+              </select>
+            </label>
+            <div className="wide-field staff-chip-list">
+              {STAFF_POSITION_OPTIONS.map((position) => (
+                <label key={position} className="check-row"><input type="checkbox" checked={skillForm.positions.includes(position)} onChange={(event) => {
+                  const positions = event.target.checked ? [...skillForm.positions, position] : skillForm.positions.filter((item) => item !== position);
+                  setSkillForm({ ...skillForm, positions, primary_position: positions.includes(skillForm.primary_position) ? skillForm.primary_position : positions[0] || "" });
+                }} /> {position}</label>
+              ))}
+            </div>
+            <label>
+              主要崗位
+              <select value={skillForm.primary_position} onChange={(event) => setSkillForm({ ...skillForm, primary_position: event.target.value })} required>
+                <option value="">請選擇</option>
+                {skillForm.positions.map((position) => <option key={position} value={position}>{position}</option>)}
+              </select>
+            </label>
+            <div className="staff-admin-actions"><button className="primary" type="submit">儲存技能</button></div>
+          </form>
+        )}
+        <div className="table-wrap compact"><table><thead><tr><th>人員</th><th>主要崗位</th><th>其他技能</th></tr></thead><tbody>
+          {staffRoster.filter((person) => staffSkills.some((skill) => skill.staff_id === person.id)).map((person) => {
+            const skills = staffSkills.filter((skill) => skill.staff_id === person.id);
+            return <tr key={person.id}><td>{person.employeeName}</td><td>{skills.find((skill) => skill.is_primary)?.position_code || "-"}</td><td>{skills.filter((skill) => !skill.is_primary).map((skill) => skill.position_code).join("、") || "-"}</td></tr>;
+          })}
+          {!staffSkills.length && <tr><td colSpan="3">尚未設定員工技能。</td></tr>}
+        </tbody></table></div>
       </section>
 <section className="panel wide">
         <div className="panel-head">

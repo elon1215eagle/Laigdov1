@@ -18,3 +18,5 @@ export {
   resolveStaffStoreAtDate,
 } from "./domain/staffStoreAssignment.js";
 export { createStaffStoreAssignmentRepository } from "./data/staffStoreAssignmentRepository.js";
+export { STAFF_POSITION_OPTIONS, buildStaffPositionSkillCommand, normalizeStaffPositionSkills } from "./domain/staffPosition.js";
+export { createStaffPositionRepository } from "./data/staffPositionRepository.js";
