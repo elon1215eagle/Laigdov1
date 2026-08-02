@@ -12,7 +12,8 @@ export const STORE_RELATION_GROUPS = Object.freeze([
     capabilities: Object.freeze(["schedule", "staffing", "temporary_support"]),
     demand: 5,
     coordinatingStoreCode: "S01",
-    ruleNote: "五甲與南華合併排假 / 合併看人力；南華暫停營業期間由五甲統籌。",
+    managedStoreCodes: Object.freeze(["S06"]),
+    ruleNote: "五甲與南華合併排假、合併看人力；管理關係依生效日期設定。",
   }),
   Object.freeze({
     code: "S02-S03",
@@ -21,6 +22,7 @@ export const STORE_RELATION_GROUPS = Object.freeze([
     capabilities: Object.freeze(["schedule", "staffing", "temporary_support"]),
     demand: 5,
     coordinatingStoreCode: "S02",
+    managedStoreCodes: Object.freeze(["S03"]),
     ruleNote: "凱旋與武廟合併排假、合併看人力及臨時支援。",
   }),
 ]);
@@ -62,6 +64,7 @@ export function mergeStoreRelationGroups(rows = [], defaults = STORE_RELATION_GR
         ...group,
         sourceCodes: Object.freeze([...group.sourceCodes]),
         capabilities: Object.freeze([...(group.capabilities || fallback?.capabilities || [])]),
+        managedStoreCodes: Object.freeze([...(group.managedStoreCodes || fallback?.managedStoreCodes || [])]),
         demand: Number(group.demand ?? fallback?.demand ?? 0),
         ruleNote: group.ruleNote || fallback?.ruleNote || "",
       });
@@ -82,6 +85,12 @@ export function normalizeTemporarySupportRows(rows = []) {
       { key: "dinnerPeak", label: "晚峰", count: Number(row.dinner_coverage || 0), critical: true },
     ],
   }));
+}
+
+export function isStoreManagementRelationActive(relation = {}, targetDate = new Date().toISOString().slice(0, 10)) {
+  const effectiveFrom = relation.effective_from || relation.effectiveFrom || "1900-01-01";
+  const effectiveTo = relation.effective_to || relation.effectiveTo || null;
+  return relation.is_active !== false && effectiveFrom <= targetDate && (!effectiveTo || effectiveTo >= targetDate);
 }
 
 export function createStoreDirectory(stores = [], groups = STORE_RELATION_GROUPS) {
@@ -181,12 +190,15 @@ export function createStoreDirectory(stores = [], groups = STORE_RELATION_GROUPS
       return { kind: "unassigned", primaryStoreCode: "", visibleStoreCodes: [], editableStoreCodes: [] };
     }
     const group = relationGroupForStore(primaryStore);
+    const managedStoreCodes = group?.coordinatingStoreCode === primaryStore.store_code
+      ? (group.managedStoreCodes || [])
+      : [];
     return {
       kind: "store",
       primaryStoreCode: primaryStore.store_code,
       visibleStoreCodes: group ? [...group.sourceCodes] : [primaryStore.store_code],
       editableStoreCodes: operatingStatusOf(primaryStore) === STORE_OPERATING_STATUS.ACTIVE
-        ? [primaryStore.store_code]
+        ? [primaryStore.store_code, ...managedStoreCodes]
         : [],
       relationGroupCode: group?.code || "",
     };

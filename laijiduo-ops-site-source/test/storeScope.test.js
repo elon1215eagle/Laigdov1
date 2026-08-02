@@ -8,6 +8,7 @@ import {
   normalizeTemporarySupportRows,
   normalizeStoreName,
   operatingStatusOf,
+  isStoreManagementRelationActive,
 } from "../src/lib/storeScope.js";
 
 const stores = [
@@ -69,7 +70,16 @@ test("南華為暫停營業且門店帳號不可編輯", () => {
 test("門店帳號只能編輯主要門店", () => {
   const scope = directory.scopeForProfile({ role: "store_manager", store_id: "uuid-s02" });
   assert.deepEqual(scope.visibleStoreCodes, ["S02", "S03"]);
-  assert.deepEqual(scope.editableStoreCodes, ["S02"]);
+  assert.deepEqual(scope.editableStoreCodes, ["S02", "S03"]);
+});
+
+test("五甲管理南華不依南華營業狀態，改依有效管理關係", () => {
+  const activeRelation = { effective_from: "2026-01-01", effective_to: null, is_active: true };
+  const expiredRelation = { effective_from: "2025-01-01", effective_to: "2025-12-31", is_active: true };
+  assert.equal(isStoreManagementRelationActive(activeRelation, "2026-08-02"), true);
+  assert.equal(isStoreManagementRelationActive(expiredRelation, "2026-08-02"), false);
+  const scope = directory.scopeForProfile({ role: "store_manager", store_id: "uuid-s01" });
+  assert.deepEqual(scope.editableStoreCodes, ["S01", "S06"]);
 });
 
 test("總部角色可取得所有門店範圍", () => {

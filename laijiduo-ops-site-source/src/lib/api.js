@@ -328,7 +328,8 @@ export async function reviewDailyReportChangeRequest(requestId, decision, review
 
 export async function fetchStoreRelationGroups() {
   if (!supabase) return [];
-  const { data, error } = await supabase
+  const [{ data, error }, managementResult] = await Promise.all([
+    supabase
     .from("store_relation_groups")
     .select(`
       id,
@@ -344,11 +345,21 @@ export async function fetchStoreRelationGroups() {
       store_relation_group_members(store_code)
     `)
     .eq("is_active", true)
-    .order("group_code");
+    .order("group_code"),
+    supabase
+      .from("store_management_relations")
+      .select("managing_store_code, managed_store_code, relationship_type, effective_from, effective_to, is_active")
+      .eq("is_active", true),
+  ]);
   if (error) {
     if (isMissingSupabaseTable(error)) return [];
     throw error;
   }
+  const managementRows = managementResult.error && isMissingSupabaseTable(managementResult.error)
+    ? []
+    : managementResult.data || [];
+  if (managementResult.error && !isMissingSupabaseTable(managementResult.error)) throw managementResult.error;
+  const today = new Date().toISOString().slice(0, 10);
   return (data || []).map((row) => ({
     code: row.group_code,
     name: row.group_name,
@@ -358,6 +369,12 @@ export async function fetchStoreRelationGroups() {
     sourceCodes: (row.store_relation_group_members || [])
       .map((member) => member.store_code)
       .filter(Boolean)
+      .sort(),
+    managedStoreCodes: managementRows
+      .filter((relation) => relation.managing_store_code === row.coordinating_store_code)
+      .filter((relation) => relation.relationship_type === "schedule_management")
+      .filter((relation) => relation.effective_from <= today && (!relation.effective_to || relation.effective_to >= today))
+      .map((relation) => relation.managed_store_code)
       .sort(),
     capabilities: [
       row.schedule_shared ? "schedule" : "",
