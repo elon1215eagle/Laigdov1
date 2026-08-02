@@ -22,6 +22,7 @@ test("排班群組只把五甲與南華合併在排班範圍", () => {
 test("兼職後勤與送貨角色不列入有效排班", () => {
   assert.equal(isScheduleExcludedRole({ role: "兼職後勤" }), true);
   assert.equal(isScheduleExcludedRole({ role: "送貨人員" }), true);
+  assert.equal(isScheduleExcludedRole({ role: "兼職人員", employment_type: "兼職", work_category: "送貨" }), true);
   assert.equal(isScheduleExcludedRole({ role: "兼職人員" }), false);
 });
 
@@ -58,4 +59,3 @@ test("單日支援會從原店移出並計入支援店", () => {
   assert.equal(home.workingPeopleCount, 0);
   assert.equal(support.workingPeopleCount, 1);
 });
-

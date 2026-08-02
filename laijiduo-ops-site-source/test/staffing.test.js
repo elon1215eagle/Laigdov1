@@ -157,7 +157,15 @@ test("送貨人員完全不列入店面人力矩陣", () => {
     store: { code: "S01", open_time: "10:00", close_time: "11:00" },
     people: [
       { id: "a", employeeName: "正式人員", role: "正式人員", store_code: "S01" },
-      { id: "b", employeeName: "送貨人員", role: "送貨人員", store_code: "S01", excludedFromStaffing: true },
+      {
+        id: "b",
+        employeeName: "兼職送貨人員",
+        role: "兼職人員",
+        employment_type: "兼職",
+        work_category: "送貨",
+        store_code: "S01",
+        excludedFromStaffing: true,
+      },
     ],
     demand: 2,
     storeCodes: ["S01"],

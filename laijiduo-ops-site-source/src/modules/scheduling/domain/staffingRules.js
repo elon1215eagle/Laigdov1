@@ -178,7 +178,13 @@ export function projectDailyStaffShifts({
 }
 
 export function isDeliveryStaff(person) {
-  return /外送|送貨|配送/.test(String(person.role || person.role_name || person.work_category || ""));
+  const classification = [
+    person.role,
+    person.role_name,
+    person.employment_type,
+    person.work_category,
+  ].filter(Boolean).join(" ");
+  return /外送|送貨|配送/.test(classification);
 }
 
 export function isScheduleExcludedRole(person) {
