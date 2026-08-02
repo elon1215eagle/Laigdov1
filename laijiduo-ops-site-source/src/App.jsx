@@ -3426,6 +3426,7 @@ function MonthlyLeavePlanner({
 }) {
   const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
   const [storeFilter, setStoreFilter] = useState(allowedStoreCode || "all");
+  const [matrixGroupCode, setMatrixGroupCode] = useState("");
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
   const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
   const [uploadingCode, setUploadingCode] = useState("");
@@ -3664,34 +3665,37 @@ function MonthlyLeavePlanner({
   const visibleDailyShifts = dailyShifts.filter((shift) => (
     !isStoreScoped || plannerRows.some((person) => String(person.id) === String(shift.staff_id))
   ));
-  const wujiaGroup = allStoreGroups.find((store) => store.sourceCodes.includes("S01"));
-  const wujiaMatrixVisible = !isStoreScoped || ["S01", "S06"].includes(allowedStoreCode);
-  const wujiaMatrixDay = Number(supportDate.slice(8, 10));
-  const wujiaLeaveStaffIds = staffRoster
-    .filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, wujiaMatrixDay))
+  const matrixGroups = isStoreScoped ? storeGroups : allStoreGroups;
+  const selectedMatrixGroup = matrixGroups.find((store) => store.code === (
+    isStoreScoped ? allowedGroupCode : (storeFilter !== "all" ? storeFilter : matrixGroupCode)
+  )) || matrixGroups[0];
+  const matrixStoreCode = selectedMatrixGroup?.sourceCodes?.[0] || selectedMatrixGroup?.code || "";
+  const matrixDay = Number(supportDate.slice(8, 10));
+  const matrixLeaveStaffIds = staffRoster
+    .filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, matrixDay))
     .map((person) => person.id);
-  const wujiaMatrixRows = wujiaGroup && supportDate.startsWith(leaveMonth)
+  const matrixRows = selectedMatrixGroup && supportDate.startsWith(leaveMonth)
     ? buildHalfHourStaffingMatrix({
         dateValue: supportDate,
         store: {
-          ...(storeHourMap.get("S01") || {}),
-          code: "S01",
-          store_code: "S01",
-          open_time: storeHourMap.get("S01")?.open_time || "10:00",
-          close_time: storeHourMap.get("S01")?.close_time || storeHourMap.get("S01")?.close_report_time || "23:00",
+          ...(storeHourMap.get(matrixStoreCode) || {}),
+          code: matrixStoreCode,
+          store_code: matrixStoreCode,
+          open_time: storeHourMap.get(matrixStoreCode)?.open_time || "10:00",
+          close_time: storeHourMap.get(matrixStoreCode)?.close_time || storeHourMap.get(matrixStoreCode)?.close_report_time || "23:00",
         },
         people: staffRoster.map((person) => ({
           ...person,
           excludedFromStaffing: isScheduleExcludedRole(person),
         })),
         overrides: dailyShifts,
-        leaveStaffIds: wujiaLeaveStaffIds,
-        demand: wujiaGroup.demand || storeDemandMap.get("S01") || 5,
-        storeCodes: wujiaGroup.sourceCodes,
+        leaveStaffIds: matrixLeaveStaffIds,
+        demand: selectedMatrixGroup.demand || storeDemandMap.get(matrixStoreCode) || 0,
+        storeCodes: selectedMatrixGroup.sourceCodes,
       })
     : [];
-  const wujiaGapRows = wujiaMatrixRows.filter((row) => row.gap > 0);
-  const wujiaPeakGapRows = wujiaGapRows.filter((row) => row.isPeak);
+  const matrixGapRows = matrixRows.filter((row) => row.gap > 0);
+  const matrixPeakGapRows = matrixGapRows.filter((row) => row.isPeak);
   const lockStatusText = scheduleLockStatusText({
     hasRemoteConfig: hasSupabaseConfig,
     isConfirmed: isScheduleConfirmed,
@@ -4394,16 +4398,24 @@ function MonthlyLeavePlanner({
         )}
       </section>
 
-      {wujiaMatrixVisible && wujiaGroup && (
+      {selectedMatrixGroup && (
         <section className="staffing-matrix">
           <div className="panel-head">
             <div>
-              <h3>五甲店時段人力矩陣</h3>
+              <h3>{selectedMatrixGroup.name}時段人力矩陣</h3>
               <p>{supportDate}，每 30 分鐘核對實際在班、有效人力、需求與缺口；沿用上方臨時支援日期。</p>
             </div>
             <div className="matrix-summary">
-              <span className={wujiaPeakGapRows.length ? "negative" : "positive"}><strong>{wujiaPeakGapRows.length}</strong> 個尖峰缺口</span>
-              <span><strong>{wujiaGapRows.length}</strong> 個全日缺口</span>
+              {!isStoreScoped && storeFilter === "all" && (
+                <label>
+                  查看門店
+                  <select value={selectedMatrixGroup.code} onChange={(event) => setMatrixGroupCode(event.target.value)}>
+                    {matrixGroups.map((group) => <option key={group.code} value={group.code}>{group.code} {group.name}</option>)}
+                  </select>
+                </label>
+              )}
+              <span className={matrixPeakGapRows.length ? "negative" : "positive"}><strong>{matrixPeakGapRows.length}</strong> 個尖峰缺口</span>
+              <span><strong>{matrixGapRows.length}</strong> 個全日缺口</span>
             </div>
           </div>
           <div className="table-wrap staffing-matrix-wrap">
@@ -4420,7 +4432,7 @@ function MonthlyLeavePlanner({
                 </tr>
               </thead>
               <tbody>
-                {wujiaMatrixRows.map((row) => (
+                {matrixRows.map((row) => (
                   <tr className={`${row.isPeak ? "peak-row" : ""} ${row.gap > 0 ? "gap-row" : ""}`} key={row.startTime}>
                     <td><strong>{row.startTime}–{row.endTime}</strong></td>
                     <td>{row.peakLabel || "離峰"}</td>
@@ -4431,7 +4443,7 @@ function MonthlyLeavePlanner({
                     <td className="matrix-name-list">{row.peopleNames.join("、") || "無人在班"}</td>
                   </tr>
                 ))}
-                {!wujiaMatrixRows.length && <tr><td colSpan="7">目前無法建立五甲店時段矩陣，請確認營業時間與人員主檔。</td></tr>}
+                {!matrixRows.length && <tr><td colSpan="7">目前無法建立時段人力矩陣，請確認營業時間與人員主檔。</td></tr>}
               </tbody>
             </table>
           </div>
