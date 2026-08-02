@@ -10,3 +10,11 @@ export {
   normalizeStoreStaffRow,
   staffMemberToForm,
 } from "./domain/staffProfile.js";
+export {
+  assignmentContainsDate,
+  buildStaffStoreTransfer,
+  hasAssignmentOverlap,
+  normalizeStaffStoreAssignment,
+  resolveStaffStoreAtDate,
+} from "./domain/staffStoreAssignment.js";
+export { createStaffStoreAssignmentRepository } from "./data/staffStoreAssignmentRepository.js";

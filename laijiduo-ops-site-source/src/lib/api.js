@@ -3,6 +3,7 @@ import { hasSupabaseConfig, supabase } from "./supabase";
 import { totalRevenue as calculateTotalRevenue } from "../modules/daily-report";
 import {
   buildStaffProfile,
+  createStaffStoreAssignmentRepository,
   normalizeStoreStaffRow as normalizeStoreStaffProfileRow,
 } from "../modules/hr";
 import {
@@ -690,6 +691,16 @@ export async function fetchStoreStaff() {
       Number(a.sort_order || 999) - Number(b.sort_order || 999) ||
       String(a.employeeName || "").localeCompare(String(b.employeeName || ""), "zh-Hant")
     ));
+}
+
+const staffStoreAssignmentRepository = createStaffStoreAssignmentRepository(supabase);
+
+export async function fetchStaffStoreAssignments() {
+  return staffStoreAssignmentRepository.fetchAll();
+}
+
+export async function recordStaffStoreTransfer(payload) {
+  return staffStoreAssignmentRepository.recordTransfer(payload);
 }
 
 export async function upsertStoreStaffMember(payload) {

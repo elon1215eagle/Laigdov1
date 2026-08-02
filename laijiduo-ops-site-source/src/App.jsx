@@ -14,6 +14,7 @@ import {
   fetchProducts,
   fetchSecuritySettings,
   fetchStaffPerformance,
+  fetchStaffStoreAssignments,
   fetchStoreRelationGroups,
   fetchStoreStaff,
   fetchStores,
@@ -21,6 +22,7 @@ import {
   hasSupabaseConfig,
   reviewReport,
   reviewDailyReportChangeRequest,
+  recordStaffStoreTransfer,
   saveDailyOperations,
   signIn,
   signOut,
@@ -722,6 +724,19 @@ export function App() {
     }
   }
 
+  async function transferStaffMember(command) {
+    try {
+      await recordStaffStoreTransfer(command);
+      const nextRows = await fetchStoreStaff();
+      setStaffRoster(nextRows);
+      show("人員調店已生效，歷史歸屬已保留");
+      return true;
+    } catch (error) {
+      show(`人員調店失敗：${error.message}`);
+      return false;
+    }
+  }
+
   async function syncWorkspace() {
     setLoading(true);
     try {
@@ -888,6 +903,7 @@ export function App() {
             currentRole={currentRole}
             onSaveStaffMember={saveStaffMember}
             onDeleteStaffMember={removeStaffMember}
+            onTransferStaffMember={transferStaffMember}
           />
         )}
         {activeModuleAllowed && activeModule === "system" && (
@@ -2717,7 +2733,7 @@ function applyPerformanceCalculation(form, patch = {}) {
   };
 }
 
-function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster, currentRole, onSaveStaffMember, onDeleteStaffMember }) {
+function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster, currentRole, onSaveStaffMember, onDeleteStaffMember, onTransferStaffMember }) {
   const selectedStore = stores.find((store) => store.store_id === selectedStoreId || store.id === selectedStoreId);
   const normalizedSelectedName = normalizeStoreName(selectedStore?.name);
   const selectedStoreName = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizedSelectedName)?.storeName || storeHours[0]?.storeName || "";
@@ -2750,6 +2766,16 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     storeName: defaultStoreName,
     roleName: roleOptions[0] || "",
   }));
+  const [staffAssignments, setStaffAssignments] = useState([]);
+  const [transferForm, setTransferForm] = useState({ staff_id: "", store_code: "", effective_from: "", reason: "" });
+
+  useEffect(() => {
+    let active = true;
+    fetchStaffStoreAssignments()
+      .then((rows) => { if (active) setStaffAssignments(rows); })
+      .catch(() => { if (active) setStaffAssignments([]); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (staffForm.store_code || !defaultStoreCode) return;
@@ -2789,6 +2815,14 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     if (!window.confirm("確定停用 " + row.employeeName + "？停用後排假表不會再列入此人員。")) return;
     await onDeleteStaffMember?.(row);
     if (staffForm.id === row.id) resetStaffForm();
+  }
+
+  async function submitStaffTransfer(event) {
+    event.preventDefault();
+    const saved = await onTransferStaffMember?.(transferForm);
+    if (!saved) return;
+    setStaffAssignments(await fetchStaffStoreAssignments());
+    setTransferForm({ staff_id: "", store_code: "", effective_from: "", reason: "" });
   }
 
   return (
@@ -2940,6 +2974,53 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                   </tr>
                 ))}
               {!staffRoster.length && <tr><td colSpan="9">尚無人員資料，請由總部新增。</td></tr>}
+            </tbody>
+          </table>
+        </div>
+      </section>
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>人員調店與歸屬歷程</h2>
+            <p>調店依生效日建立新版本；舊門店與歷史班表不會被覆蓋。</p>
+          </div>
+        </div>
+        {canEditStaff && (
+          <form className="staff-admin-grid" onSubmit={submitStaffTransfer}>
+            <label>
+              人員
+              <select value={transferForm.staff_id} onChange={(event) => setTransferForm({ ...transferForm, staff_id: event.target.value })} required>
+                <option value="">請選擇</option>
+                {staffRoster.map((row) => <option key={row.id} value={row.id}>{canonicalStoreCode(row)} {row.employeeName}</option>)}
+              </select>
+            </label>
+            <label>
+              新歸屬門店
+              <select value={transferForm.store_code} onChange={(event) => setTransferForm({ ...transferForm, store_code: event.target.value })} required>
+                <option value="">請選擇</option>
+                {storeOptions.map((store) => <option key={store.store_code} value={store.store_code}>{store.store_code} {store.name}</option>)}
+              </select>
+            </label>
+            <label>
+              生效日
+              <input type="date" value={transferForm.effective_from} onChange={(event) => setTransferForm({ ...transferForm, effective_from: event.target.value })} required />
+            </label>
+            <label>
+              調店原因
+              <input value={transferForm.reason} onChange={(event) => setTransferForm({ ...transferForm, reason: event.target.value })} placeholder="例如：營運人力調整" required />
+            </label>
+            <div className="staff-admin-actions"><button className="primary" type="submit">確認調店</button></div>
+          </form>
+        )}
+        <div className="table-wrap compact">
+          <table>
+            <thead><tr><th>人員</th><th>歸屬門店</th><th>生效日</th><th>結束日</th><th>原因</th></tr></thead>
+            <tbody>
+              {staffAssignments.map((assignment) => {
+                const person = staffRoster.find((row) => String(row.id) === String(assignment.staff_id));
+                return <tr key={assignment.id}><td>{person?.employeeName || assignment.staff_id}</td><td>{assignment.store_code}</td><td>{assignment.effective_from}</td><td>{assignment.effective_to || "目前"}</td><td>{assignment.reason}</td></tr>;
+              })}
+              {!staffAssignments.length && <tr><td colSpan="5">尚無歸屬歷程；資料庫套用後會自動建立既有人員基準。</td></tr>}
             </tbody>
           </table>
         </div>
