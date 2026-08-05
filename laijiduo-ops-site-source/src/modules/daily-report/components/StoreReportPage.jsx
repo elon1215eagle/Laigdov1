@@ -16,7 +16,6 @@ import {
   STORE_MANAGER_REVENUE_LOOKBACK_DAYS,
   buildDailyReportChangeRequest,
   calculateScheduledHeadcount,
-  buildWeeklySameDayRows,
   createEmployeeMealRows,
   deriveDailyReportAccess,
   deriveRevenueBreakdown,
@@ -198,24 +197,19 @@ export function StoreReportPage({
   useEffect(() => {
     let active = true;
     async function loadOperationsRows() {
-      const range = getWeekRange(reportDate || today);
-      const requestedStart = addDays(range.start, -7);
-      const accessStart = isStoreManagerView
-        ? storeManagerRevenueMinDate(today)
-        : requestedStart;
-      const accessEnd = isStoreManagerView ? today : range.end;
+      const range = getWeekRange(today);
+      const monthStart = `${today.slice(0, 7)}-01`;
+      const comparisonStart = addDays(range.start, -7);
+      const requestedStart = comparisonStart < monthStart ? comparisonStart : monthStart;
       setOperationsLoading(true);
       try {
-        const rows = await fetchDailyReportsRange(
-          requestedStart < accessStart ? accessStart : requestedStart,
-          range.end > accessEnd ? accessEnd : range.end,
-        );
+        const rows = await fetchDailyReportsRange(requestedStart, today);
         if (!active) return;
         const storeCode = report.store_code || report.store_id;
         const scopedRows = rows.filter(
           (row) => (row.store_code || row.store_id) === storeCode,
         );
-        setOperationsRows(buildWeeklySameDayRows(scopedRows, reportDate || today));
+        setOperationsRows(scopedRows);
       } catch {
         if (active) setOperationsRows([]);
       } finally {
@@ -226,7 +220,7 @@ export function StoreReportPage({
     return () => {
       active = false;
     };
-  }, [isStoreManagerView, report, reportDate, today]);
+  }, [report.store_code, report.store_id, today]);
 
   useEffect(() => {
     let active = true;
@@ -405,7 +399,7 @@ export function StoreReportPage({
         </div>
         {isStoreManagerView && (
           <div className="alert-line warn">
-            店長帳號僅開放最近 {STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天營收資料；完整歷史由總部查詢。
+            每日回報修改僅開放最近 {STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天；門店營運視圖可查看本月完整營收。
           </div>
         )}
         {reportDate < today && (
@@ -600,7 +594,13 @@ export function StoreReportPage({
             </label>
           </div>
         ) : tab === "ops" ? (
-          <StoreOperationsView rows={operationsRows} loading={operationsLoading} />
+          <StoreOperationsView
+            reports={operationsRows}
+            loading={operationsLoading}
+            referenceDate={today}
+            dailyTarget={report.target}
+            monthlyTarget={report.target_monthly_revenue}
+          />
         ) : tab === "inventory" ? (
           <InventoryEditor rows={inventory} onChange={setInventory} disabled={!workflowAccess.canEdit} />
         ) : (

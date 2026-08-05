@@ -1056,6 +1056,220 @@ tbody tr.selected,
   padding-bottom: 76px;
 }
 
+.store-operations-view {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding-bottom: 76px;
+}
+
+.store-ops-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.store-ops-kpis > div {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  min-height: 112px;
+  padding: 12px;
+  border: 1px solid #eeded5;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.store-ops-kpis span,
+.store-target-progress span,
+.store-day-detail span {
+  color: #76584a;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.store-ops-kpis > div > strong:not(.store-attainment) {
+  font-size: 19px;
+  line-height: 1.25;
+}
+
+.store-ops-kpis small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.store-attainment {
+  display: inline-grid;
+  place-items: center;
+  justify-self: start;
+  min-width: 72px;
+  min-height: 30px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 16px;
+}
+
+.store-attainment.attainment-hit { background: #1769aa; }
+.store-attainment.attainment-near { background: #2e7d32; }
+.store-attainment.attainment-low { background: #c62828; }
+
+.store-ops-section {
+  overflow: hidden;
+  border: 1px solid #ead8cd;
+  border-radius: 8px;
+  background: #fffdfa;
+}
+
+.store-ops-section-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 60px;
+  padding: 11px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.store-ops-section-toggle > span {
+  display: grid;
+  gap: 3px;
+}
+
+.store-ops-section-toggle small {
+  color: var(--muted);
+}
+
+.store-ops-section-toggle i {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #86513c;
+  border-bottom: 2px solid #86513c;
+  transform: rotate(45deg);
+  transition: transform 160ms ease;
+}
+
+.store-ops-section.open .store-ops-section-toggle i {
+  transform: rotate(225deg);
+}
+
+.store-ops-section-body {
+  padding: 0 10px 10px;
+  border-top: 1px solid #f0e2d9;
+}
+
+.store-target-progress,
+.store-day-detail {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding-top: 10px;
+}
+
+.store-target-progress > div,
+.store-day-detail > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 10px;
+  background: #fff7f1;
+  border-radius: 6px;
+}
+
+.store-target-progress .wide {
+  grid-column: 1 / -1;
+}
+
+.store-target-progress strong,
+.store-day-detail strong {
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+
+.store-week-list,
+.store-month-list {
+  display: grid;
+}
+
+.store-comparison-row,
+.store-day-row {
+  border-bottom: 1px solid #f0e2d9;
+}
+
+.store-comparison-row:last-child,
+.store-day-row:last-child {
+  border-bottom: 0;
+}
+
+.store-comparison-row > summary,
+.store-day-row > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 2px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.store-comparison-row > summary::-webkit-details-marker,
+.store-day-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.store-comparison-row > summary > span,
+.store-day-row > summary > span {
+  display: grid;
+  gap: 3px;
+}
+
+.store-comparison-row > summary > span:last-child,
+.store-day-row > summary > span:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.store-comparison-row small,
+.store-day-row small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.store-day-row.future {
+  opacity: 0.55;
+}
+
+.store-day-row .store-attainment {
+  min-width: 62px;
+  min-height: 24px;
+  padding: 1px 8px;
+  font-size: 13px;
+}
+
+.store-period-grid {
+  display: grid;
+  grid-template-columns: 54px repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #ead8cd;
+}
+
+.store-period-grid > * {
+  min-width: 0;
+  padding: 7px 5px;
+  background: #fff9f5;
+  font-size: 11px;
+  font-style: normal;
+  overflow-wrap: anywhere;
+}
+
 .input-card,
 .target-card,
 .stock-row,

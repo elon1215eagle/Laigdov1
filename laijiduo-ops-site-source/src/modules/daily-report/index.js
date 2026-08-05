@@ -4,6 +4,7 @@ export {
   totalRevenue,
 } from "./domain/dailyReport.js";
 export { buildWeeklySameDayRows } from "./domain/weeklyComparison.js";
+export { buildStoreOperationsModel } from "./domain/storeOperations.js";
 export {
   STORE_MANAGER_REVENUE_LOOKBACK_DAYS,
   isStoreManagerRevenueDateAllowed,
