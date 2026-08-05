@@ -3005,6 +3005,117 @@ tbody tr.selected,
 
   .phone-shell {
     max-width: none;
+    padding: 14px;
+    font-size: 16px;
+  }
+
+  .phone-shell input,
+  .phone-shell select,
+  .phone-shell textarea,
+  .phone-shell button {
+    min-height: 48px;
+    font-size: 16px;
+  }
+
+  .phone-shell textarea {
+    padding: 12px;
+    line-height: 1.55;
+  }
+
+  .phone-shell .phone-header h2 {
+    font-size: 24px;
+    line-height: 1.25;
+  }
+
+  .phone-shell .phone-header p,
+  .phone-shell .alert-line,
+  .phone-shell .report-date-card label,
+  .phone-shell .input-card small,
+  .phone-shell .stock-row span,
+  .phone-shell .form-help,
+  .phone-shell .store-ops-kpis small,
+  .phone-shell .store-ops-section-toggle small,
+  .phone-shell .store-comparison-row small,
+  .phone-shell .store-day-row small {
+    font-size: 14px;
+    line-height: 1.45;
+  }
+
+  .phone-shell .input-card > span,
+  .phone-shell .note-box > span,
+  .phone-shell .binary-field > span,
+  .phone-shell .stock-row strong,
+  .phone-shell .store-ops-section-toggle strong,
+  .phone-shell .store-comparison-row summary strong,
+  .phone-shell .store-day-row summary strong {
+    font-size: 16px;
+    line-height: 1.4;
+  }
+
+  .phone-shell .input-card input,
+  .phone-shell .stock-row input,
+  .phone-shell .calculated-card strong {
+    font-size: 19px;
+    font-weight: 800;
+  }
+
+  .phone-shell .segments {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .phone-shell .segments button {
+    min-width: 0;
+    min-height: 48px;
+    padding: 6px 8px;
+    font-size: 16px;
+    line-height: 1.25;
+    white-space: normal;
+  }
+
+  .phone-shell .store-ops-kpis > div {
+    min-width: 0;
+    min-height: 124px;
+    padding: 12px 10px;
+  }
+
+  .phone-shell .store-ops-kpis > div > strong:not(.store-attainment) {
+    font-size: 22px;
+    overflow-wrap: anywhere;
+  }
+
+  .phone-shell .store-attainment {
+    min-width: 78px;
+    min-height: 34px;
+    font-size: 18px;
+  }
+
+  .phone-shell .store-ops-section-toggle {
+    min-height: 64px;
+  }
+
+  .phone-shell .store-period-grid > * {
+    padding: 9px 5px;
+    font-size: 14px;
+  }
+
+  .phone-shell .store-target-progress strong,
+  .phone-shell .store-day-detail strong {
+    font-size: 17px;
+  }
+
+  .phone-shell td,
+  .phone-shell th {
+    font-size: 15px;
+    line-height: 1.4;
+  }
+
+  .phone-shell :where(.input-card, .stock-row, .store-ops-kpis > div, .store-ops-section-toggle, .store-comparison-row summary, .store-day-row summary) > * {
+    min-width: 0;
+  }
+
+  .phone-shell :where(strong, span, small, p, label) {
+    overflow-wrap: anywhere;
   }
 
   .input-card,
