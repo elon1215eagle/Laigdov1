@@ -1022,6 +1022,28 @@ tbody tr.selected,
   font-weight: 800;
 }
 
+.progress.attainment-hit,
+.progress.attainment-hit span {
+  background: #1769aa;
+}
+
+.progress.attainment-near,
+.progress.attainment-near span {
+  background: #2e7d32;
+}
+
+.progress.attainment-low,
+.progress.attainment-low span {
+  background: #c62828;
+}
+
+.progress.attainment-hit em,
+.progress.attainment-near em,
+.progress.attainment-low em {
+  color: #fff;
+  font-size: 16px;
+}
+
 .report-date-card input {
   width: 100%;
   min-width: 0;

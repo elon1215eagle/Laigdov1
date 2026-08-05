@@ -1811,7 +1811,7 @@ function HqDashboard({
                   <td>{money(report.revenue_1400_to_1900)}</td>
                   <td>{money(report.revenue_1900_to_close)}</td>
                   <td><strong>{money(totalRevenue(report))}</strong></td>
-                  <td><Progress value={(totalRevenue(report) / report.target) * 100} /></td>
+                  <td><Progress value={(totalRevenue(report) / report.target) * 100} attainmentStatus /></td>
                   <td>{report.inventory_status}</td>
                   <td className={report.cash_difference < 0 ? "negative" : ""}>{report.cash_difference ?? "未填"}</td>
                   <td><span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span></td>
@@ -6351,9 +6351,12 @@ function Metric({ label, value, detail, tone: metricTone = "neutral" }) {
   );
 }
 
-function Progress({ value }) {
+function Progress({ value, attainmentStatus = false }) {
+  const attainmentClass = attainmentStatus
+    ? value >= 100 ? " attainment-hit" : value >= 70 ? " attainment-near" : " attainment-low"
+    : "";
   return (
-    <div className="progress">
+    <div className={`progress${attainmentClass}`}>
       <span style={{ width: `${Math.min(100, Math.max(0, value || 0))}%` }} />
       <em>{pct(value)}</em>
     </div>
