@@ -72,12 +72,14 @@ export const productsSeed = productRows.map(([name, unit], index) => ({
 
 export const salaryStructureSeed = [
   ["店長", "60000", "委任經理人", "須自保", "", "", "11", "2", "9"],
+  ["代理店長", "待設定", "聘僱制", "保勞健保", "", "", "11", "2", "9"],
   ["副店長", "50000", "聘僱制", "保勞健保", "5000", "", "11", "2", "9"],
+  ["代理副店", "待設定", "聘僱制", "保勞健保", "", "", "11", "2", "9"],
   ["資深人員", "46000", "聘僱制", "保勞健保", "4000", "7", "11", "2", "9"],
   ["正式人員", "42000", "聘僱制", "保勞健保", "3000", "6", "11", "2", "9"],
   ["新進人員", "38500", "聘僱制", "保勞健保", "2500", "6", "11", "2", "9"],
-  ["兼職後勤", "33000", "聘僱制", "保勞健保", "2500", "6", "8", "1", "7"],
-  ["送貨人員", "1150 / 日", "承攬制", "", "", "", "", "", ""],
+  ["兼職人員", "依預估時薪", "兼職", "依投保資格", "", "", "", "", ""],
+  ["總部人員", "待設定", "聘僱制", "依公司規定", "", "", "", "", ""],
 ].map((row) => ({
   role: row[0],
   base_salary: row[1],
@@ -205,7 +207,7 @@ export const scheduleSeed = storeHoursSeed.flatMap((store, storeIndex) => {
   const isClosed = store.storeName === "鳳山南華店";
   const required = Number(store.duty_staff || 0);
   const available = roster.filter((person) => !["兼職後勤", "送貨人員"].includes(person.role));
-  const lead = available.find((person) => person.role === "店長" || person.role === "副店長") || available[0];
+  const lead = available.find((person) => ["店長", "代理店長", "副店長", "代理副店"].includes(person.role)) || available[0];
   const shifts = [
     ["開店", store.open_time, store.lunch_report_time],
     ["晚峰", store.dinner_peak.split("-")[0], store.dinner_peak.split("-")[1]],

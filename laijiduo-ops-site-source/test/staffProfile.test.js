@@ -7,13 +7,15 @@ import {
   WORK_CATEGORY_OPTIONS,
   buildStaffProfile,
   createStaffForm,
+  isStoreLeadershipRole,
   normalizeStoreStaffRow,
+  staffRoleRank,
   staffMemberToForm,
 } from "../src/modules/hr/index.js";
 
 test("人員分類選項符合第一階段核定內容且沒有重複", () => {
   assert.deepEqual(EMPLOYMENT_TYPE_OPTIONS, ["正職", "兼職"]);
-  assert.deepEqual(STAFF_ROLE_OPTIONS, ["店長", "副店長", "資深人員", "正職人員", "兼職人員", "總部人員"]);
+  assert.deepEqual(STAFF_ROLE_OPTIONS, ["店長", "代理店長", "副店長", "代理副店", "資深人員", "正式人員", "新進人員", "兼職人員", "總部人員"]);
   assert.deepEqual(WORK_CATEGORY_OPTIONS, ["門店營運", "後勤", "送貨", "總部"]);
   assert.deepEqual(EMPLOYMENT_STATUS_OPTIONS, ["待到職", "在職", "留職停薪", "已離職", "停用"]);
 });
@@ -28,7 +30,7 @@ test("舊兼職後勤資料會轉成獨立分類而不遺失", () => {
 
 test("舊送貨人員資料會保留送貨工作類別", () => {
   const row = normalizeStoreStaffRow({ role_name: "送貨人員", is_active: true });
-  assert.equal(row.role, "正職人員");
+  assert.equal(row.role, "正式人員");
   assert.equal(row.employment_type, "正職");
   assert.equal(row.work_category, "送貨");
 });
@@ -71,7 +73,7 @@ test("兼職預設工時可留空但不可只填一端", () => {
 
 test("正職不保存兼職預設工時", () => {
   const result = buildStaffProfile({
-    store_code: "S01", employee_name: "正職甲", role_name: "正職人員", employment_type: "正職",
+    store_code: "S01", employee_name: "正職甲", role_name: "正式人員", employment_type: "正職",
     weekday_start_time: "10:00", weekday_end_time: "16:00",
   });
   assert.equal(result.valid, true);
@@ -81,6 +83,19 @@ test("正職不保存兼職預設工時", () => {
   assert.equal(result.payload.work_end_time, "16:00");
   assert.equal(result.payload.holiday_start_time, "10:00");
   assert.equal(result.payload.holiday_end_time, "16:00");
+});
+
+test("新進人員維持獨立職稱且舊正職名稱轉為正式人員", () => {
+  assert.equal(normalizeStoreStaffRow({ role_name: "新進人員" }).role, "新進人員");
+  assert.equal(normalizeStoreStaffRow({ role_name: "正職人員" }).role, "正式人員");
+});
+
+test("職稱排序與代理主管判定符合核定規則", () => {
+  const unordered = ["兼職人員", "副店長", "新進人員", "店長", "代理副店", "代理店長"];
+  assert.deepEqual(unordered.sort((a, b) => staffRoleRank(a) - staffRoleRank(b)), ["店長", "代理店長", "副店長", "代理副店", "新進人員", "兼職人員"]);
+  assert.equal(isStoreLeadershipRole("代理店長"), true);
+  assert.equal(isStoreLeadershipRole("代理副店"), true);
+  assert.equal(isStoreLeadershipRole("資深人員"), false);
 });
 
 test("資料列與編輯表單使用同一套分類正規化", () => {

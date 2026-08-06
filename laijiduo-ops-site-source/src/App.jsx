@@ -92,6 +92,8 @@ import {
   WORK_CATEGORY_OPTIONS,
   buildStaffProfile,
   createStaffForm,
+  isStoreLeadershipRole,
+  staffRoleRank,
   staffMemberToForm,
 } from "./modules/hr";
 import {
@@ -2854,14 +2856,14 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
   const normalizedSelectedName = normalizeStoreName(selectedStore?.name);
   const selectedStoreName = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizedSelectedName)?.storeName || storeHours[0]?.storeName || "";
   const rosterByStore = staffRoster.filter((row) => normalizeStoreName(row.storeName) === normalizeStoreName(selectedStoreName));
-  const managers = staffRoster.filter((row) => row.role === "店長" || row.role === "副店長");
+  const managers = staffRoster.filter((row) => isStoreLeadershipRole(row.role));
   const activeStoreNames = storeHours.filter((row) => row.storeName !== "鳳山南華店").map((row) => row.storeName);
   const uncoveredStores = activeStoreNames.filter((storeName) => !managers.some((row) => normalizeStoreName(row.storeName) === normalizeStoreName(storeName)));
   const byRole = salaryRows.map((salary) => ({
     ...salary,
     base_salary: canViewSalary ? salary.base_salary : "已遮蔽",
     performance_bonus: canViewSalary ? salary.performance_bonus : "已遮蔽",
-    count: staffRoster.filter((row) => row.role === salary.role || (salary.role === "送貨人員" && row.role === "送貨人員")).length,
+    count: staffRoster.filter((row) => row.role === salary.role).length,
   }));
 
   const editableStaffRoles = ["ceo", "coo", "cfo", "admin", "hq", "cso", "general_affairs"];
@@ -3084,7 +3086,10 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             <tbody>
               {staffRoster
                 .slice()
-                .sort((a, b) => `${canonicalStoreCode(a)}-${a.sort_order || 999}-${a.employeeName}`.localeCompare(`${canonicalStoreCode(b)}-${b.sort_order || 999}-${b.employeeName}`, "zh-Hant"))
+                .sort((a, b) => canonicalStoreCode(a).localeCompare(canonicalStoreCode(b))
+                  || staffRoleRank(a.role) - staffRoleRank(b.role)
+                  || Number(a.sort_order || 999) - Number(b.sort_order || 999)
+                  || a.employeeName.localeCompare(b.employeeName, "zh-Hant"))
                 .map((row) => (
                   <tr key={row.id}>
                     <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
@@ -3272,7 +3277,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
           </div>
         </div>
         <div className="staff-chip-list">
-          {rosterByStore.map((row) => (
+          {rosterByStore.slice().sort((a, b) => staffRoleRank(a.role) - staffRoleRank(b.role) || a.employeeName.localeCompare(b.employeeName, "zh-Hant")).map((row) => (
             <div className="staff-chip" key={row.id}>
               <strong>{row.employeeName}</strong>
               <span>{row.role}</span>
@@ -3507,7 +3512,7 @@ function getMonthlyRestDays(role, salaryRows) {
 function getSuggestedRestDays(role, salaryRows) {
   const restDays = getMonthlyRestDays(role, salaryRows);
   if (restDays) return restDays;
-  if (role === "店長" || role === "副店長") return 7;
+  if (isStoreLeadershipRole(role)) return 7;
   return null;
 }
 
@@ -5333,7 +5338,7 @@ function ScheduleModule({
   const closedRows = scopedScheduleRows.filter((row) => row.status === "暫停營業");
   const managerCount = new Set(
     scopedStaffRoster
-      .filter((row) => row.role === "店長" || row.role === "副店長")
+      .filter((row) => isStoreLeadershipRole(row.role))
       .map((row) => row.storeName),
   ).size;
   const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(getWeekRange(today).start, index)), []);
@@ -5720,7 +5725,7 @@ function buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, sc
   }));
   const managerStoreCodes = new Set(
     staffRoster
-      .filter((person) => person.role === "店長" || person.role === "副店長")
+      .filter((person) => isStoreLeadershipRole(person.role))
       .map((person) => canonicalStoreCode(person)),
   );
   const managerRows = reports
@@ -6080,7 +6085,7 @@ function PerformanceModule({ stores, selectedStoreId, rows, onSave }) {
             姓名
             <input value={form.employee_name} onChange={(event) => setForm({ ...form, employee_name: event.target.value })} />
           </label>
-          <SelectField label="職位" value={form.role_name} options={["店長", "副店長", "資深人員", "正式人員", "新進人員", "兼職人員", "兼職後勤", "送貨人員"]} onChange={(value) => setForm({ ...form, role_name: value })} />
+          <SelectField label="職位" value={form.role_name} options={STAFF_ROLE_OPTIONS} onChange={(value) => setForm({ ...form, role_name: value })} />
           <IntegerField label="遲到分鐘" value={form.late_count} onChange={(value) => updatePerformanceField({ late_count: value })} />
           <IntegerField label="違規請假次數" value={form.leave_count} onChange={(value) => updatePerformanceField({ leave_count: value })} />
           <IntegerField label="曠職日數" value={form.absence_count} onChange={(value) => updatePerformanceField({ absence_count: value })} />

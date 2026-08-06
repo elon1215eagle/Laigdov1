@@ -2,20 +2,41 @@ import { normalizeTime24, validateTimeWindow } from "../../scheduling/domain/sta
 
 export const PART_TIME_ROLE = "兼職人員";
 export const EMPLOYMENT_TYPE_OPTIONS = ["正職", "兼職"];
-export const STAFF_ROLE_OPTIONS = ["店長", "副店長", "資深人員", "正職人員", PART_TIME_ROLE, "總部人員"];
+export const STAFF_ROLE_OPTIONS = [
+  "店長",
+  "代理店長",
+  "副店長",
+  "代理副店",
+  "資深人員",
+  "正式人員",
+  "新進人員",
+  PART_TIME_ROLE,
+  "總部人員",
+];
 export const WORK_CATEGORY_OPTIONS = ["門店營運", "後勤", "送貨", "總部"];
 export const EMPLOYMENT_STATUS_OPTIONS = ["待到職", "在職", "留職停薪", "已離職", "停用"];
 
 const LEGACY_TITLE_MAP = {
-  正式人員: "正職人員",
-  新進人員: "正職人員",
+  正職人員: "正式人員",
   兼職後勤: PART_TIME_ROLE,
-  送貨人員: "正職人員",
+  送貨人員: "正式人員",
 };
+
+export function staffRoleRank(roleName) {
+  const normalizedRole = LEGACY_TITLE_MAP[String(roleName || "").trim()] || String(roleName || "").trim();
+  const rank = STAFF_ROLE_OPTIONS.indexOf(normalizedRole);
+  return rank >= 0 ? rank : STAFF_ROLE_OPTIONS.length;
+}
+
+export const STORE_LEADERSHIP_ROLES = ["店長", "代理店長", "副店長", "代理副店"];
+
+export function isStoreLeadershipRole(roleName) {
+  return STORE_LEADERSHIP_ROLES.includes(LEGACY_TITLE_MAP[String(roleName || "").trim()] || String(roleName || "").trim());
+}
 
 export function inferStaffClassification(row = {}) {
   const legacyRole = String(row.role_name || row.role || "").trim();
-  const roleName = String(row.staff_title || row.staffTitle || LEGACY_TITLE_MAP[legacyRole] || legacyRole || "正職人員").trim();
+  const roleName = String(row.staff_title || row.staffTitle || LEGACY_TITLE_MAP[legacyRole] || legacyRole || "正式人員").trim();
   const employmentType = String(row.employment_type || row.employmentType || ([PART_TIME_ROLE, "兼職後勤"].includes(legacyRole) ? "兼職" : "正職")).trim();
   const workCategory = String(row.work_category || row.workCategory || (
     legacyRole === "兼職後勤" ? "後勤" : legacyRole === "送貨人員" ? "送貨" : legacyRole === "總部人員" ? "總部" : "門店營運"
@@ -58,7 +79,7 @@ export function normalizeStoreStaffRow(row, index = 0) {
   };
 }
 
-export function createStaffForm({ storeCode = "", storeName = "", roleName = "正職人員" } = {}) {
+export function createStaffForm({ storeCode = "", storeName = "", roleName = "正式人員" } = {}) {
   return {
     id: "", store_code: storeCode, store_name: storeName, employee_name: "", role_name: roleName,
     employment_type: roleName === PART_TIME_ROLE ? "兼職" : "正職",
