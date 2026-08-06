@@ -220,6 +220,26 @@ test("五甲門店與後勤矩陣依工作類別完全分流", () => {
   assert.equal(backofficeRows[0].effectiveCount, 1);
 });
 
+test("委任店經理不建立班次且不進入任何人力矩陣", () => {
+  const manager = { id: "manager", employeeName: "委任經理", role: "委任店經理", work_category: "門店營運", store_code: "S01" };
+  const projected = projectDailyStaffShifts({
+    dateValue: "2026-08-06",
+    store: { code: "S01", open_time: "10:00", close_time: "23:00" },
+    people: [manager],
+  });
+  const rows = buildHalfHourStaffingMatrix({
+    dateValue: "2026-08-06",
+    store: { code: "S01", open_time: "10:00", close_time: "11:00" },
+    people: [manager],
+    storeCodes: ["S01"],
+    matrixMode: "storefront",
+  });
+  assert.equal(isScheduleExcludedRole(manager), true);
+  assert.deepEqual(projected, []);
+  assert.equal(rows[0].actualCount, 0);
+  assert.deepEqual(rows[0].peopleNames, []);
+});
+
 test("統一班次投影整合正職預設、兼職預設與跨店多段班", () => {
   const people = [
     { id: "full", employeeName: "正職", role: "正職人員", store_code: "S01" },

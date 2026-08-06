@@ -133,6 +133,7 @@ export function projectDailyStaffShifts({
   const leaveIds = new Set(leaveStaffIds.map(String));
   const shiftsByStaff = groupDailyShifts(overrides, dateValue);
   return people.flatMap((person) => {
+    if (String(person.role || person.role_name || "").trim() === "委任店經理") return [];
     if (leaveIds.has(String(person.id))) return [];
     const explicitShifts = shiftsByStaff.get(String(person.id)) || [];
     if (explicitShifts.length) {
@@ -186,7 +187,7 @@ export function isDeliveryStaff(person) {
 export function isScheduleExcludedRole(person) {
   const workCategory = String(person.work_category || person.workCategory || "").trim();
   const roleName = String(person.role || person.role_name || "").trim();
-  return workCategory === "後勤" || roleName === "兼職後勤" || isDeliveryStaff(person);
+  return roleName === "委任店經理" || workCategory === "後勤" || roleName === "兼職後勤" || isDeliveryStaff(person);
 }
 
 export function isEffectiveScheduleStaff(person) {
@@ -194,6 +195,7 @@ export function isEffectiveScheduleStaff(person) {
 }
 
 export function matchesStaffingMatrixMode(person, matrixMode = "legacy") {
+  if (String(person.role || person.role_name || "").trim() === "委任店經理") return false;
   const workCategory = String(person.work_category || person.workCategory || "").trim();
   if (matrixMode === "backoffice") return workCategory === "後勤";
   if (matrixMode === "storefront") return !isScheduleExcludedRole(person);

@@ -15,7 +15,7 @@ import {
 
 test("人員分類選項符合第一階段核定內容且沒有重複", () => {
   assert.deepEqual(EMPLOYMENT_TYPE_OPTIONS, ["正職", "兼職"]);
-  assert.deepEqual(STAFF_ROLE_OPTIONS, ["店長", "代理店長", "副店長", "代理副店", "資深人員", "正式人員", "新進人員", "兼職人員", "總部人員"]);
+  assert.deepEqual(STAFF_ROLE_OPTIONS, ["委任店經理", "店長", "代理店長", "副店長", "代理副店", "資深人員", "正式人員", "新進人員", "兼職人員", "總部人員"]);
   assert.deepEqual(WORK_CATEGORY_OPTIONS, ["門店營運", "後勤", "送貨", "總部"]);
   assert.deepEqual(EMPLOYMENT_STATUS_OPTIONS, ["待到職", "在職", "留職停薪", "已離職", "停用"]);
 });
@@ -91,8 +91,9 @@ test("新進人員維持獨立職稱且舊正職名稱轉為正式人員", () =>
 });
 
 test("職稱排序與代理主管判定符合核定規則", () => {
-  const unordered = ["兼職人員", "副店長", "新進人員", "店長", "代理副店", "代理店長"];
-  assert.deepEqual(unordered.sort((a, b) => staffRoleRank(a) - staffRoleRank(b)), ["店長", "代理店長", "副店長", "代理副店", "新進人員", "兼職人員"]);
+  const unordered = ["兼職人員", "副店長", "新進人員", "店長", "代理副店", "代理店長", "委任店經理"];
+  assert.deepEqual(unordered.sort((a, b) => staffRoleRank(a) - staffRoleRank(b)), ["委任店經理", "店長", "代理店長", "副店長", "代理副店", "新進人員", "兼職人員"]);
+  assert.equal(isStoreLeadershipRole("委任店經理"), true);
   assert.equal(isStoreLeadershipRole("代理店長"), true);
   assert.equal(isStoreLeadershipRole("代理副店"), true);
   assert.equal(isStoreLeadershipRole("資深人員"), false);

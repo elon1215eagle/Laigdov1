@@ -3,6 +3,7 @@ import { normalizeTime24, validateTimeWindow } from "../../scheduling/domain/sta
 export const PART_TIME_ROLE = "兼職人員";
 export const EMPLOYMENT_TYPE_OPTIONS = ["正職", "兼職"];
 export const STAFF_ROLE_OPTIONS = [
+  "委任店經理",
   "店長",
   "代理店長",
   "副店長",
@@ -28,7 +29,7 @@ export function staffRoleRank(roleName) {
   return rank >= 0 ? rank : STAFF_ROLE_OPTIONS.length;
 }
 
-export const STORE_LEADERSHIP_ROLES = ["店長", "代理店長", "副店長", "代理副店"];
+export const STORE_LEADERSHIP_ROLES = ["委任店經理", "店長", "代理店長", "副店長", "代理副店"];
 
 export function isStoreLeadershipRole(roleName) {
   return STORE_LEADERSHIP_ROLES.includes(LEGACY_TITLE_MAP[String(roleName || "").trim()] || String(roleName || "").trim());
