@@ -6,14 +6,58 @@ export const STORE_SETTING_TABS = [
   ["staffing", "人力需求"],
   ["target", "營收目標"],
   ["relation", "管理關係"],
+  ["salary", "職級薪資"],
   ["audit", "異動紀錄"],
 ];
+
+const nullableNumber = (value) => {
+  if (value === "" || value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+export function normalizeSalarySetting(row = {}) {
+  const workHours = nullableNumber(row.work_hours);
+  const breakHours = nullableNumber(row.break_hours);
+  return {
+    ...row,
+    role: row.role || row.role_name || "",
+    role_name: row.role_name || row.role || "",
+    salary_type: row.salary_type || (/時薪/.test(String(row.base_salary || "")) ? "hourly" : nullableNumber(row.base_salary) !== null ? "monthly" : "negotiable"),
+    base_salary: nullableNumber(row.base_salary),
+    hourly_rate: nullableNumber(row.hourly_rate),
+    performance_bonus: nullableNumber(row.performance_bonus),
+    monthly_rest_days: nullableNumber(row.monthly_rest_days),
+    work_hours: workHours,
+    break_hours: breakHours,
+    actual_work_hours: workHours === null ? null : Math.max(0, workHours - (breakHours || 0)),
+    employment_type: row.employment_type || "",
+    insurance_note: row.insurance_note || "",
+    is_active: row.is_active !== false,
+  };
+}
+
+export function validateSalarySetting(row = {}) {
+  const salary = normalizeSalarySetting(row);
+  if (!salary.role_name) return "請選擇職級";
+  if (!["monthly", "hourly", "negotiable"].includes(salary.salary_type)) return "請選擇薪資類型";
+  for (const [value, label] of [
+    [salary.base_salary, "底薪"], [salary.hourly_rate, "時薪"], [salary.performance_bonus, "績效獎金"],
+    [salary.monthly_rest_days, "月休"], [salary.work_hours, "工時"], [salary.break_hours, "休息時間"],
+  ]) {
+    if (value !== null && (!Number.isFinite(value) || value < 0)) return `${label}須為零以上數字`;
+  }
+  if (salary.salary_type === "monthly" && salary.base_salary === null) return "月薪制請填寫底薪";
+  if (salary.salary_type === "hourly" && salary.hourly_rate === null) return "時薪制請填寫時薪";
+  if (salary.work_hours !== null && salary.break_hours !== null && salary.break_hours > salary.work_hours) return "休息時間不可大於總工時";
+  return "";
+}
 
 export function timeText(value, fallback = "") {
   return String(value || fallback).slice(0, 5);
 }
 
-export function createStoreSettingsDraft({ store, setting, demand, relation, fallback }) {
+export function createStoreSettingsDraft({ store, setting, demand, relation, fallback, workforceView }) {
   const openTime = timeText(setting?.weekday_open_time, fallback?.open_time || "10:00");
   const closeTime = timeText(setting?.weekday_close_time, fallback?.close_time || "22:00");
   const monthlyTarget = Number(store?.target_monthly_revenue || 0);
@@ -41,6 +85,7 @@ export function createStoreSettingsDraft({ store, setting, demand, relation, fal
     relation_group_code: relation?.code || "",
     group_demand: Number(relation?.demand || 0),
     relation_rule_note: relation?.ruleNote || "",
+    backoffice_matrix_enabled: workforceView?.is_enabled === true,
   };
 }
 

@@ -149,8 +149,12 @@ import {
   createStoreSettingsDraft,
   fetchStoreOperatingConfigurations,
   mergeStoreHours,
+  normalizeSalarySetting,
+  saveStaffRoleSalarySetting,
   saveStoreOperatingConfiguration,
+  saveStoreWorkforceView,
   settingsPayload,
+  validateSalarySetting,
   validateStoreSettingsDraft,
 } from "./modules/store-settings";
 import {
@@ -317,7 +321,7 @@ function AuthenticatedApp() {
   const [hqTasks, setHqTasks] = useState([]);
   const [staffRoster, setStaffRoster] = useState([]);
   const [storeRelationGroups, setStoreRelationGroups] = useState(STORE_RELATION_GROUPS);
-  const [storeConfigurationData, setStoreConfigurationData] = useState({ settings: [], demands: [], audits: [] });
+  const [storeConfigurationData, setStoreConfigurationData] = useState({ settings: [], demands: [], audits: [], workforceViews: [], salarySettings: [] });
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -333,7 +337,7 @@ function AuthenticatedApp() {
     setHqTasks([]);
     setStaffRoster([]);
     setStoreRelationGroups(STORE_RELATION_GROUPS);
-    setStoreConfigurationData({ settings: [], demands: [], audits: [] });
+    setStoreConfigurationData({ settings: [], demands: [], audits: [], workforceViews: [], salarySettings: [] });
     setSelectedStoreId("");
   }
 
@@ -347,7 +351,7 @@ function AuthenticatedApp() {
     setHqTasks(hqTaskSeed);
     setStaffRoster(staffRosterSeed);
     setStoreRelationGroups(STORE_RELATION_GROUPS);
-    setStoreConfigurationData({ settings: [], demands: [], audits: [] });
+    setStoreConfigurationData({ settings: [], demands: [], audits: [], workforceViews: [], salarySettings: [] });
   }
 
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId, preferredReportDate = reportDate) {
@@ -414,6 +418,12 @@ function AuthenticatedApp() {
   const currentRole = profileRole(profile);
   const canViewSalary = ["ceo", "cfo"].includes(currentRole)
     || (currentRole === "coo" && new Date(salaryAccessExpiresAt).getTime() > Date.now());
+  const effectiveSalaryRows = useMemo(() => {
+    if (storeConfigurationData.salarySettings?.length) {
+      return storeConfigurationData.salarySettings.map(normalizeSalarySetting);
+    }
+    return salaryStructureSeed.map(normalizeSalarySetting);
+  }, [storeConfigurationData.salarySettings]);
   const selectedReport = findStoreScopedRecord(reports, selectedStoreId) || (currentRole === "store_manager" ? null : reports[0]);
   const activeModuleAllowed = canAccessModule(currentRole, activeModule);
   const effectiveStoreHours = useMemo(
@@ -994,7 +1004,7 @@ function AuthenticatedApp() {
           <HrMasterModule
             stores={stores}
             selectedStoreId={selectedStoreId}
-            salaryRows={salaryStructureSeed}
+            salaryRows={effectiveSalaryRows}
             storeHours={effectiveStoreHours}
             staffRoster={staffRoster}
             currentRole={currentRole}
@@ -1017,6 +1027,9 @@ function AuthenticatedApp() {
             storeHours={effectiveStoreHours}
             relationGroups={storeRelationGroups}
             configurationData={storeConfigurationData}
+            salaryRows={effectiveSalaryRows}
+            canViewSalary={canViewSalary}
+            onUnlockSalary={unlockSalaryAccess}
             onSaved={async () => {
               await loadWorkspace(profile, selectedStoreId, reportDate);
               show("門店營運設定已生效，相關看板與排班資料已同步");
@@ -1028,7 +1041,7 @@ function AuthenticatedApp() {
             scheduleRows={effectiveScheduleRows}
             storeHours={effectiveStoreHours}
             staffRoster={staffRoster}
-            salaryRows={salaryStructureSeed}
+            salaryRows={effectiveSalaryRows}
             stores={stores}
             profile={profile}
             selectedStoreId={selectedStoreId}
@@ -1036,6 +1049,7 @@ function AuthenticatedApp() {
             currentRole={currentRole}
             canViewSalary={canViewSalary}
             storeRelationGroups={storeRelationGroups}
+            workforceViews={storeConfigurationData.workforceViews || []}
             onNotify={show}
           />
         )}
@@ -1043,7 +1057,7 @@ function AuthenticatedApp() {
           <HqTaskDispatchModule tasks={hqTasks} stores={stores} selectedStoreId={selectedStoreId} onSave={saveHqTask} />
         )}
         {activeModuleAllowed && activeModule === "hrFlow" && (
-          <HrFlowModule changes={hrChangeSeed} salaryRows={salaryStructureSeed} />
+          <HrFlowModule changes={hrChangeSeed} salaryRows={effectiveSalaryRows} />
         )}
         {activeModuleAllowed && activeModule === "anomaly" && (
           <AnomalyCenterModule
@@ -2898,13 +2912,15 @@ function applyPerformanceCalculation(form, patch = {}) {
   };
 }
 
-function StoreSettingsModule({ stores, storeHours, relationGroups, configurationData, onSaved }) {
+function StoreSettingsModule({ stores, storeHours, relationGroups, configurationData, salaryRows, canViewSalary, onUnlockSalary, onSaved }) {
   const [storeCode, setStoreCode] = useState(stores[0]?.store_code || "");
   const [tab, setTab] = useState("basic");
   const [draft, setDraft] = useState(null);
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [salaryDrafts, setSalaryDrafts] = useState([]);
+  const [salarySavingRole, setSalarySavingRole] = useState("");
 
   const selectedStore = stores.find((store) => store.store_code === storeCode) || stores[0];
   const selectedSetting = configurationData.settings.find((row) => row.store_code === selectedStore?.store_code);
@@ -2912,6 +2928,7 @@ function StoreSettingsModule({ stores, storeHours, relationGroups, configuration
   const selectedRelation = relationGroups.find((group) => group.sourceCodes.includes(selectedStore?.store_code));
   const selectedFallback = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizeStoreName(selectedStore?.name));
   const selectedAudits = configurationData.audits.filter((row) => row.store_code === selectedStore?.store_code);
+  const selectedWorkforceView = configurationData.workforceViews?.find((row) => row.store_code === selectedStore?.store_code && row.view_type === "backoffice");
 
   useEffect(() => {
     if (!selectedStore) return;
@@ -2921,10 +2938,15 @@ function StoreSettingsModule({ stores, storeHours, relationGroups, configuration
       demand: selectedDemand,
       relation: selectedRelation,
       fallback: selectedFallback,
+      workforceView: selectedWorkforceView,
     }));
     setReason("");
     setError("");
-  }, [selectedStore?.store_code, selectedSetting?.updated_at, selectedDemand?.required_count, selectedRelation?.demand]);
+  }, [selectedStore?.store_code, selectedSetting?.updated_at, selectedDemand?.required_count, selectedRelation?.demand, selectedWorkforceView?.is_enabled]);
+
+  useEffect(() => {
+    setSalaryDrafts((salaryRows || []).map(normalizeSalarySetting));
+  }, [salaryRows]);
 
   if (!selectedStore || !draft) return <section className="panel"><p>目前沒有可設定的門店。</p></section>;
 
@@ -2940,12 +2962,36 @@ function StoreSettingsModule({ stores, storeHours, relationGroups, configuration
     setError("");
     try {
       await saveStoreOperatingConfiguration(selectedStore.store_code, settingsPayload(draft), reason.trim());
+      if (selectedStore.store_code === "S01") {
+        await saveStoreWorkforceView("S01", "backoffice", draft.backoffice_matrix_enabled, reason.trim());
+      }
       await onSaved?.();
       setReason("");
     } catch (saveError) {
       setError(`儲存失敗：${saveError.message}`);
     } finally {
       setSaving(false);
+    }
+  }
+
+  function updateSalary(roleName, key, value) {
+    setSalaryDrafts((rows) => rows.map((row) => row.role_name === roleName ? { ...row, [key]: value } : row));
+  }
+
+  async function saveSalary(row) {
+    const validationError = validateSalarySetting(row);
+    if (validationError) return setError(validationError);
+    if (String(reason || "").trim().length < 3) return setError("薪資修改原因至少需要三個字");
+    setSalarySavingRole(row.role_name);
+    setError("");
+    try {
+      await saveStaffRoleSalarySetting(normalizeSalarySetting(row), reason.trim());
+      await onSaved?.();
+      setReason("");
+    } catch (saveError) {
+      setError(`薪資設定儲存失敗：${saveError.message}`);
+    } finally {
+      setSalarySavingRole("");
     }
   }
 
@@ -3004,6 +3050,7 @@ function StoreSettingsModule({ stores, storeHours, relationGroups, configuration
             <label>晚峰開始<input type="time" step="1800" value={draft.dinner_peak_start} onChange={(event) => update("dinner_peak_start", event.target.value)} /></label>
             <label>晚峰結束<input type="time" step="1800" value={draft.dinner_peak_end} onChange={(event) => update("dinner_peak_end", event.target.value)} /></label>
             <label>晚峰需求人數<input type="number" min="0" step="1" value={draft.dinner_peak_demand} onChange={(event) => update("dinner_peak_demand", event.target.value)} /></label>
+            {selectedStore.store_code === "S01" && <label className="settings-toggle-field"><input type="checkbox" checked={draft.backoffice_matrix_enabled} onChange={(event) => update("backoffice_matrix_enabled", event.target.checked)} />啟用五甲後勤人力矩陣</label>}
             <div className="settings-inline-note">星期別及特殊日期需求仍由排班管理的「人力需求調整」建立，優先於本基準。</div>
           </div>}
 
@@ -3021,6 +3068,26 @@ function StoreSettingsModule({ stores, storeHours, relationGroups, configuration
             <div className="settings-inline-note">新增、移除門店關係涉及跨店資料權限，第一版只允許維護既有群組需求與規則，避免誤改可見範圍。</div>
           </div>}
 
+          {tab === "salary" && (
+            canViewSalary ? <div className="salary-settings-editor">
+              <div className="settings-inline-note">薪資設定為全公司職級共用，不隨門店切換；每次修改均須填寫原因並留下稽核紀錄。</div>
+              <div className="table-wrap"><table><thead><tr><th>職級</th><th>薪資類型</th><th>底薪</th><th>時薪</th><th>績效獎金</th><th>月休</th><th>總工時</th><th>休息</th><th>實際工時</th><th>操作</th></tr></thead><tbody>
+                {salaryDrafts.map((row) => <tr key={row.role_name}>
+                  <td><strong>{row.role_name}</strong></td>
+                  <td><select value={row.salary_type} onChange={(event) => updateSalary(row.role_name, "salary_type", event.target.value)}><option value="monthly">月薪</option><option value="hourly">時薪</option><option value="negotiable">待設定</option></select></td>
+                  <td><input type="number" min="0" value={row.base_salary ?? ""} onChange={(event) => updateSalary(row.role_name, "base_salary", event.target.value)} /></td>
+                  <td><input type="number" min="0" value={row.hourly_rate ?? ""} onChange={(event) => updateSalary(row.role_name, "hourly_rate", event.target.value)} /></td>
+                  <td><input type="number" min="0" value={row.performance_bonus ?? ""} onChange={(event) => updateSalary(row.role_name, "performance_bonus", event.target.value)} /></td>
+                  <td><input type="number" min="0" step="0.5" value={row.monthly_rest_days ?? ""} onChange={(event) => updateSalary(row.role_name, "monthly_rest_days", event.target.value)} /></td>
+                  <td><input type="number" min="0" step="0.5" value={row.work_hours ?? ""} onChange={(event) => updateSalary(row.role_name, "work_hours", event.target.value)} /></td>
+                  <td><input type="number" min="0" step="0.5" value={row.break_hours ?? ""} onChange={(event) => updateSalary(row.role_name, "break_hours", event.target.value)} /></td>
+                  <td>{row.work_hours === null ? "-" : Math.max(0, Number(row.work_hours || 0) - Number(row.break_hours || 0))}</td>
+                  <td><button type="button" onClick={() => saveSalary(row)} disabled={salarySavingRole === row.role_name}>{salarySavingRole === row.role_name ? "儲存中" : "儲存"}</button></td>
+                </tr>)}
+              </tbody></table></div>
+            </div> : <div className="salary-locked-state"><strong>薪資資料已遮蔽</strong><p>僅 CEO、CFO 或限時解鎖後的 COO 可查看與修改。</p>{onUnlockSalary && <button type="button" onClick={onUnlockSalary}>限時解鎖</button>}</div>
+          )}
+
           {tab === "audit" && <div className="table-wrap compact settings-audit-table"><table><thead><tr><th>時間</th><th>修改原因</th><th>狀態</th><th>需求</th></tr></thead><tbody>
             {selectedAudits.map((row) => <tr key={row.id}><td>{new Date(row.changed_at).toLocaleString("zh-TW", { hour12: false })}</td><td>{row.change_reason}</td><td>{row.after_data?.store?.operating_status || "-"}</td><td>{row.after_data?.baseline_demand ?? "-"}</td></tr>)}
             {!selectedAudits.length && <tr><td colSpan="4">目前尚無異動紀錄</td></tr>}
@@ -3028,7 +3095,7 @@ function StoreSettingsModule({ stores, storeHours, relationGroups, configuration
 
           {tab !== "audit" && <div className="settings-save-bar">
             <label>修改原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="必填，例如：調整八月門店人力基準" /></label>
-            <button className="primary" type="submit" disabled={saving}>{saving ? "儲存中" : "確認儲存並同步"}</button>
+            {tab !== "salary" && <button className="primary" type="submit" disabled={saving}>{saving ? "儲存中" : "確認儲存並同步"}</button>}
           </div>}
           {error && <p className="form-error">{error}</p>}
         </form>
@@ -3750,11 +3817,13 @@ function MonthlyLeavePlanner({
   canViewSalary = false,
   storeHours,
   storeRelationGroups = STORE_RELATION_GROUPS,
+  workforceViews = [],
   onNotify,
 }) {
   const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
   const [storeFilter, setStoreFilter] = useState(allowedStoreCode || "all");
   const [matrixGroupCode, setMatrixGroupCode] = useState("");
+  const [matrixMode, setMatrixMode] = useState("storefront");
   const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
   const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
   const [uploadingCode, setUploadingCode] = useState("");
@@ -4122,7 +4191,7 @@ function MonthlyLeavePlanner({
   const matrixLeaveStaffIds = staffRoster
     .filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, matrixDay))
     .map((person) => person.id);
-  const matrixRows = selectedMatrixGroup && supportDate.startsWith(leaveMonth)
+  const storefrontMatrixRows = selectedMatrixGroup && supportDate.startsWith(leaveMonth)
     ? buildHalfHourStaffingMatrix({
         dateValue: supportDate,
         store: {
@@ -4143,8 +4212,33 @@ function MonthlyLeavePlanner({
           ? (time) => resolveStaffingDemand(staffingDemandRules, { storeCode: matrixStoreCode, date: supportDate, time })
           : null,
         storeCodes: selectedMatrixGroup.sourceCodes,
+        matrixMode: "storefront",
       })
     : [];
+  const backofficeEnabled = Boolean(
+    selectedMatrixGroup?.sourceCodes?.includes("S01")
+    && workforceViews.some((row) => row.store_code === "S01" && row.view_type === "backoffice" && row.is_enabled),
+  );
+  const backofficeStore = storeHourMap.get("S01") || {};
+  const backofficeMatrixRows = backofficeEnabled && supportDate.startsWith(leaveMonth)
+    ? buildHalfHourStaffingMatrix({
+        dateValue: supportDate,
+        store: {
+          ...backofficeStore,
+          code: "S01",
+          store_code: "S01",
+          open_time: backofficeStore.open_time || "10:00",
+          close_time: backofficeStore.close_time || backofficeStore.close_report_time || "23:00",
+        },
+        people: staffRoster,
+        overrides: dailyShifts,
+        leaveStaffIds: matrixLeaveStaffIds,
+        demand: 0,
+        storeCodes: ["S01"],
+        matrixMode: "backoffice",
+      })
+    : [];
+  const matrixRows = matrixMode === "backoffice" && backofficeEnabled ? backofficeMatrixRows : storefrontMatrixRows;
   const matrixProjectedShifts = selectedMatrixGroup && supportDate.startsWith(leaveMonth)
     ? projectDailyStaffShifts({
         dateValue: supportDate,
@@ -5201,10 +5295,11 @@ function MonthlyLeavePlanner({
         <section className="staffing-matrix">
           <div className="panel-head">
             <div>
-              <h3>{selectedMatrixGroup.name}時段人力矩陣</h3>
-              <p>{supportDate}，每 30 分鐘核對實際在班、有效人力、需求與缺口；沿用上方臨時支援日期。</p>
+              <h3>{matrixMode === "backoffice" && backofficeEnabled ? "五甲後勤人力矩陣" : `${selectedMatrixGroup.name}門店人力矩陣`}</h3>
+              <p>{supportDate}，{matrixMode === "backoffice" && backofficeEnabled ? "每 30 分鐘顯示五甲後勤實際在班配置。" : "每 30 分鐘核對門店營運人員、需求與缺口；不含後勤及配送人員。"}</p>
             </div>
             <div className="matrix-summary">
+              {backofficeEnabled && <div className="segments compact matrix-mode-switch"><button type="button" className={matrixMode === "storefront" ? "active" : ""} onClick={() => setMatrixMode("storefront")}>門店營運人力</button><button type="button" className={matrixMode === "backoffice" ? "active" : ""} onClick={() => setMatrixMode("backoffice")}>五甲後勤人力</button></div>}
               {!isStoreScoped && storeFilter === "all" && (
                 <label>
                   查看門店
@@ -5213,15 +5308,22 @@ function MonthlyLeavePlanner({
                   </select>
                 </label>
               )}
-              <span className={matrixPeakGapRows.length ? "negative" : "positive"}><strong>{matrixPeakGapRows.length}</strong> 個尖峰缺口</span>
-              <span><strong>{matrixGapRows.length}</strong> 個全日缺口</span>
-              {canViewSalary && <span><strong>{matrixLaborCost.totalHours.toFixed(1)}</strong> 預估工時</span>}
-              {canViewSalary && <span><strong>{money(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>}
-              {canViewSalary && matrixLaborCost.missingCostStaffCount > 0 && <span className="warn-text"><strong>{matrixLaborCost.missingCostStaffCount}</strong> 人成本待補</span>}
+              {matrixMode === "storefront" && <span className={matrixPeakGapRows.length ? "negative" : "positive"}><strong>{matrixPeakGapRows.length}</strong> 個尖峰缺口</span>}
+              {matrixMode === "storefront" && <span><strong>{matrixGapRows.length}</strong> 個全日缺口</span>}
+              {matrixMode === "backoffice" && <span><strong>{Math.max(0, ...matrixRows.map((row) => row.actualCount))}</strong> 人最高同時在班</span>}
+              {matrixMode === "storefront" && canViewSalary && <span><strong>{matrixLaborCost.totalHours.toFixed(1)}</strong> 預估工時</span>}
+              {matrixMode === "storefront" && canViewSalary && <span><strong>{money(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>}
+              {matrixMode === "storefront" && canViewSalary && matrixLaborCost.missingCostStaffCount > 0 && <span className="warn-text"><strong>{matrixLaborCost.missingCostStaffCount}</strong> 人成本待補</span>}
             </div>
           </div>
           <div className="table-wrap staffing-matrix-wrap">
-            <table>
+            {matrixMode === "backoffice" && backofficeEnabled ? <table>
+              <thead><tr><th>時段</th><th>後勤在班</th><th>後勤在班名單</th></tr></thead>
+              <tbody>
+                {matrixRows.map((row) => <tr key={row.startTime}><td><strong>{row.startTime}–{row.endTime}</strong></td><td>{row.actualCount}</td><td className="matrix-name-list">{row.peopleNames.join("、") || "無人在班"}</td></tr>)}
+                {!matrixRows.length && <tr><td colSpan="3">目前沒有五甲後勤班次，請確認人資主檔與當日班表。</td></tr>}
+              </tbody>
+            </table> : <table>
               <thead>
                 <tr>
                   <th>時段</th>
@@ -5247,7 +5349,7 @@ function MonthlyLeavePlanner({
                 ))}
                 {!matrixRows.length && <tr><td colSpan="7">目前無法建立時段人力矩陣，請確認營業時間與人員主檔。</td></tr>}
               </tbody>
-            </table>
+            </table>}
           </div>
         </section>
       )}
@@ -5488,6 +5590,7 @@ function ScheduleModule({
   stores,
   profile,
   storeRelationGroups,
+  workforceViews,
   onNotify,
   canViewSalary,
 }) {
@@ -5559,6 +5662,7 @@ function ScheduleModule({
         canViewSalary={canViewSalary}
         storeHours={storeHours}
         storeRelationGroups={storeRelationGroups}
+        workforceViews={workforceViews}
         onNotify={onNotify}
       />
 

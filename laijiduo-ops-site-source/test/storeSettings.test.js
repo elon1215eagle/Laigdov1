@@ -3,8 +3,10 @@ import test from "node:test";
 
 import {
   createStoreSettingsDraft,
+  normalizeSalarySetting,
   mergeStoreHours,
   settingsPayload,
+  validateSalarySetting,
   validateStoreSettingsDraft,
 } from "../src/modules/store-settings/domain/storeSettings.js";
 
@@ -55,4 +57,21 @@ test("正式設定覆蓋備援營業時間與人力需求", () => {
   assert.equal(rows[0].open_time, "10:00");
   assert.equal(rows[0].close_time, "23:00");
   assert.equal(rows[0].duty_staff, "7");
+});
+
+test("職級薪資設定正規化數字與可留空欄位", () => {
+  const row = normalizeSalarySetting({
+    role_name: "正式人員",
+    salary_type: "monthly",
+    base_salary: "42000",
+    performance_bonus: "3000",
+    monthly_rest_days: "6",
+    work_hours: "11",
+    break_hours: "2",
+  });
+  assert.equal(row.role, "正式人員");
+  assert.equal(row.base_salary, 42000);
+  assert.equal(row.actual_work_hours, 9);
+  assert.equal(validateSalarySetting(row), "");
+  assert.match(validateSalarySetting({ ...row, base_salary: -1 }), /底薪/);
 });

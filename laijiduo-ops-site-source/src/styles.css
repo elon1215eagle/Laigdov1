@@ -3412,6 +3412,14 @@ button.danger {
 .settings-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin-bottom: 18px; scrollbar-width: thin; }
 .settings-tabs button { flex: 0 0 auto; min-height: 44px; padding: 10px 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); }
 .settings-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+.settings-toggle-field { display: flex !important; flex-direction: row !important; align-items: center; gap: 10px; min-height: 48px; }
+.settings-toggle-field input { width: 20px; height: 20px; margin: 0; }
+.salary-settings-editor { display: grid; gap: 14px; }
+.salary-settings-editor table { min-width: 1120px; }
+.salary-settings-editor th, .salary-settings-editor td { vertical-align: middle; }
+.salary-settings-editor input, .salary-settings-editor select { min-width: 92px; }
+.salary-locked-state { display: grid; justify-items: start; gap: 10px; padding: 24px; border: 1px solid var(--line); background: var(--soft); }
+.matrix-mode-switch { margin-right: 8px; }
 .settings-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: end; }
 .settings-form-grid label, .settings-save-bar label { display: grid; gap: 7px; font-weight: 600; color: var(--ink); }
 .settings-form-grid input, .settings-form-grid select, .settings-form-grid textarea, .settings-save-bar input { width: 100%; min-height: 44px; }

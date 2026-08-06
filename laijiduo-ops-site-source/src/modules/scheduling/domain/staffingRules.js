@@ -193,6 +193,13 @@ export function isEffectiveScheduleStaff(person) {
   return !isScheduleExcludedRole(person);
 }
 
+export function matchesStaffingMatrixMode(person, matrixMode = "legacy") {
+  const workCategory = String(person.work_category || person.workCategory || "").trim();
+  if (matrixMode === "backoffice") return workCategory === "後勤";
+  if (matrixMode === "storefront") return !isScheduleExcludedRole(person);
+  return !isDeliveryStaff(person);
+}
+
 export function buildStaffingSegments(store) {
   return [
     { key: "lunchPeak", label: "午峰", start: timeToMinutes("11:00"), end: timeToMinutes("14:00"), critical: true },
@@ -251,11 +258,14 @@ export function buildHalfHourStaffingMatrix({
   demandResolver = null,
   storeCodes = [],
   holidayDates = [],
+  matrixMode = "legacy",
 }) {
   const start = timeToMinutes(store.open_time, 10 * 60);
   const end = timeToMinutes(store.close_time || store.close_report_time, 23 * 60);
   const targetCodes = storeCodes.length ? storeCodes : [store.store_code || store.code].filter(Boolean);
-  const matrixPeople = people.filter((person) => !isDeliveryStaff(person));
+  const matrixPeople = people
+    .filter((person) => matchesStaffingMatrixMode(person, matrixMode))
+    .map((person) => matrixMode === "legacy" ? person : { ...person, excludedFromStaffing: false });
   const projected = projectDailyStaffShifts({ dateValue, store, people: matrixPeople, overrides, leaveStaffIds, holidayDates })
     .filter((shift) => targetCodes.includes(shift.assignedStoreCode));
   const rows = [];

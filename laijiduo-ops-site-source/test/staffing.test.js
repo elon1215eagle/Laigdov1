@@ -197,6 +197,29 @@ test("工作類別為後勤時不論職稱都不列入有效人力", () => {
   assert.deepEqual(rows[0].peopleNames, ["正式人員", "後勤人員"]);
 });
 
+test("五甲門店與後勤矩陣依工作類別完全分流", () => {
+  const people = [
+    { id: "store", employeeName: "門店人員", role: "正式人員", work_category: "門店營運", store_code: "S01" },
+    { id: "backoffice", employeeName: "後勤人員", role: "兼職人員", work_category: "後勤", store_code: "S01", weekday_start_time: "10:00", weekday_end_time: "18:00" },
+    { id: "delivery", employeeName: "送貨人員", role: "兼職人員", work_category: "送貨", store_code: "S01", weekday_start_time: "10:00", weekday_end_time: "18:00" },
+  ];
+  const common = {
+    dateValue: "2026-08-06",
+    store: { code: "S01", open_time: "10:00", close_time: "11:00" },
+    people,
+    demand: 0,
+    storeCodes: ["S01"],
+  };
+  const storefrontRows = buildHalfHourStaffingMatrix({ ...common, matrixMode: "storefront" });
+  const backofficeRows = buildHalfHourStaffingMatrix({ ...common, matrixMode: "backoffice" });
+
+  assert.deepEqual(storefrontRows[0].peopleNames, ["門店人員"]);
+  assert.equal(storefrontRows[0].effectiveCount, 1);
+  assert.deepEqual(backofficeRows[0].peopleNames, ["後勤人員"]);
+  assert.equal(backofficeRows[0].actualCount, 1);
+  assert.equal(backofficeRows[0].effectiveCount, 1);
+});
+
 test("統一班次投影整合正職預設、兼職預設與跨店多段班", () => {
   const people = [
     { id: "full", employeeName: "正職", role: "正職人員", store_code: "S01" },

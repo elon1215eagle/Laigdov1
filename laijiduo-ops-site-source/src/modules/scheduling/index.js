@@ -6,6 +6,7 @@ export {
   getPartTimeDefaultWindow,
   isEffectiveScheduleStaff,
   isScheduleExcludedRole,
+  matchesStaffingMatrixMode,
   normalizeTime24,
   projectDailyStaffShifts,
   resolvePersonWorkWindow,
