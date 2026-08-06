@@ -49,6 +49,6 @@ rules remain in `domain`, page decisions in `application`, and persistence in
 
 - A one-day shift overrides the staff master default for that date only.
 - A support shift counts only at its assigned store.
-- `兼職後勤`, delivery and shipping roles do not contribute effective staffing.
+- Any staff whose work category is `後勤`, `送貨`, `外送` or `配送` does not contribute effective storefront staffing.
 - S01/S06 and S02/S03 grouping applies only to scheduling, staffing and support.
 - Revenue, inventory, daily reporting and inspection scopes remain store-specific.

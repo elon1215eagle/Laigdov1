@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildHalfHourStaffingMatrix,
   getPartTimeDefaultWindow,
+  isScheduleExcludedRole,
   projectDailyStaffShifts,
   resolvePersonWorkWindow,
   segmentCoverageRatio,
@@ -177,13 +178,16 @@ test("送貨人員完全不列入店面人力矩陣", () => {
   assert.deepEqual(rows[0].peopleNames, ["正式人員"]);
 });
 
-test("兼職後勤保留在班紀錄但不列入有效人力", () => {
+test("工作類別為後勤時不論職稱都不列入有效人力", () => {
+  assert.equal(isScheduleExcludedRole({ role: "正式人員", work_category: "後勤" }), true);
+  assert.equal(isScheduleExcludedRole({ role: "兼職人員", work_category: "後勤" }), true);
+  assert.equal(isScheduleExcludedRole({ role: "兼職人員", work_category: "門店營運" }), false);
   const rows = buildHalfHourStaffingMatrix({
     dateValue: "2026-07-29",
     store: { code: "S01", open_time: "10:00", close_time: "11:00" },
     people: [
       { id: "a", employeeName: "正式人員", role: "正式人員", store_code: "S01" },
-      { id: "b", employeeName: "後勤人員", role: "兼職後勤", store_code: "S01", excludedFromStaffing: true },
+      { id: "b", employeeName: "後勤人員", role: "正式人員", work_category: "後勤", store_code: "S01", excludedFromStaffing: true },
     ],
     demand: 2,
     storeCodes: ["S01"],
