@@ -16,6 +16,7 @@ import {
   fetchStaffPerformance,
   fetchStaffPositionSkills,
   fetchStaffStoreAssignments,
+  fetchInactiveStoreStaff,
   fetchStoreRelationGroups,
   fetchStoreStaff,
   fetchStores,
@@ -3146,6 +3147,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
   }));
   const [staffAssignments, setStaffAssignments] = useState([]);
   const [staffSkills, setStaffSkills] = useState([]);
+  const [inactiveStaff, setInactiveStaff] = useState([]);
   const [skillForm, setSkillForm] = useState({ staff_id: "", positions: [], primary_position: "" });
   const [transferForm, setTransferForm] = useState({ staff_id: "", store_code: "", effective_from: "", reason: "" });
 
@@ -3157,8 +3159,13 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     fetchStaffPositionSkills()
       .then((rows) => { if (active) setStaffSkills(rows); })
       .catch(() => { if (active) setStaffSkills([]); });
+    if (canEditStaff) {
+      fetchInactiveStoreStaff()
+        .then((rows) => { if (active) setInactiveStaff(rows); })
+        .catch(() => { if (active) setInactiveStaff([]); });
+    }
     return () => { active = false; };
-  }, []);
+  }, [canEditStaff]);
 
   useEffect(() => {
     if (staffForm.store_code || !defaultStoreCode) return;
@@ -3198,6 +3205,19 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     if (!window.confirm("確定停用 " + row.employeeName + "？停用後排假表不會再列入此人員。")) return;
     await onDeleteStaffMember?.(row);
     if (staffForm.id === row.id) resetStaffForm();
+  }
+
+  async function reactivateStaff(row) {
+    if (!window.confirm(`確定重新啟用 ${row.employeeName}？啟用後會重新列入人資與排假名單。`)) return;
+    const saved = await onSaveStaffMember?.({
+      ...staffMemberToForm(row, {
+        storeCode: canonicalStoreCode(row),
+        storeName: displayStoreName(row),
+      }),
+      employment_status: "在職",
+      is_active: true,
+    });
+    if (saved) setInactiveStaff((current) => current.filter((person) => person.id !== row.id));
   }
 
   async function submitStaffTransfer(event) {
@@ -3384,6 +3404,29 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             </tbody>
           </table>
         </div>
+        {canEditStaff && (
+          <details className="settings-collapsible">
+            <summary>停用人員（{inactiveStaff.length}）</summary>
+            <div className="table-wrap compact">
+              <table>
+                <thead><tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>工作類別</th><th>狀態</th><th>操作</th></tr></thead>
+                <tbody>
+                  {inactiveStaff.map((row) => (
+                    <tr key={row.id}>
+                      <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
+                      <td>{row.employeeName}</td>
+                      <td>{row.role}</td>
+                      <td>{row.work_category}</td>
+                      <td>停用</td>
+                      <td><button type="button" onClick={() => reactivateStaff(row)}>重新啟用</button></td>
+                    </tr>
+                  ))}
+                  {!inactiveStaff.length && <tr><td colSpan="6">目前沒有停用人員。</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        )}
       </section>
       <section className="panel wide">
         <div className="panel-head">

@@ -726,6 +726,24 @@ export async function fetchStoreStaff() {
     ));
 }
 
+export async function fetchInactiveStoreStaff() {
+  if (!supabase) return [];
+  const secureResult = await supabase.rpc("get_store_staff_secure");
+  const result = secureResult.error?.code === "PGRST202" || secureResult.error?.code === "42883"
+    ? await supabase
+      .from("store_staff")
+      .select(STORE_STAFF_FIELDS)
+      .eq("is_active", false)
+      .order("store_code")
+      .order("sort_order")
+      .order("employee_name")
+    : secureResult;
+  if (result.error) throw result.error;
+  return (result.data || [])
+    .map(normalizeStoreStaffProfileRow)
+    .filter((row) => row.is_active === false);
+}
+
 export async function hasSalaryAccess() {
   if (!supabase) return true;
   const { data, error } = await supabase.rpc("has_salary_access");
