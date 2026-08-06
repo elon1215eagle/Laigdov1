@@ -10,7 +10,7 @@ export const STORE_RELATION_GROUPS = Object.freeze([
     name: "鳳山五甲店 + 鳳山南華店",
     sourceCodes: Object.freeze(["S01", "S06"]),
     capabilities: Object.freeze(["schedule", "staffing", "temporary_support"]),
-    demand: 5,
+    demand: 7,
     coordinatingStoreCode: "S01",
     managedStoreCodes: Object.freeze(["S06"]),
     ruleNote: "五甲與南華合併排假、合併看人力；管理關係依生效日期設定。",
@@ -46,9 +46,6 @@ export function normalizeStoreName(name = "") {
 
 export function operatingStatusOf(store = {}) {
   if (store.operating_status) return store.operating_status;
-  if (store.store_code === "S06" || normalizeStoreName(store.name) === "鳳山南華店") {
-    return STORE_OPERATING_STATUS.SUSPENDED;
-  }
   return store.is_active === false ? STORE_OPERATING_STATUS.CLOSED : STORE_OPERATING_STATUS.ACTIVE;
 }
 

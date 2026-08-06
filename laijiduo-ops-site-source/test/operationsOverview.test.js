@@ -66,13 +66,13 @@ test("operations overview centralizes revenue, reporting and exception metrics",
   assert.deepEqual(overview.riskRows.map((row) => row.id), ["a3", "a2", "a1"]);
 });
 
-test("paused Nanhua store is excluded from manager gaps", () => {
+test("active Nanhua store is included in manager coverage checks", () => {
   const overview = buildOperationsOverview({
-    reports: [{ store_code: "S06", name: "鳳山南華店", target: 0 }],
+    reports: [{ store_code: "S06", name: "鳳山南華店", target: 0, operating_status: "active", is_active: true }],
     staffRoster: [],
   });
 
-  assert.equal(overview.managerGaps.length, 0);
+  assert.equal(overview.managerGaps.length, 1);
 });
 
 test("dashboard priorities keep unreported stores ahead of staffing and revenue warnings", () => {

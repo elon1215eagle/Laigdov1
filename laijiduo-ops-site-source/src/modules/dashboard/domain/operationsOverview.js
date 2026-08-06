@@ -46,7 +46,7 @@ export function buildOperationsOverview({
       .filter(Boolean),
   );
   const managerGaps = reports.filter(
-    (report) => report.name !== "鳳山南華店" && !managerStoreCodes.has(resolveStoreCode(report)),
+    (report) => report.operating_status !== "suspended" && report.is_active !== false && !managerStoreCodes.has(resolveStoreCode(report)),
   );
   const ranking = reports
     .map((report) => ({

@@ -111,9 +111,11 @@ import {
 } from "./lib/mockData";
 import {
   STORE_RELATION_GROUPS,
+  STORE_OPERATING_STATUS,
   createStoreDirectory,
   mergeStoreRelationGroups,
   normalizeStoreName,
+  operatingStatusOf,
 } from "./lib/storeScope";
 import {
   buildHalfHourStaffingMatrix,
@@ -2857,7 +2859,12 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
   const selectedStoreName = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizedSelectedName)?.storeName || storeHours[0]?.storeName || "";
   const rosterByStore = staffRoster.filter((row) => normalizeStoreName(row.storeName) === normalizeStoreName(selectedStoreName));
   const managers = staffRoster.filter((row) => isStoreLeadershipRole(row.role));
-  const activeStoreNames = storeHours.filter((row) => row.storeName !== "鳳山南華店").map((row) => row.storeName);
+  const activeStoreNames = storeHours
+    .filter((row) => {
+      const store = stores.find((item) => normalizeStoreName(item.name) === normalizeStoreName(row.storeName));
+      return !store || operatingStatusOf(store) === STORE_OPERATING_STATUS.ACTIVE;
+    })
+    .map((row) => row.storeName);
   const uncoveredStores = activeStoreNames.filter((storeName) => !managers.some((row) => normalizeStoreName(row.storeName) === normalizeStoreName(storeName)));
   const byRole = salaryRows.map((salary) => ({
     ...salary,
@@ -2964,7 +2971,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
     <div className="workspace module-grid">
       <section className="kpi-strip">
         <Metric label="人員主檔" value={`${staffRoster.length} 人`} detail="來自 00AI人資.xlsx" />
-        <Metric label="營運門店" value={`${activeStoreNames.length} 間`} detail="鳳山南華店暫停不列入" />
+        <Metric label="營運門店" value={`${activeStoreNames.length} 間`} detail="依門店營運狀態即時統計" />
         <Metric label="有主管門店" value={`${new Set(managers.map((row) => row.storeName)).size} 間`} detail="店長或副店長" tone="good" />
         <Metric label="主管缺口" value={`${uncoveredStores.length} 間`} detail={uncoveredStores[0] || "目前無缺口"} tone={uncoveredStores.length ? "bad" : "good"} />
         <Metric label="高峰需人力" value={`${storeHours.reduce((sum, row) => sum + Number(row.duty_staff || 0), 0)} 人`} detail="各店值班人員合計" />
@@ -3231,7 +3238,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                   <td>{row.dinner_peak}</td>
                   <td>{row.duty_staff} 人</td>
                   <td>{row.lunch_report_time} / {row.dinner_report_time} / {row.close_report_time}</td>
-                  <td><span className={`chip ${row.storeName === "鳳山南華店" ? "warn" : "good"}`}>{row.storeName === "鳳山南華店" ? "暫停營業" : "營運中"}</span></td>
+                  <td><span className={`chip ${activeStoreNames.includes(row.storeName) ? "good" : "warn"}`}>{activeStoreNames.includes(row.storeName) ? "營運中" : "暫停營業"}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -5447,7 +5454,7 @@ function ScheduleModule({
           <span><strong>尖峰優先</strong>：中午與晚峰須滿足各店值班人數，低峰再安排備料、清潔與補貨。</span>
           <span><strong>主管在場</strong>：每店每日至少由店長或副店長負責主要時段。</span>
           <span><strong>缺員升級</strong>：尖峰人力不足需於前一日回報督導長，執行督導協調支援。</span>
-          <span><strong>暫停門店</strong>：鳳山南華店先列暫停營業，待補足主管與基本人力後再排復店。</span>
+          <span><strong>關聯門店</strong>：五甲與南華合併排假、合併看人力；兩店目前均為營運中。</span>
         </div>
       </section>
 
@@ -5729,7 +5736,7 @@ function buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, sc
       .map((person) => canonicalStoreCode(person)),
   );
   const managerRows = reports
-    .filter((report) => report.name !== "鳳山南華店")
+    .filter((report) => report.operating_status !== "suspended" && report.is_active !== false)
     .filter((report) => !managerStoreCodes.has(canonicalStoreCode(report)))
     .map((report, index) => ({
       id: `manager-${index}`,

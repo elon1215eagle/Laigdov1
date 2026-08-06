@@ -16,7 +16,7 @@ const stores = [
   { id: "uuid-s02", store_code: "S02", name: "鳳山凱旋店", is_active: true },
   { id: "uuid-s03", store_code: "S03", name: "鳳山武廟店", is_active: true },
   { id: "uuid-s05", store_code: "S05", name: "前鎮隆興店", is_active: true },
-  { id: "uuid-s06", store_code: "S06", name: "鳳山南華店", is_active: false },
+  { id: "uuid-s06", store_code: "S06", name: "鳳山南華店", operating_status: "active", is_active: true },
   { id: "uuid-s10", store_code: "S10", name: "屏東潮州店", is_active: true },
   { id: "uuid-s11", store_code: "S11", name: "屏東潮二店", is_active: true },
 ];
@@ -60,11 +60,11 @@ test("凱旋與武廟共用群組但仍是兩間門店", () => {
   assert.notEqual(directory.resolveStore("S02")?.id, directory.resolveStore("S03")?.id);
 });
 
-test("南華為暫停營業且門店帳號不可編輯", () => {
-  assert.equal(operatingStatusOf(directory.resolveStore("S06")), STORE_OPERATING_STATUS.SUSPENDED);
+test("南華恢復營業且門店帳號可編輯自己的門店", () => {
+  assert.equal(operatingStatusOf(directory.resolveStore("S06")), STORE_OPERATING_STATUS.ACTIVE);
   const scope = directory.scopeForProfile({ role: "store_manager", store_id: "uuid-s06" });
   assert.deepEqual(scope.visibleStoreCodes, ["S01", "S06"]);
-  assert.deepEqual(scope.editableStoreCodes, []);
+  assert.deepEqual(scope.editableStoreCodes, ["S06"]);
 });
 
 test("門店帳號只能編輯主要門店", () => {
@@ -100,7 +100,7 @@ test("資料庫群組覆蓋成員時保留既有需求與規則", () => {
     sourceCodes: ["S01", "S06"],
     capabilities: ["schedule", "staffing", "temporary_support"],
   }]);
-  assert.equal(groups[0].demand, 5);
+  assert.equal(groups[0].demand, 7);
   assert.match(groups[0].ruleNote, /五甲與南華/);
 });
 
