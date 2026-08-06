@@ -1614,6 +1614,10 @@ tbody tr.selected,
   min-width: 720px;
 }
 
+.staffing-matrix-wrap .backoffice-matrix-table {
+  min-width: 460px;
+}
+
 .staffing-matrix-wrap thead th {
   position: sticky;
   top: 0;
@@ -1655,6 +1659,20 @@ tbody tr.selected,
   .matrix-summary span {
     min-width: 0;
     text-align: center;
+  }
+
+  .matrix-mode-switch {
+    display: grid !important;
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+    margin-right: 0;
+    width: 100%;
+  }
+
+  .matrix-mode-switch button {
+    min-width: 0;
+    padding-inline: 8px;
+    white-space: nowrap;
   }
 
   .staffing-matrix .panel-head {

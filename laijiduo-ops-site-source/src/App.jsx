@@ -5317,7 +5317,7 @@ function MonthlyLeavePlanner({
             </div>
           </div>
           <div className="table-wrap staffing-matrix-wrap">
-            {matrixMode === "backoffice" && backofficeEnabled ? <table>
+            {matrixMode === "backoffice" && backofficeEnabled ? <table className="backoffice-matrix-table">
               <thead><tr><th>時段</th><th>後勤在班</th><th>後勤在班名單</th></tr></thead>
               <tbody>
                 {matrixRows.map((row) => <tr key={row.startTime}><td><strong>{row.startTime}–{row.endTime}</strong></td><td>{row.actualCount}</td><td className="matrix-name-list">{row.peopleNames.join("、") || "無人在班"}</td></tr>)}
