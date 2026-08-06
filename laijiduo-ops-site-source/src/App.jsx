@@ -3301,6 +3301,9 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
               {staffForm.employment_type === "兼職" ? "平日下班（選填）" : "預設下班（選填）"}
               <input type="time" lang="en-GB" step="900" value={staffForm.weekday_end_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_end_time: formatTime24(event.target.value) })} />
             </label>
+            {staffForm.employment_type === "正職" && (
+              <p className="form-help">未另排單日班次時，系統使用此預設上、下班時間；兩個欄位可同時留空。</p>
+            )}
             {staffForm.employment_type === "兼職" && (
               <>
                 <label>
@@ -3339,7 +3342,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
         <div className="table-wrap compact">
           <table>
             <thead>
-              <tr><th>門店</th><th>人員姓名</th><th>僱用型態</th><th>職稱</th><th>工作類別</th><th>人員狀態</th><th>兼職預設工時</th><th>排序</th><th>操作</th></tr>
+              <tr><th>門店</th><th>人員姓名</th><th>僱用型態</th><th>職稱</th><th>工作類別</th><th>人員狀態</th><th>預設工時</th><th>排序</th><th>操作</th></tr>
             </thead>
             <tbody>
               {staffRoster
@@ -3362,7 +3365,9 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
                           <span>平日 {formatTime24(row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.weekday_end_time || row.work_end_time) || "未填"}</span>
                           <span>假日 {formatTime24(row.holiday_start_time || row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.holiday_end_time || row.weekday_end_time || row.work_end_time) || "未填"}</span>
                         </>
-                      ) : "-"}
+                      ) : (
+                        <span>{formatTime24(row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.weekday_end_time || row.work_end_time) || "未填"}</span>
+                      )}
                     </td>
                     <td>{row.sort_order || "-"}</td>
                     <td>
@@ -5459,10 +5464,13 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
                   <th className="leave-staff-col">
                     <strong>{person.employeeName}</strong>
                     <span>{person.role}</span>
-                    {person.role === "兼職人員" && (
+                    {(person.weekday_start_time || person.work_start_time || person.weekday_end_time || person.work_end_time) && (
                       <span>
-                        平 {formatTime24(person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.weekday_end_time || person.work_end_time) || "未填"}
-                        {" / "}假 {formatTime24(person.holiday_start_time || person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.holiday_end_time || person.weekday_end_time || person.work_end_time) || "未填"}
+                        {person.employment_type === "兼職" ? "平 " : "預設 "}
+                        {formatTime24(person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.weekday_end_time || person.work_end_time) || "未填"}
+                        {person.employment_type === "兼職" && (
+                          <> / 假 {formatTime24(person.holiday_start_time || person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.holiday_end_time || person.weekday_end_time || person.work_end_time) || "未填"}</>
+                        )}
                       </span>
                     )}
                   </th>
