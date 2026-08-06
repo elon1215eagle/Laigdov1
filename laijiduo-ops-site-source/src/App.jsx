@@ -145,6 +145,15 @@ import {
   validateTimeWindow,
 } from "./modules/scheduling";
 import {
+  STORE_SETTING_TABS,
+  createStoreSettingsDraft,
+  fetchStoreOperatingConfigurations,
+  mergeStoreHours,
+  saveStoreOperatingConfiguration,
+  settingsPayload,
+  validateStoreSettingsDraft,
+} from "./modules/store-settings";
+import {
   confirmMonthlySchedule,
   deleteDailyStaffShift,
   fetchDailyStaffShifts,
@@ -308,6 +317,7 @@ function AuthenticatedApp() {
   const [hqTasks, setHqTasks] = useState([]);
   const [staffRoster, setStaffRoster] = useState([]);
   const [storeRelationGroups, setStoreRelationGroups] = useState(STORE_RELATION_GROUPS);
+  const [storeConfigurationData, setStoreConfigurationData] = useState({ settings: [], demands: [], audits: [] });
   const [selectedStoreId, setSelectedStoreId] = useState("");
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
@@ -323,6 +333,7 @@ function AuthenticatedApp() {
     setHqTasks([]);
     setStaffRoster([]);
     setStoreRelationGroups(STORE_RELATION_GROUPS);
+    setStoreConfigurationData({ settings: [], demands: [], audits: [] });
     setSelectedStoreId("");
   }
 
@@ -336,10 +347,11 @@ function AuthenticatedApp() {
     setHqTasks(hqTaskSeed);
     setStaffRoster(staffRosterSeed);
     setStoreRelationGroups(STORE_RELATION_GROUPS);
+    setStoreConfigurationData({ settings: [], demands: [], audits: [] });
   }
 
   async function loadWorkspace(nextProfile = profile, preferredStoreId = selectedStoreId, preferredReportDate = reportDate) {
-    const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows, staffRows, relationGroups] = await Promise.all([
+    const [storeRows, productRows, reportRows, handoverRows, performanceData, taskRows, staffRows, relationGroups, configurationData] = await Promise.all([
       fetchStores(),
       fetchProducts(),
       fetchDailyReports(preferredReportDate),
@@ -348,6 +360,7 @@ function AuthenticatedApp() {
       fetchHqTasks(),
       fetchStoreStaff(),
       fetchStoreRelationGroups(),
+      fetchStoreOperatingConfigurations(),
     ]);
     setStores(storeRows);
     setProducts(productRows);
@@ -356,6 +369,7 @@ function AuthenticatedApp() {
     setHqTasks(taskRows);
     setStaffRoster(staffRows);
     setStoreRelationGroups(mergeStoreRelationGroups(relationGroups));
+    setStoreConfigurationData(configurationData);
     const nextStoreId = nextProfile?.role === "store_manager"
       ? (nextProfile?.store_id || nextProfile?.store_code || "")
       : (nextProfile?.store_id || nextProfile?.store_code || preferredStoreId || storeRows[0]?.id || "");
@@ -402,6 +416,25 @@ function AuthenticatedApp() {
     || (currentRole === "coo" && new Date(salaryAccessExpiresAt).getTime() > Date.now());
   const selectedReport = findStoreScopedRecord(reports, selectedStoreId) || (currentRole === "store_manager" ? null : reports[0]);
   const activeModuleAllowed = canAccessModule(currentRole, activeModule);
+  const effectiveStoreHours = useMemo(
+    () => mergeStoreHours(storeHoursSeed, storeConfigurationData.settings, stores, storeConfigurationData.demands),
+    [storeConfigurationData, stores],
+  );
+  const effectiveScheduleRows = useMemo(() => {
+    const hoursByName = new Map(effectiveStoreHours.map((row) => [row.storeName, row]));
+    const storeByName = new Map(stores.map((store) => [store.name, store]));
+    return scheduleSeed.map((row) => {
+      const hours = hoursByName.get(row.storeName);
+      const store = storeByName.get(row.storeName);
+      const required = Number(hours?.duty_staff ?? row.required_staff ?? 0);
+      const isActive = !store || operatingStatusOf(store) === STORE_OPERATING_STATUS.ACTIVE;
+      return {
+        ...row,
+        required_staff: required,
+        status: !isActive ? "暫停營業" : (row.assigned_staff?.length || 0) >= required ? "足夠" : "人力不足",
+      };
+    });
+  }, [effectiveStoreHours, stores]);
 
   useEffect(() => {
     if (!profile || role === "entry") return;
@@ -892,7 +925,7 @@ function AuthenticatedApp() {
             handovers={handovers}
             performanceRows={performanceRows}
             staffRoster={staffRoster}
-            scheduleRows={scheduleSeed}
+            scheduleRows={effectiveScheduleRows}
             hqTasks={hqTasks}
             securitySettings={securitySettings}
             canEditTargets={canEditMonthlyTargets(currentRole)}
@@ -926,7 +959,7 @@ function AuthenticatedApp() {
               handovers={handovers}
               performanceRows={performanceRows}
               staffRoster={staffRoster}
-              scheduleRows={scheduleSeed}
+              scheduleRows={effectiveScheduleRows}
               hqTasks={hqTasks}
               onOpenModule={openModule}
               onSelect={setSelectedStoreId}
@@ -962,7 +995,7 @@ function AuthenticatedApp() {
             stores={stores}
             selectedStoreId={selectedStoreId}
             salaryRows={salaryStructureSeed}
-            storeHours={storeHoursSeed}
+            storeHours={effectiveStoreHours}
             staffRoster={staffRoster}
             currentRole={currentRole}
             canViewSalary={canViewSalary}
@@ -978,10 +1011,22 @@ function AuthenticatedApp() {
         {activeModuleAllowed && activeModule === "security" && (
           <SecurityModule settings={securitySettings} onSave={saveSecuritySettings} />
         )}
+        {activeModuleAllowed && activeModule === "storeSettings" && (
+          <StoreSettingsModule
+            stores={stores}
+            storeHours={effectiveStoreHours}
+            relationGroups={storeRelationGroups}
+            configurationData={storeConfigurationData}
+            onSaved={async () => {
+              await loadWorkspace(profile, selectedStoreId, reportDate);
+              show("門店營運設定已生效，相關看板與排班資料已同步");
+            }}
+          />
+        )}
         {activeModuleAllowed && activeModule === "schedule" && (
           <ScheduleModule
-            scheduleRows={scheduleSeed}
-            storeHours={storeHoursSeed}
+            scheduleRows={effectiveScheduleRows}
+            storeHours={effectiveStoreHours}
             staffRoster={staffRoster}
             salaryRows={salaryStructureSeed}
             stores={stores}
@@ -1006,7 +1051,7 @@ function AuthenticatedApp() {
             handovers={handovers}
             performanceRows={performanceRows}
             staffRoster={staffRoster}
-            scheduleRows={scheduleSeed}
+            scheduleRows={effectiveScheduleRows}
             hqTasks={hqTasks}
             onSelect={setSelectedStoreId}
           />
@@ -2851,6 +2896,145 @@ function applyPerformanceCalculation(form, patch = {}) {
     bonus_adjustment: performanceBonusAdjustment(score),
     status: performanceStatus(score),
   };
+}
+
+function StoreSettingsModule({ stores, storeHours, relationGroups, configurationData, onSaved }) {
+  const [storeCode, setStoreCode] = useState(stores[0]?.store_code || "");
+  const [tab, setTab] = useState("basic");
+  const [draft, setDraft] = useState(null);
+  const [reason, setReason] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const selectedStore = stores.find((store) => store.store_code === storeCode) || stores[0];
+  const selectedSetting = configurationData.settings.find((row) => row.store_code === selectedStore?.store_code);
+  const selectedDemand = configurationData.demands.find((row) => row.store_code === selectedStore?.store_code && row.rule_type === "baseline" && row.is_active !== false);
+  const selectedRelation = relationGroups.find((group) => group.sourceCodes.includes(selectedStore?.store_code));
+  const selectedFallback = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizeStoreName(selectedStore?.name));
+  const selectedAudits = configurationData.audits.filter((row) => row.store_code === selectedStore?.store_code);
+
+  useEffect(() => {
+    if (!selectedStore) return;
+    setDraft(createStoreSettingsDraft({
+      store: selectedStore,
+      setting: selectedSetting,
+      demand: selectedDemand,
+      relation: selectedRelation,
+      fallback: selectedFallback,
+    }));
+    setReason("");
+    setError("");
+  }, [selectedStore?.store_code, selectedSetting?.updated_at, selectedDemand?.required_count, selectedRelation?.demand]);
+
+  if (!selectedStore || !draft) return <section className="panel"><p>目前沒有可設定的門店。</p></section>;
+
+  function update(key, value) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    const validationError = validateStoreSettingsDraft(draft, reason);
+    if (validationError) return setError(validationError);
+    setSaving(true);
+    setError("");
+    try {
+      await saveStoreOperatingConfiguration(selectedStore.store_code, settingsPayload(draft), reason.trim());
+      await onSaved?.();
+      setReason("");
+    } catch (saveError) {
+      setError(`儲存失敗：${saveError.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="workspace module-grid store-settings-center">
+      <section className="panel wide">
+        <div className="panel-head">
+          <div>
+            <h2>門店營運設定中心</h2>
+            <p>統一維護門店狀態、營業時間、人力需求、營收目標與管理關係；儲存後保留異動紀錄。</p>
+          </div>
+          <span className={`chip ${draft.operating_status === "active" ? "good" : "warn"}`}>{draft.operating_status === "active" ? "營運中" : draft.operating_status === "suspended" ? "暫停營業" : "結束營業"}</span>
+        </div>
+        <div className="settings-store-picker">
+          <label>設定門店
+            <select value={selectedStore.store_code} onChange={(event) => setStoreCode(event.target.value)}>
+              {stores.map((store) => <option key={store.store_code} value={store.store_code}>{store.store_code} {store.name}</option>)}
+            </select>
+          </label>
+          <div className="settings-summary">
+            <span>基準需求 <strong>{draft.baseline_demand} 人</strong></span>
+            <span>月目標 <strong>{money(draft.target_monthly_revenue)}</strong></span>
+            <span>生效日 <strong>{draft.effective_from}</strong></span>
+          </div>
+        </div>
+        <div className="settings-tabs" role="tablist" aria-label="門店營運設定分類">
+          {STORE_SETTING_TABS.map(([key, label]) => (
+            <button type="button" className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>
+          ))}
+        </div>
+
+        <form onSubmit={submit}>
+          {tab === "basic" && <div className="settings-form-grid">
+            <label>店碼<input value={selectedStore.store_code} disabled /></label>
+            <label>門店名稱<input value={selectedStore.name} disabled /></label>
+            <label>負責人<input value={draft.manager_name} onChange={(event) => update("manager_name", event.target.value)} /></label>
+            <label>營運狀態<select value={draft.operating_status} onChange={(event) => update("operating_status", event.target.value)}><option value="active">營運中</option><option value="suspended">暫停營業</option><option value="closed">結束營業</option></select></label>
+            <label>設定生效日<input type="date" value={draft.effective_from} onChange={(event) => update("effective_from", event.target.value)} /></label>
+          </div>}
+
+          {tab === "hours" && <div className="settings-form-grid">
+            <label>平日開店<input type="time" value={draft.weekday_open_time} onChange={(event) => update("weekday_open_time", event.target.value)} /></label>
+            <label>平日打烊<input type="time" value={draft.weekday_close_time} onChange={(event) => update("weekday_close_time", event.target.value)} /></label>
+            <label>假日開店<input type="time" value={draft.holiday_open_time} onChange={(event) => update("holiday_open_time", event.target.value)} /></label>
+            <label>假日打烊<input type="time" value={draft.holiday_close_time} onChange={(event) => update("holiday_close_time", event.target.value)} /></label>
+            <label>14:00 回報時間<input type="time" value={draft.lunch_report_time} onChange={(event) => update("lunch_report_time", event.target.value)} /></label>
+            <label>19:00 回報時間<input type="time" value={draft.dinner_report_time} onChange={(event) => update("dinner_report_time", event.target.value)} /></label>
+            <label>打烊回報時間<input type="time" value={draft.close_report_time} onChange={(event) => update("close_report_time", event.target.value)} /></label>
+          </div>}
+
+          {tab === "staffing" && <div className="settings-form-grid">
+            <label>每日基準需求人數<input type="number" min="0" step="1" value={draft.baseline_demand} onChange={(event) => update("baseline_demand", event.target.value)} /></label>
+            <label>午峰開始<input type="time" step="1800" value={draft.lunch_peak_start} onChange={(event) => update("lunch_peak_start", event.target.value)} /></label>
+            <label>午峰結束<input type="time" step="1800" value={draft.lunch_peak_end} onChange={(event) => update("lunch_peak_end", event.target.value)} /></label>
+            <label>午峰需求人數<input type="number" min="0" step="1" value={draft.lunch_peak_demand} onChange={(event) => update("lunch_peak_demand", event.target.value)} /></label>
+            <label>晚峰開始<input type="time" step="1800" value={draft.dinner_peak_start} onChange={(event) => update("dinner_peak_start", event.target.value)} /></label>
+            <label>晚峰結束<input type="time" step="1800" value={draft.dinner_peak_end} onChange={(event) => update("dinner_peak_end", event.target.value)} /></label>
+            <label>晚峰需求人數<input type="number" min="0" step="1" value={draft.dinner_peak_demand} onChange={(event) => update("dinner_peak_demand", event.target.value)} /></label>
+            <div className="settings-inline-note">星期別及特殊日期需求仍由排班管理的「人力需求調整」建立，優先於本基準。</div>
+          </div>}
+
+          {tab === "target" && <div className="settings-form-grid">
+            <label>本月營業額目標<input type="number" min="0" step="1000" value={draft.target_monthly_revenue} onChange={(event) => update("target_monthly_revenue", event.target.value)} /></label>
+            <label>自動換算每日目標<input value={money(settingsPayload(draft).target_daily_revenue)} disabled /></label>
+            <div className="settings-inline-note">儲存時寫入門店月目標與每日目標，營運看板及達成率同步使用。</div>
+          </div>}
+
+          {tab === "relation" && <div className="settings-form-grid">
+            <label>管理群組<input value={selectedRelation?.name || "未加入群組"} disabled /></label>
+            <label>統籌門店<input value={selectedRelation?.coordinatingStoreCode || selectedStore.store_code} disabled /></label>
+            <label>群組需求人數<input type="number" min="0" step="1" disabled={!selectedRelation} value={draft.group_demand} onChange={(event) => update("group_demand", event.target.value)} /></label>
+            <label className="wide-field">管理規則<textarea disabled={!selectedRelation} value={draft.relation_rule_note} onChange={(event) => update("relation_rule_note", event.target.value)} /></label>
+            <div className="settings-inline-note">新增、移除門店關係涉及跨店資料權限，第一版只允許維護既有群組需求與規則，避免誤改可見範圍。</div>
+          </div>}
+
+          {tab === "audit" && <div className="table-wrap compact settings-audit-table"><table><thead><tr><th>時間</th><th>修改原因</th><th>狀態</th><th>需求</th></tr></thead><tbody>
+            {selectedAudits.map((row) => <tr key={row.id}><td>{new Date(row.changed_at).toLocaleString("zh-TW", { hour12: false })}</td><td>{row.change_reason}</td><td>{row.after_data?.store?.operating_status || "-"}</td><td>{row.after_data?.baseline_demand ?? "-"}</td></tr>)}
+            {!selectedAudits.length && <tr><td colSpan="4">目前尚無異動紀錄</td></tr>}
+          </tbody></table></div>}
+
+          {tab !== "audit" && <div className="settings-save-bar">
+            <label>修改原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="必填，例如：調整八月門店人力基準" /></label>
+            <button className="primary" type="submit" disabled={saving}>{saving ? "儲存中" : "確認儲存並同步"}</button>
+          </div>}
+          {error && <p className="form-error">{error}</p>}
+        </form>
+      </section>
+    </div>
+  );
 }
 
 function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster, currentRole, canViewSalary, onUnlockSalary, onSaveStaffMember, onDeleteStaffMember, onTransferStaffMember }) {

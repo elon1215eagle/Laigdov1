@@ -3404,3 +3404,33 @@ button.danger {
     grid-template-columns: 70px 44px minmax(0, 1fr);
   }
 }
+.store-settings-center .panel { overflow: hidden; }
+.settings-store-picker { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin: 18px 0; }
+.settings-store-picker > label { min-width: min(360px, 100%); }
+.settings-summary { display: flex; flex-wrap: wrap; gap: 8px 18px; color: var(--muted); }
+.settings-summary strong { color: var(--ink); margin-left: 4px; }
+.settings-tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); margin-bottom: 18px; scrollbar-width: thin; }
+.settings-tabs button { flex: 0 0 auto; min-height: 44px; padding: 10px 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); }
+.settings-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+.settings-form-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: end; }
+.settings-form-grid label, .settings-save-bar label { display: grid; gap: 7px; font-weight: 600; color: var(--ink); }
+.settings-form-grid input, .settings-form-grid select, .settings-form-grid textarea, .settings-save-bar input { width: 100%; min-height: 44px; }
+.settings-form-grid .wide-field { grid-column: 1 / -1; }
+.settings-form-grid textarea { min-height: 88px; resize: vertical; }
+.settings-inline-note { grid-column: 1 / -1; padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--soft); color: var(--muted); }
+.settings-save-bar { display: flex; align-items: end; gap: 12px; margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--line); }
+.settings-save-bar label { flex: 1; }
+.settings-save-bar button { min-height: 46px; }
+.settings-audit-table { max-height: 480px; }
+.form-error { margin-top: 12px; color: var(--danger); font-weight: 700; }
+@media (max-width: 900px) {
+  .settings-form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-store-picker { align-items: stretch; flex-direction: column; }
+}
+@media (max-width: 620px) {
+  .settings-form-grid { grid-template-columns: 1fr; }
+  .settings-save-bar { align-items: stretch; flex-direction: column; }
+  .settings-save-bar button { width: 100%; }
+  .settings-tabs button { min-height: 48px; font-size: 16px; }
+  .settings-summary { display: grid; grid-template-columns: 1fr 1fr; }
+}
