@@ -1,6 +1,7 @@
 import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, staffRosterSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 import { totalRevenue as calculateTotalRevenue } from "../modules/daily-report";
+import { normalizeLoginIdentifier } from "../domain/loginIdentifier.js";
 import {
   buildStaffProfile,
   createStaffPositionRepository,
@@ -221,7 +222,8 @@ export function statusLabel(status) {
 
 export async function signIn(email, password) {
   if (!supabase) throw new Error("尚未設定 Supabase 環境變數");
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const loginEmail = normalizeLoginIdentifier(email);
+  const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
   if (error) throw error;
   return data;
 }

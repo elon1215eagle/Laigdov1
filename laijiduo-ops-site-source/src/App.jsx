@@ -1288,8 +1288,15 @@ function LoginScreen({ onLogin, message, demoMode = false, stores = [] }) {
           </label>
         )}
         <label>
-          Email
-          <input value={email} readOnly={demoMode} onChange={(event) => setEmail(event.target.value)} />
+          帳號 / Email
+          <input
+            value={email}
+            readOnly={demoMode}
+            placeholder={demoMode ? "" : "例如：S01 或 S01@laigdo.com"}
+            autoCapitalize="none"
+            autoCorrect="off"
+            onChange={(event) => setEmail(event.target.value)}
+          />
         </label>
         <label>
           密碼
