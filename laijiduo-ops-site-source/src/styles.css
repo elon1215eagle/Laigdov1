@@ -3291,7 +3291,6 @@ tbody tr.selected,
 }
 
 @media (max-width: 420px) {
-  .leave-planner > .panel-head .panel-actions,
   .schedule-control-actions {
     grid-template-columns: minmax(0, 1fr);
   }
