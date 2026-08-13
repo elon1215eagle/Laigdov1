@@ -5652,7 +5652,6 @@ function ScheduleModule({
   onNotify,
   canViewSalary,
 }) {
-  const [scheduleView, setScheduleView] = useState("week");
   const isStoreScoped = currentRole === "store_manager";
   const selectedStoreRecord = isStoreScoped
     ? (
@@ -5679,9 +5678,6 @@ function ScheduleModule({
   const scopedScheduleRows = isStoreScoped
     ? (selectedStoreCode ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
     : scheduleRows;
-  const scopedStoreHours = isStoreScoped
-    ? (selectedStoreCode ? storeHours.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
-    : storeHours;
   const scopedStaffRoster = isStoreScoped
     ? (selectedStoreCode ? staffRoster.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
     : staffRoster;
@@ -5693,17 +5689,9 @@ function ScheduleModule({
       .filter((row) => isStoreLeadershipRole(row.role))
       .map((row) => row.storeName),
   ).size;
-  const weekDays = useMemo(() => Array.from({ length: 7 }, (_, index) => addDays(getWeekRange(today).start, index)), []);
-  const monthDays = useMemo(() => Array.from({ length: daysInMonth(today) }, (_, index) => `${today.slice(0, 8)}${String(index + 1).padStart(2, "0")}`), []);
-  const viewDays = scheduleView === "week" ? weekDays : monthDays;
-  const roleByName = useMemo(
-    () => new Map(scopedStaffRoster.map((row) => [row.employeeName, row.role])),
-    [scopedStaffRoster],
-  );
-
   return (
     <div className="workspace module-grid">
-      <section className="kpi-strip">
+      <section className="kpi-strip schedule-kpi-strip">
         <Metric label="本週班表" value={`${scopedScheduleRows.length} 筆`} detail="依營業時段自動產生" />
         <Metric label="營運班別" value={`${activeRows.length} 筆`} detail="排除暫停營業店" tone="good" />
         <Metric label="尖峰缺口" value={`${shortageRows.length} 筆`} detail={shortageRows[0]?.storeName || "目前無缺口"} tone={shortageRows.length ? "bad" : "good"} />
@@ -5724,71 +5712,6 @@ function ScheduleModule({
         onNotify={onNotify}
       />
 
-      <section className="panel wide">
-        <div className="panel-head">
-          <div>
-            <h2>班表視圖</h2>
-            <p>用週視圖看尖峰配置，用月視圖看人力風險；紅色代表缺口或需支援。</p>
-          </div>
-          <div className="segments compact">
-            <button className={scheduleView === "week" ? "active" : ""} onClick={() => setScheduleView("week")}>週視圖</button>
-            <button className={scheduleView === "month" ? "active" : ""} onClick={() => setScheduleView("month")}>月視圖</button>
-          </div>
-        </div>
-        <div className={`schedule-calendar ${scheduleView}`}>
-          {viewDays.map((day, dayIndex) => (
-            <div className="schedule-day" key={day}>
-              <div className="schedule-day-head">
-                <strong>{day.slice(5)}</strong>
-                <span>{["週日", "週一", "週二", "週三", "週四", "週五", "週六"][new Date(`${day}T00:00:00`).getDay()]}</span>
-              </div>
-              {(scheduleView === "week" ? scopedScheduleRows : scopedScheduleRows.filter((_, index) => index % 7 === dayIndex % 7)).slice(0, scheduleView === "week" ? 6 : 3).map((row) => {
-                const gap = Number(row.required_staff || 0) - (row.assigned_staff?.length || 0);
-                return (
-                  <div className={`shift-card shift-${row.shift_name} ${gap > 0 || row.status === "人力不足" ? "needs-help" : ""}`} key={`${day}-${row.id}`}>
-                    <span>{row.shift_name} · {row.start_time}-{row.end_time}</span>
-                    <strong>{displayStoreName(row)}</strong>
-                    <small>{row.assigned_staff?.slice(0, 3).map((name) => `${name}${roleByName.get(name) ? `(${roleByName.get(name)})` : ""}`).join("、") || "待排"}</small>
-                    <em>{gap > 0 ? `缺 ${gap} 人` : "人力足夠"}</em>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel wide">
-        <div className="panel-head">
-          <div>
-            <h2>週排班總表</h2>
-            <p>依各店營業時間、尖峰時段與值班人數控管，缺員由督導協調支援。</p>
-          </div>
-        </div>
-        <div className="table-wrap compact">
-          <table>
-            <thead>
-              <tr><th>代碼</th><th>門店</th><th>班別</th><th>時段</th><th>需求</th><th>已排</th><th>負責主管</th><th>狀態</th><th>處理動作</th></tr>
-            </thead>
-            <tbody>
-              {scopedScheduleRows.map((row) => (
-                <tr key={row.id}>
-                  <td><span className="code-chip">{canonicalStoreCode(row)}</span></td>
-                  <td><strong>{displayStoreName(row)}</strong></td>
-                  <td>{row.shift_name}</td>
-                  <td>{row.start_time} - {row.end_time}</td>
-                  <td>{row.required_staff} 人</td>
-                  <td>{row.assigned_staff.length ? row.assigned_staff.join("、") : "-"}</td>
-                  <td>{row.owner}</td>
-                  <td><span className={`chip ${taskTone(row.status)}`}>{row.status}</span></td>
-                  <td>{row.action}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
       <section className="panel">
         <div className="panel-head">
           <div>
@@ -5804,33 +5727,6 @@ function ScheduleModule({
         </div>
       </section>
 
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <h2>門店尖峰需求</h2>
-            <p>由 00AI人資.xlsx 的各店時間轉入。</p>
-          </div>
-        </div>
-        <div className="table-wrap compact">
-          <table>
-            <thead>
-              <tr><th>代碼</th><th>門店</th><th>營業時間</th><th>中午尖峰</th><th>晚上尖峰</th><th>值班人數</th></tr>
-            </thead>
-            <tbody>
-              {scopedStoreHours.map((row) => (
-                <tr key={row.storeName}>
-                  <td><span className="code-chip">{canonicalStoreCode(row)}</span></td>
-                  <td><strong>{displayStoreName(row)}</strong></td>
-                  <td>{row.open_time} - {row.close_time}</td>
-                  <td>{row.lunch_peak}</td>
-                  <td>{row.dinner_peak}</td>
-                  <td>{row.duty_staff} 人</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
     </div>
   );
 }

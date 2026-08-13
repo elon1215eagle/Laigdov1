@@ -3203,6 +3203,98 @@ tbody tr.selected,
   .store-leave-head {
     display: grid;
   }
+
+  .leave-planner > .panel-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .leave-planner > .panel-head .panel-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .leave-planner > .panel-head .panel-actions button {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    padding: 10px 8px;
+    line-height: 1.3;
+    white-space: normal;
+  }
+
+  .schedule-control-panel {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .schedule-control-panel > div,
+  .schedule-request-box,
+  .schedule-request-box textarea {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .schedule-control-panel :where(span, strong, p),
+  .schedule-request-box :where(span, strong, p, small, label) {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
+  .schedule-control-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .schedule-control-actions button,
+  .schedule-request-box button {
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    white-space: normal;
+  }
+
+  .personal-link-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+  }
+
+  .personal-link-actions label,
+  .personal-link-actions button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .schedule-kpi-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .schedule-kpi-strip .metric {
+    min-height: 112px;
+    padding: 14px;
+  }
+
+  .schedule-kpi-strip .metric strong {
+    font-size: 22px;
+  }
+
+  .collapsible-form-summary {
+    align-items: flex-start;
+  }
+
+  .collapsible-form-summary > div {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .leave-planner > .panel-head .panel-actions,
+  .schedule-control-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 
