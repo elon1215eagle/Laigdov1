@@ -3163,7 +3163,6 @@ tbody tr.selected,
   }
 
   .leave-toolbar,
-  .leave-summary,
   .support-panel,
   .support-list,
   .record-toolbar,
@@ -3173,6 +3172,14 @@ tbody tr.selected,
   .rank-row,
   .priority-item {
     grid-template-columns: 1fr;
+  }
+
+  .leave-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .leave-summary span:last-child {
+    grid-column: 1 / -1;
   }
 
   .daily-change-request-row {
