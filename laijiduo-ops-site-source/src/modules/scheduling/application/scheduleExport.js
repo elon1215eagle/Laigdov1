@@ -31,18 +31,21 @@ export function buildScheduleExportModel({
   const [year, month] = periodMonth.split("-").map(Number);
   const dayCount = new Date(year, month, 0).getDate();
   const days = Array.from({ length: dayCount }, (_, index) => index + 1);
+  const weekendDays = days.filter((day) => [0, 6].includes(new Date(year, month - 1, day).getDay()));
   return {
     periodMonth,
     version: Number(version || 1),
     needsReconfirmation: Boolean(needsReconfirmation),
     generatedAt,
     days,
+    weekendDays,
     stores: storeGroups.map((store) => ({
       code: store.code,
       name: store.name,
       sourceCodes: store.sourceCodes || [store.code],
       openTime: store.open_time || "10:00",
       closeTime: store.close_time || store.close_report_time || "23:00",
+      demand: Number(store.demand || 0),
       staff: store.staff.map((person) => ({
         id: String(person.id),
         name: person.employeeName || person.employee_name || "",
@@ -58,6 +61,53 @@ export function buildScheduleExportModel({
       shifts: dailyShifts.filter((shift) => store.sourceCodes.includes(shift.home_store_code) || store.sourceCodes.includes(shift.assigned_store_code)),
     })),
   };
+}
+
+export function buildStoreDailyStaffingSummary(model, store) {
+  return model.days.map((day) => {
+    const effective = store.staff.filter((person) => !person.leaveDays.includes(day)).length;
+    const demand = Number(store.demand || 0);
+    return { day, effective, demand, balance: effective - demand };
+  });
+}
+
+function excelXmlEscape(value) {
+  return String(value ?? "").replace(/[&<>]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[character]);
+}
+
+function excelCell(value, style = "") {
+  const styleAttribute = style ? ` ss:StyleID="${style}"` : "";
+  const type = typeof value === "number" ? "Number" : "String";
+  return `<Cell${styleAttribute}><Data ss:Type="${type}">${excelXmlEscape(value)}</Data></Cell>`;
+}
+
+export function buildScheduleExcelXml(model) {
+  const rows = [];
+  model.stores.forEach((store, storeIndex) => {
+    const summaries = buildStoreDailyStaffingSummary(model, store);
+    rows.push(`<Row>${excelCell(`${store.code} ${store.name}`, "StoreTitle")}</Row>`);
+    rows.push(`<Row>${excelCell("人員", "Header")}${model.days.map((day) => excelCell(`${day}日`, model.weekendDays.includes(day) ? "Weekend" : "Header")).join("")}</Row>`);
+    store.staff.forEach((person) => {
+      rows.push(`<Row>${excelCell(`${person.name} ${person.role}`)}${model.days.map((day) => excelCell(person.leaveDays.includes(day) ? "休" : "", person.leaveDays.includes(day) ? "Leave" : "")).join("")}</Row>`);
+    });
+    rows.push(`<Row>${excelCell("有效人力", "Summary")}${summaries.map((row) => excelCell(row.effective, "Summary")).join("")}</Row>`);
+    rows.push(`<Row>${excelCell("店面需求", "Summary")}${summaries.map((row) => excelCell(row.demand, "Summary")).join("")}</Row>`);
+    rows.push(`<Row>${excelCell("缺口小計", "Summary")}${summaries.map((row) => excelCell(row.balance, row.balance > 0 ? "Positive" : row.balance < 0 ? "Negative" : "Zero")).join("")}</Row>`);
+    if (storeIndex < model.stores.length - 1) rows.push("<Row/>");
+  });
+  return `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Styles>
+<Style ss:ID="Default"><Alignment ss:Vertical="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Size="11"/></Style>
+<Style ss:ID="StoreTitle"><Font ss:FontName="Microsoft JhengHei" ss:Size="14" ss:Bold="1"/></Style>
+<Style ss:ID="Header"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1"/><Interior ss:Color="#FBEFE8" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Weekend"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#D92D20"/><Interior ss:Color="#FBEFE8" ss:Pattern="Solid"/></Style>
+<Style ss:ID="Leave"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#D92D20"/></Style>
+<Style ss:ID="Summary"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1"/></Style>
+<Style ss:ID="Positive"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#175CD3"/></Style>
+<Style ss:ID="Negative"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#D92D20"/></Style>
+<Style ss:ID="Zero"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#000000"/></Style>
+</Styles><Worksheet ss:Name="${excelXmlEscape(model.periodMonth)}排假表"><Table><Column ss:Width="150"/>${model.days.map(() => '<Column ss:Width="38"/>').join("")}${rows.join("")}</Table></Worksheet></Workbook>`;
 }
 
 export function personalScheduleExpiry(periodMonth) {
@@ -120,9 +170,10 @@ export function renderScheduleCanvas(model, storeCode = "") {
   const width = 1600;
   const rowHeight = 54;
   const sectionHeaderHeight = 140;
+  const summaryRows = 3;
   const sectionGap = 48;
   const height = 60 + stores.reduce(
-    (total, store) => total + sectionHeaderHeight + Math.max(store.staff.length, 1) * rowHeight + sectionGap,
+    (total, store) => total + sectionHeaderHeight + (Math.max(store.staff.length, 1) + summaryRows) * rowHeight + sectionGap,
     0,
   );
   const canvas = document.createElement("canvas");
@@ -143,7 +194,10 @@ export function renderScheduleCanvas(model, storeCode = "") {
     context.font = "20px Microsoft JhengHei";
     context.fillText(`V${model.version} · ${model.needsReconfirmation ? "異動後待重新確認" : "已核定"} · ${new Date(model.generatedAt).toLocaleString("zh-TW")}`, 36, sectionTop + 70);
     context.font = "18px Microsoft JhengHei";
-    model.days.forEach((day, index) => context.fillText(String(day), nameWidth + index * dayWidth + 8, sectionTop + 113));
+    model.days.forEach((day, index) => {
+      context.fillStyle = model.weekendDays.includes(day) ? "#d92d20" : "#231815";
+      context.fillText(String(day), nameWidth + index * dayWidth + 8, sectionTop + 113);
+    });
 
     const staffRows = store.staff.length ? store.staff : [{ name: "尚無人員", role: "", leaveDays: [] }];
     staffRows.forEach((person, rowIndex) => {
@@ -162,7 +216,28 @@ export function renderScheduleCanvas(model, storeCode = "") {
       });
     });
 
-    sectionTop += sectionHeaderHeight + staffRows.length * rowHeight + sectionGap;
+    const summaries = buildStoreDailyStaffingSummary(model, store);
+    const summaryStartY = sectionTop + sectionHeaderHeight + staffRows.length * rowHeight;
+    [
+      { label: "有效人力", value: (row) => row.effective, color: () => "#231815" },
+      { label: "店面需求", value: (row) => row.demand, color: () => "#231815" },
+      { label: "缺口小計", value: (row) => row.balance, color: (row) => row.balance > 0 ? "#175cd3" : row.balance < 0 ? "#d92d20" : "#000000" },
+    ].forEach((summary, summaryIndex) => {
+      const y = summaryStartY + summaryIndex * rowHeight;
+      context.fillStyle = "#f7f7f7";
+      context.fillRect(20, y, width - 40, rowHeight);
+      context.fillStyle = "#231815";
+      context.font = "bold 18px Microsoft JhengHei";
+      context.fillText(summary.label, 36, y + 34);
+      summaries.forEach((row, dayIndex) => {
+        const x = nameWidth + dayIndex * dayWidth;
+        context.strokeRect(x, y, dayWidth, rowHeight);
+        context.fillStyle = summary.color(row);
+        context.fillText(String(summary.value(row)), x + 8, y + 34);
+      });
+    });
+
+    sectionTop += sectionHeaderHeight + (staffRows.length + summaryRows) * rowHeight + sectionGap;
   });
   return canvas;
 }

@@ -21,7 +21,9 @@ export { calculateProjectedLaborCost, estimatedHourlyCost } from "./domain/labor
 export {
   buildPersonalScheduleSnapshot,
   buildPrintableScheduleHtml,
+  buildScheduleExcelXml,
   buildScheduleExportModel,
+  buildStoreDailyStaffingSummary,
   personalScheduleExpiry,
   renderScheduleCanvas,
   renderScheduleStoreCanvas,

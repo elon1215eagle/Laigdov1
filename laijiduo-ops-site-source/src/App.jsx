@@ -122,6 +122,7 @@ import {
   buildHalfHourStaffingMatrix,
   buildPersonalScheduleSnapshot,
   buildPrintableScheduleHtml,
+  buildScheduleExcelXml,
   buildScheduleExportModel,
   buildDailyShiftCommand,
   buildScheduleChangeRequest,
@@ -2620,6 +2621,14 @@ function downloadTextFile(text, filename) {
   URL.revokeObjectURL(link.href);
 }
 
+function downloadExcelFile(xml, filename) {
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" }));
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 function csvEscape(value) {
   return `"${String(value ?? "").replaceAll('"', '""')}"`;
 }
@@ -4993,7 +5002,7 @@ function MonthlyLeavePlanner({
           <button className="primary" type="button" onClick={uploadVisibleStores} disabled={!canBulkEditSchedule || !storeGroups.length || uploadingCode === "all"}>
             {uploadingCode === "all" ? "上傳中..." : "上傳目前排假"}
           </button>
-          <button type="button" onClick={() => downloadTextFile(buildLeavePlannerCsv({ month: leaveMonth, rows: plannerRows, drafts, salaryRows }), `萊吉多${leaveMonth}排假表.csv`)}>
+          <button type="button" onClick={() => downloadExcelFile(buildScheduleExcelXml(scheduleExportModel), `萊吉多${leaveMonth}排假表.xls`)}>
             匯出排假
           </button>
           <button type="button" onClick={printSchedule}>A4／PDF</button>

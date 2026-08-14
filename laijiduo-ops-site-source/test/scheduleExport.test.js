@@ -3,7 +3,9 @@ import test from "node:test";
 import {
   buildPersonalScheduleSnapshot,
   buildPrintableScheduleHtml,
+  buildScheduleExcelXml,
   buildScheduleExportModel,
+  buildStoreDailyStaffingSummary,
   personalScheduleExpiry,
   selectScheduleImageStores,
 } from "../src/modules/scheduling/index.js";
@@ -51,6 +53,42 @@ test("總部下載圖片選全部門店時保留所有門店，選單店時只�
 
   assert.deepEqual(selectScheduleImageStores(model).map((store) => store.code), ["S07", "S08"]);
   assert.deepEqual(selectScheduleImageStores(model, "S08").map((store) => store.code), ["S08"]);
+});
+
+test("排假輸出標記週末並計算每日有效人力、需求與缺口", () => {
+  const model = buildScheduleExportModel({
+    periodMonth: "2026-08",
+    drafts: { "2026-08:p1": { dates: "1" } },
+    storeGroups: [{
+      code: "S08", name: "三民義華店", sourceCodes: ["S08"], demand: 2,
+      staff: [
+        { id: "p1", employeeName: "甲", role: "正式人員" },
+        { id: "p2", employeeName: "乙", role: "正式人員" },
+        { id: "p3", employeeName: "丙", role: "正式人員" },
+      ],
+    }],
+  });
+  assert.ok(model.weekendDays.includes(1));
+  assert.deepEqual(buildStoreDailyStaffingSummary(model, model.stores[0])[0], { day: 1, effective: 2, demand: 2, balance: 0 });
+  assert.deepEqual(buildStoreDailyStaffingSummary(model, model.stores[0])[1], { day: 2, effective: 3, demand: 2, balance: 1 });
+});
+
+test("Excel 排假表保留紅色休假、週末、三列人力摘要及門店空白列", () => {
+  const model = buildScheduleExportModel({
+    periodMonth: "2026-08",
+    drafts: { "2026-08:p1": { dates: "1" } },
+    storeGroups: [
+      { code: "S07", name: "三民大昌店", sourceCodes: ["S07"], demand: 3, staff: [{ id: "p1", employeeName: "甲", role: "正式人員" }] },
+      { code: "S08", name: "三民義華店", sourceCodes: ["S08"], demand: 2, staff: [] },
+    ],
+  });
+  const xml = buildScheduleExcelXml(model);
+  assert.match(xml, /ss:StyleID="Weekend"/);
+  assert.match(xml, /ss:StyleID="Leave"/);
+  assert.match(xml, /有效人力/);
+  assert.match(xml, /店面需求/);
+  assert.match(xml, /缺口小計/);
+  assert.match(xml, /<Row\/><Row><Cell ss:StyleID="StoreTitle"/);
 });
 
 test("個人班表只包含本人日期、時段、門店及職稱", () => {
