@@ -5695,7 +5695,7 @@ function ScheduleModule({
         <Metric label="本週營運時段" value={`${scopedScheduleRows.length} 筆`} detail="依營業時段自動產生" />
         <Metric label="有效營運時段" value={`${activeRows.length} 筆`} detail="不含暫停營業門店" tone="good" />
         <Metric label="尖峰缺員時段" value={`${shortageRows.length} 筆`} detail={shortageRows[0]?.storeName || "目前無缺員"} tone={shortageRows.length ? "bad" : "good"} />
-        <Metric label="有主管門店" value={`${managerCount} 店`} detail="含委任店經理、店長、副店長及代理主管" />
+        <Metric label="有主管門店" value={`${managerCount} 店`} detail="委任店經理亦列入計算" />
         <Metric label="暫停營業門店" value={`${closedRows.length} 店`} detail={closedRows[0]?.storeName || "目前無暫停門店"} tone={closedRows.length ? "warn" : "good"} />
       </section>
 
