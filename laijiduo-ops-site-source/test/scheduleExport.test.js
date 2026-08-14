@@ -88,7 +88,11 @@ test("Excel 排假表保留紅色休假、週末、三列人力摘要及門店�
   assert.match(xml, /有效人力/);
   assert.match(xml, /店面需求/);
   assert.match(xml, /缺口小計/);
-  assert.match(xml, /<Row\/><Row><Cell ss:StyleID="StoreTitle"/);
+  assert.match(xml, /<Row\/><Row ss:Height="37\.5"><Cell ss:StyleID="StoreTitle"/);
+  assert.match(xml, /<Column ss:Width="187\.5"\/>/);
+  assert.equal((xml.match(/<Column ss:Width="52\.5"\/>/g) || []).length, 31);
+  assert.match(xml, /<Row ss:Height="37\.5"><Cell ss:StyleID="StoreTitle"/);
+  assert.match(xml, /<Row ss:Height="30"><Cell ss:StyleID="Header"/);
 });
 
 test("個人班表只包含本人日期、時段、門店及職稱", () => {

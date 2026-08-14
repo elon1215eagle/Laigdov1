@@ -82,17 +82,21 @@ function excelCell(value, style = "") {
 }
 
 export function buildScheduleExcelXml(model) {
+  const firstColumnWidth = 187.5; // 250 px
+  const dateColumnWidth = 52.5; // 70 px
+  const storeTitleHeight = 37.5; // 50 px
+  const tableRowHeight = 30; // 40 px
   const rows = [];
   model.stores.forEach((store, storeIndex) => {
     const summaries = buildStoreDailyStaffingSummary(model, store);
-    rows.push(`<Row>${excelCell(`${store.code} ${store.name}`, "StoreTitle")}</Row>`);
-    rows.push(`<Row>${excelCell("人員", "Header")}${model.days.map((day) => excelCell(`${day}日`, model.weekendDays.includes(day) ? "Weekend" : "Header")).join("")}</Row>`);
+    rows.push(`<Row ss:Height="${storeTitleHeight}">${excelCell(`${store.code} ${store.name}`, "StoreTitle")}</Row>`);
+    rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("人員", "Header")}${model.days.map((day) => excelCell(`${day}日`, model.weekendDays.includes(day) ? "Weekend" : "Header")).join("")}</Row>`);
     store.staff.forEach((person) => {
-      rows.push(`<Row>${excelCell(`${person.name} ${person.role}`)}${model.days.map((day) => excelCell(person.leaveDays.includes(day) ? "休" : "", person.leaveDays.includes(day) ? "Leave" : "")).join("")}</Row>`);
+      rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell(`${person.name} ${person.role}`)}${model.days.map((day) => excelCell(person.leaveDays.includes(day) ? "休" : "", person.leaveDays.includes(day) ? "Leave" : "")).join("")}</Row>`);
     });
-    rows.push(`<Row>${excelCell("有效人力", "Summary")}${summaries.map((row) => excelCell(row.effective, "Summary")).join("")}</Row>`);
-    rows.push(`<Row>${excelCell("店面需求", "Summary")}${summaries.map((row) => excelCell(row.demand, "Summary")).join("")}</Row>`);
-    rows.push(`<Row>${excelCell("缺口小計", "Summary")}${summaries.map((row) => excelCell(row.balance, row.balance > 0 ? "Positive" : row.balance < 0 ? "Negative" : "Zero")).join("")}</Row>`);
+    rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("有效人力", "Summary")}${summaries.map((row) => excelCell(row.effective, "Summary")).join("")}</Row>`);
+    rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("店面需求", "Summary")}${summaries.map((row) => excelCell(row.demand, "Summary")).join("")}</Row>`);
+    rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("缺口小計", "Summary")}${summaries.map((row) => excelCell(row.balance, row.balance > 0 ? "Positive" : row.balance < 0 ? "Negative" : "Zero")).join("")}</Row>`);
     if (storeIndex < model.stores.length - 1) rows.push("<Row/>");
   });
   return `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
@@ -107,7 +111,7 @@ export function buildScheduleExcelXml(model) {
 <Style ss:ID="Positive"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#175CD3"/></Style>
 <Style ss:ID="Negative"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#D92D20"/></Style>
 <Style ss:ID="Zero"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#000000"/></Style>
-</Styles><Worksheet ss:Name="${excelXmlEscape(model.periodMonth)}排假表"><Table><Column ss:Width="150"/>${model.days.map(() => '<Column ss:Width="38"/>').join("")}${rows.join("")}</Table></Worksheet></Workbook>`;
+</Styles><Worksheet ss:Name="${excelXmlEscape(model.periodMonth)}排假表"><Table><Column ss:Width="${firstColumnWidth}"/>${model.days.map(() => `<Column ss:Width="${dateColumnWidth}"/>`).join("")}${rows.join("")}</Table></Worksheet></Workbook>`;
 }
 
 export function personalScheduleExpiry(periodMonth) {
