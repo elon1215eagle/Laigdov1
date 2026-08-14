@@ -5014,29 +5014,30 @@ function MonthlyLeavePlanner({
           </div>
         ) : isScheduleConfirmed && !storeEditApproved ? (
           <div className="schedule-request-box">
-            <label>
-              修改範圍
-              <select value={requestScope.type} onChange={(event) => setRequestScope({ type: event.target.value, date: supportDate, staffId: "", shiftId: "" })}>
-                <option value="date">指定日期</option>
-                <option value="staff">指定人員</option>
-                <option value="shift">指定班次</option>
-              </select>
-            </label>
-            {requestScope.type === "date" && (
-              <label>日期<input type="date" value={requestScope.date} onChange={(event) => setRequestScope({ ...requestScope, date: event.target.value })} /></label>
-            )}
-            {requestScope.type === "staff" && (
-              <label>人員<select value={requestScope.staffId} onChange={(event) => setRequestScope({ ...requestScope, staffId: event.target.value })}>
-                <option value="">請選擇</option>
-                {plannerRows.map((person) => <option key={person.id} value={person.id}>{person.employeeName}</option>)}
-              </select></label>
-            )}
-            {requestScope.type === "shift" && (
-              <label>班次<select value={requestScope.shiftId} onChange={(event) => setRequestScope({ ...requestScope, shiftId: event.target.value })}>
-                <option value="">請選擇</option>
-                {visibleDailyShifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.shift_date} {shift.employee_name} {formatTime24(shift.start_time)}–{formatTime24(shift.end_time)}</option>)}
-              </select></label>
-            )}
+            <div className="schedule-request-fields">
+              <label>
+                修改範圍
+                <select value={requestScope.type} onChange={(event) => setRequestScope({ type: event.target.value, date: supportDate, staffId: "", shiftId: "" })}>
+                  <option value="date">指定日期</option>
+                  <option value="staff">指定人員</option>
+                  <option value="shift">指定班次</option>
+                </select>
+              </label>
+              {requestScope.type === "date" && (
+                <label>日期<input type="date" value={requestScope.date} onChange={(event) => setRequestScope({ ...requestScope, date: event.target.value })} /></label>
+              )}
+              {requestScope.type === "staff" && (
+                <label>人員<select value={requestScope.staffId} onChange={(event) => setRequestScope({ ...requestScope, staffId: event.target.value })}>
+                  <option value="">請選擇</option>
+                  {plannerRows.map((person) => <option key={person.id} value={person.id}>{person.employeeName}</option>)}
+                </select></label>
+              )}
+              {requestScope.type === "shift" && (
+                <label>班次<select value={requestScope.shiftId} onChange={(event) => setRequestScope({ ...requestScope, shiftId: event.target.value })}>
+                  <option value="">請選擇</option>
+                  {visibleDailyShifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.shift_date} {shift.employee_name} {formatTime24(shift.start_time)}–{formatTime24(shift.end_time)}</option>)}</select></label>
+              )}
+            </div>
             <textarea
               value={requestReason}
               onChange={(event) => setRequestReason(event.target.value)}
