@@ -5692,11 +5692,11 @@ function ScheduleModule({
   return (
     <div className="workspace module-grid">
       <section className="kpi-strip schedule-kpi-strip">
-        <Metric label="本週班表" value={`${scopedScheduleRows.length} 筆`} detail="依營業時段自動產生" />
-        <Metric label="營運班別" value={`${activeRows.length} 筆`} detail="排除暫停營業店" tone="good" />
-        <Metric label="尖峰缺口" value={`${shortageRows.length} 筆`} detail={shortageRows[0]?.storeName || "目前無缺口"} tone={shortageRows.length ? "bad" : "good"} />
-        <Metric label="主管覆蓋" value={`${managerCount} 店`} detail="店長或副店長可負責" />
-        <Metric label="暫停營業" value={`${closedRows.length} 店`} detail={closedRows[0]?.storeName || "無"} tone={closedRows.length ? "warn" : "good"} />
+        <Metric label="本週營運時段" value={`${scopedScheduleRows.length} 筆`} detail="依營業時段自動產生" />
+        <Metric label="有效營運時段" value={`${activeRows.length} 筆`} detail="不含暫停營業門店" tone="good" />
+        <Metric label="尖峰缺員時段" value={`${shortageRows.length} 筆`} detail={shortageRows[0]?.storeName || "目前無缺員"} tone={shortageRows.length ? "bad" : "good"} />
+        <Metric label="有主管門店" value={`${managerCount} 店`} detail="含委任店經理、店長、副店長及代理主管" />
+        <Metric label="暫停營業門店" value={`${closedRows.length} 店`} detail={closedRows[0]?.storeName || "目前無暫停門店"} tone={closedRows.length ? "warn" : "good"} />
       </section>
 
       <MonthlyLeavePlanner

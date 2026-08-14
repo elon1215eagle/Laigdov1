@@ -456,6 +456,21 @@ textarea {
   min-height: 104px;
 }
 
+.schedule-kpi-strip .metric {
+  min-height: 88px;
+  padding: 10px 12px;
+}
+
+.schedule-kpi-strip .metric strong {
+  margin: 5px 0 2px;
+  font-size: 22px;
+}
+
+.schedule-kpi-strip .metric p {
+  font-size: 13px;
+  line-height: 1.35;
+}
+
 .metric span {
   color: #76594b;
   font-size: 13px;
@@ -3280,12 +3295,17 @@ tbody tr.selected,
   }
 
   .schedule-kpi-strip .metric {
-    min-height: 112px;
-    padding: 14px;
+    min-height: 88px;
+    padding: 10px 12px;
   }
 
   .schedule-kpi-strip .metric strong {
-    font-size: 22px;
+    margin: 5px 0 2px;
+    font-size: 21px;
+  }
+
+  .schedule-kpi-strip .metric:last-child {
+    grid-column: 1 / -1;
   }
 
   .collapsible-form-summary {
