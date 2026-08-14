@@ -108,42 +108,67 @@ export function buildPrintableScheduleHtml(model) {
   </style></head><body><header><h1>萊吉多 ${escapeHtml(model.periodMonth)} 月班表</h1><p>版本 V${model.version} · ${status}</p><p>產生時間：${escapeHtml(new Date(model.generatedAt).toLocaleString("zh-TW"))}</p></header>${stores}</body></html>`;
 }
 
-export function renderScheduleStoreCanvas(model, storeIndex = 0) {
-  const store = model.stores[storeIndex];
-  if (!store) throw new Error("目前沒有可輸出的門店班表");
+export function selectScheduleImageStores(model, storeCode = "") {
+  const stores = Array.isArray(model?.stores) ? model.stores : [];
+  if (!storeCode) return stores;
+  return stores.filter((store) => store.code === storeCode);
+}
+
+export function renderScheduleCanvas(model, storeCode = "") {
+  const stores = selectScheduleImageStores(model, storeCode);
+  if (!stores.length) throw new Error("目前沒有可輸出的門店班表");
   const width = 1600;
   const rowHeight = 54;
-  const height = 150 + Math.max(store.staff.length, 1) * rowHeight + 80;
+  const sectionHeaderHeight = 140;
+  const sectionGap = 48;
+  const height = 60 + stores.reduce(
+    (total, store) => total + sectionHeaderHeight + Math.max(store.staff.length, 1) * rowHeight + sectionGap,
+    0,
+  );
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const context = canvas.getContext("2d");
   context.fillStyle = "#fff";
   context.fillRect(0, 0, width, height);
-  context.fillStyle = "#231815";
-  context.font = "bold 34px Microsoft JhengHei";
-  context.fillText(`萊吉多 ${model.periodMonth} ${store.code} ${store.name} 班表`, 36, 48);
-  context.font = "20px Microsoft JhengHei";
-  context.fillText(`V${model.version} · ${model.needsReconfirmation ? "異動後待重新確認" : "已核定"} · ${new Date(model.generatedAt).toLocaleString("zh-TW")}`, 36, 82);
   const nameWidth = 210;
   const dayWidth = (width - nameWidth - 40) / model.days.length;
   context.strokeStyle = "#777";
-  context.font = "18px Microsoft JhengHei";
-  model.days.forEach((day, index) => context.fillText(String(day), nameWidth + index * dayWidth + 8, 125));
-  store.staff.forEach((person, rowIndex) => {
-    const y = 140 + rowIndex * rowHeight;
+
+  let sectionTop = 36;
+  stores.forEach((store) => {
     context.fillStyle = "#231815";
-    context.fillText(`${person.name} ${person.role}`, 36, y + 34);
-    model.days.forEach((day, dayIndex) => {
-      const x = nameWidth + dayIndex * dayWidth;
-      context.strokeRect(x, y, dayWidth, rowHeight);
-      if (person.leaveDays.includes(day)) {
-        context.fillStyle = "#ffe0d8";
-        context.fillRect(x + 1, y + 1, dayWidth - 2, rowHeight - 2);
-        context.fillStyle = "#c42e18";
-        context.fillText("休", x + 8, y + 34);
-      }
+    context.font = "bold 34px Microsoft JhengHei";
+    context.fillText(`萊吉多 ${model.periodMonth} ${store.code} ${store.name} 班表`, 36, sectionTop + 36);
+    context.font = "20px Microsoft JhengHei";
+    context.fillText(`V${model.version} · ${model.needsReconfirmation ? "異動後待重新確認" : "已核定"} · ${new Date(model.generatedAt).toLocaleString("zh-TW")}`, 36, sectionTop + 70);
+    context.font = "18px Microsoft JhengHei";
+    model.days.forEach((day, index) => context.fillText(String(day), nameWidth + index * dayWidth + 8, sectionTop + 113));
+
+    const staffRows = store.staff.length ? store.staff : [{ name: "尚無人員", role: "", leaveDays: [] }];
+    staffRows.forEach((person, rowIndex) => {
+      const y = sectionTop + sectionHeaderHeight + rowIndex * rowHeight;
+      context.fillStyle = "#231815";
+      context.fillText(`${person.name} ${person.role}`.trim(), 36, y + 34);
+      model.days.forEach((day, dayIndex) => {
+        const x = nameWidth + dayIndex * dayWidth;
+        context.strokeRect(x, y, dayWidth, rowHeight);
+        if (person.leaveDays.includes(day)) {
+          context.fillStyle = "#ffe0d8";
+          context.fillRect(x + 1, y + 1, dayWidth - 2, rowHeight - 2);
+          context.fillStyle = "#c42e18";
+          context.fillText("休", x + 8, y + 34);
+        }
+      });
     });
+
+    sectionTop += sectionHeaderHeight + staffRows.length * rowHeight + sectionGap;
   });
   return canvas;
+}
+
+export function renderScheduleStoreCanvas(model, storeIndex = 0) {
+  const store = model.stores[storeIndex];
+  if (!store) throw new Error("目前沒有可輸出的門店班表");
+  return renderScheduleCanvas(model, store.code);
 }

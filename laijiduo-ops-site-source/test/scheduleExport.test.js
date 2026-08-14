@@ -5,6 +5,7 @@ import {
   buildPrintableScheduleHtml,
   buildScheduleExportModel,
   personalScheduleExpiry,
+  selectScheduleImageStores,
 } from "../src/modules/scheduling/index.js";
 
 test("班表輸出模型保留版本、門店、休假與特殊班次", () => {
@@ -36,6 +37,20 @@ test("班表輸出可解析正式畫面的月份日期格式", () => {
 
   assert.deepEqual(model.stores[0].staff[0].leaveDays, [5, 10, 15]);
   assert.equal((buildPrintableScheduleHtml(model).match(/class="leave"/g) || []).length, 3);
+});
+
+test("總部下載圖片選全部門店時保留所有門店，選單店時只輸出該店", () => {
+  const model = buildScheduleExportModel({
+    periodMonth: "2026-08",
+    drafts: {},
+    storeGroups: [
+      { code: "S07", name: "三民大昌店", sourceCodes: ["S07"], staff: [] },
+      { code: "S08", name: "三民義華店", sourceCodes: ["S08"], staff: [] },
+    ],
+  });
+
+  assert.deepEqual(selectScheduleImageStores(model).map((store) => store.code), ["S07", "S08"]);
+  assert.deepEqual(selectScheduleImageStores(model, "S08").map((store) => store.code), ["S08"]);
 });
 
 test("個人班表只包含本人日期、時段、門店及職稱", () => {

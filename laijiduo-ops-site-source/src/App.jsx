@@ -137,7 +137,7 @@ import {
   projectDailyStaffShifts,
   personalScheduleExpiry,
   resolveStaffingDemand,
-  renderScheduleStoreCanvas,
+  renderScheduleCanvas,
   removeDailyShiftById,
   scheduleApprovalAllows,
   scheduleGroupForStore,
@@ -4419,12 +4419,14 @@ function MonthlyLeavePlanner({
   }
 
   async function scheduleImageFile() {
-    const selectedIndex = Math.max(0, scheduleExportModel.stores.findIndex((store) => store.code === selectedMatrixGroup?.code));
-    const canvas = renderScheduleStoreCanvas(scheduleExportModel, selectedIndex);
+    const exportStoreCode = isStoreScoped || storeFilter !== "all"
+      ? selectedMatrixGroup?.code || storeGroups[0]?.code || ""
+      : "";
+    const canvas = renderScheduleCanvas(scheduleExportModel, exportStoreCode);
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("班表圖片產生失敗");
-    const store = scheduleExportModel.stores[selectedIndex];
-    return new File([blob], `萊吉多-${leaveMonth}-${store.code}-班表-V${scheduleExportModel.version}.png`, { type: "image/png" });
+    const scopeName = exportStoreCode || "全部門店";
+    return new File([blob], `萊吉多-${leaveMonth}-${scopeName}-班表-V${scheduleExportModel.version}.png`, { type: "image/png" });
   }
 
   async function downloadScheduleImage() {

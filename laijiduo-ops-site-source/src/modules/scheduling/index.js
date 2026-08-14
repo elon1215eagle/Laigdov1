@@ -23,7 +23,9 @@ export {
   buildPrintableScheduleHtml,
   buildScheduleExportModel,
   personalScheduleExpiry,
+  renderScheduleCanvas,
   renderScheduleStoreCanvas,
+  selectScheduleImageStores,
 } from "./application/scheduleExport.js";
 
 export {
