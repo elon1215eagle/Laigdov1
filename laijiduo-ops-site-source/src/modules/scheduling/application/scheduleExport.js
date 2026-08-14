@@ -82,10 +82,10 @@ function excelCell(value, style = "") {
 }
 
 export function buildScheduleExcelXml(model) {
-  const firstColumnWidth = 187.5; // 250 px
-  const dateColumnWidth = 52.5; // 70 px
-  const storeTitleHeight = 37.5; // 50 px
-  const tableRowHeight = 30; // 40 px
+  const firstColumnWidth = 116.25; // Excel 欄寬約 22.09
+  const dateColumnWidth = 30.75; // Excel 欄寬約 5.73
+  const storeTitleHeight = 25;
+  const tableRowHeight = 17.5;
   const rows = [];
   model.stores.forEach((store, storeIndex) => {
     const summaries = buildStoreDailyStaffingSummary(model, store);
