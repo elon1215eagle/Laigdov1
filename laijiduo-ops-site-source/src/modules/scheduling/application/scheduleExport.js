@@ -72,20 +72,7 @@ export function buildPersonalScheduleSnapshot(model, staffId) {
           shift_type: shift.shift_type || "override",
         }));
       if (explicit.length) return { date, status: "work", label: "上班", shifts: explicit };
-      const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
-      const isHoliday = weekday === 0 || weekday === 6;
-      const start = person.employmentType === "兼職"
-        ? (isHoliday ? person.holidayStartTime : person.weekdayStartTime)
-        : store.openTime;
-      const end = person.employmentType === "兼職"
-        ? (isHoliday ? person.holidayEndTime : person.weekdayEndTime)
-        : store.closeTime;
-      return {
-        date,
-        status: start && end ? "work" : "unscheduled",
-        label: start && end ? "上班" : "待排",
-        shifts: start && end ? [{ start_time: String(start).slice(0, 5), end_time: String(end).slice(0, 5), store_code: person.homeStoreCode, shift_type: "default" }] : [],
-      };
+      return { date, status: "unscheduled", label: "待排", shifts: [] };
     });
     return {
       period_month: model.periodMonth,

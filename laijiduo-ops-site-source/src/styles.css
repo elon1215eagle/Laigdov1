@@ -1790,6 +1790,16 @@ tbody tr.selected,
   line-height: 1.5;
 }
 
+.leave-calendar-lock-note {
+  margin: 0;
+  padding: 9px 11px;
+  border-left: 3px solid #c2321f;
+  background: #fff1ee;
+  color: #6f4037;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .leave-calendar-wrap {
   max-height: 540px;
 }

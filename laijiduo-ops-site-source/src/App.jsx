@@ -4328,6 +4328,9 @@ function MonthlyLeavePlanner({
     setPersonalLinkSaving(true);
     try {
       const snapshot = buildPersonalScheduleSnapshot(scheduleExportModel, personalLinkStaffId);
+      if (!snapshot.rows.some((row) => row.shifts.length > 0)) {
+        throw new Error("此人員尚無正式班次，請先完成班表再建立連結");
+      }
       const token = secureRandomToken();
       const tokenHash = await sha256Hex(token);
       await issuePersonalScheduleLink({
@@ -4940,6 +4943,43 @@ function MonthlyLeavePlanner({
     }
   };
 
+  const leaveCalendarView = (
+    <div className="store-leave-stack">
+      {!storeGroups.length && (
+        <section className="panel empty-module">
+          <div className="panel-head">
+            <div>
+              <h2>尚未找到可排假門店</h2>
+              <p>目前帳號未對應到門店代碼，請由總部確認 profiles 的 store_id 或 store_code 是否已連到正確門店。</p>
+            </div>
+          </div>
+        </section>
+      )}
+      {storeGroups.map((store) => (
+        <StoreLeaveCalendar
+          dailyShifts={dailyShifts}
+          drafts={drafts}
+          key={store.code}
+          leaveMonth={leaveMonth}
+          monthDays={monthDays}
+          salaryRows={salaryRows}
+          saveDraft={saveDraft}
+          scheduleStaff={scheduleStaff}
+          store={store}
+          autoArrangeStore={autoArrangeStore}
+          clearStore={clearStore}
+          isUploading={uploadingCode === store.code}
+          toggleLeaveDay={toggleLeaveDay}
+          updateDraft={updateDraft}
+          uploadStore={uploadStore}
+          canEditSchedule={canEditSchedule}
+          canEditStaffSchedule={canEditStaffSchedule}
+          canBulkEditSchedule={canBulkEditSchedule}
+        />
+      ))}
+    </div>
+  );
+
   return (
     <section className="panel wide leave-planner">
       <div className="panel-head">
@@ -4964,7 +5004,7 @@ function MonthlyLeavePlanner({
       <section className="personal-link-panel">
         <div>
           <strong>個人班表連結</strong>
-          <p>只顯示本人日期、時間、工作門店及職稱；網址僅在建立時顯示一次。</p>
+          <p>只顯示已正式排定的本人班次；未排日期顯示待排，網址僅在建立時顯示一次。</p>
         </div>
         <div className="personal-link-actions">
           <label>
@@ -5190,6 +5230,8 @@ function MonthlyLeavePlanner({
           <span><strong>{syncState}</strong></span>
         </div>
       </div>
+
+      {leaveCalendarView}
 
       <details className="daily-shift-editor collapsible-form">
         <summary className="collapsible-form-summary">
@@ -5428,40 +5470,6 @@ function MonthlyLeavePlanner({
         </div>
       </div>
 
-      <div className="store-leave-stack">
-        {!storeGroups.length && (
-          <section className="panel empty-module">
-            <div className="panel-head">
-              <div>
-                <h2>尚未找到可排假門店</h2>
-                <p>目前帳號未對應到門店代碼，請由總部確認 profiles 的 store_id 或 store_code 是否已連到正確門店。</p>
-              </div>
-            </div>
-          </section>
-        )}
-        {storeGroups.map((store) => (
-          <StoreLeaveCalendar
-            dailyShifts={dailyShifts}
-            drafts={drafts}
-            key={store.code}
-            leaveMonth={leaveMonth}
-            monthDays={monthDays}
-            salaryRows={salaryRows}
-            saveDraft={saveDraft}
-            scheduleStaff={scheduleStaff}
-            store={store}
-            autoArrangeStore={autoArrangeStore}
-            clearStore={clearStore}
-            isUploading={uploadingCode === store.code}
-            toggleLeaveDay={toggleLeaveDay}
-            updateDraft={updateDraft}
-            uploadStore={uploadStore}
-            canEditSchedule={canEditSchedule}
-            canEditStaffSchedule={canEditStaffSchedule}
-            canBulkEditSchedule={canBulkEditSchedule}
-          />
-        ))}
-      </div>
     </section>
   );
 }
@@ -5485,6 +5493,9 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
           <button type="button" onClick={() => clearStore(store)} disabled={!canBulkEditSchedule}>清空本店</button>
         </div>
       </div>
+      {!canEditSchedule && (
+        <p className="leave-calendar-lock-note">本月班表已由總部確認。門店如需調整，請先在上方送出修改申請，核可後即可點選休假日期。</p>
+      )}
       <div className="table-wrap leave-calendar-wrap">
         <table className="leave-calendar-table">
           <thead>

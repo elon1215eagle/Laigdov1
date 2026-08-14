@@ -50,3 +50,31 @@ test("個人班表只包含本人日期、時段、門店及職稱", () => {
 test("個人班表預設於月份結束後七天台北時間失效", () => {
   assert.equal(personalScheduleExpiry("2026-08"), "2026-09-07T15:59:59.999Z");
 });
+
+test("個人班表沒有正式班次時不得用主檔或營業時間虛構上班資料", () => {
+  const model = buildScheduleExportModel({
+    periodMonth: "2026-08",
+    storeGroups: [{
+      code: "S08",
+      name: "三民義華店",
+      sourceCodes: ["S08"],
+      open_time: "09:30",
+      close_time: "22:30",
+      staff: [{
+        id: "p1",
+        employeeName: "測試人員",
+        role: "正式人員",
+        employment_type: "正職",
+        store_code: "S08",
+        weekday_start_time: "10:00",
+        weekday_end_time: "20:00",
+      }],
+    }],
+    drafts: {},
+    dailyShifts: [],
+  });
+
+  const snapshot = buildPersonalScheduleSnapshot(model, "p1");
+  assert.equal(snapshot.rows[0].status, "unscheduled");
+  assert.deepEqual(snapshot.rows[0].shifts, []);
+});
