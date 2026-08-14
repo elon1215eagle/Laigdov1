@@ -22,6 +22,22 @@ test("班表輸出模型保留版本、門店、休假與特殊班次", () => {
   assert.match(html, /S01 → S09/);
 });
 
+test("班表輸出可解析正式畫面的月份日期格式", () => {
+  const model = buildScheduleExportModel({
+    periodMonth: "2026-08",
+    drafts: { "2026-08:p1": { dates: "8/5、8/10、8/15" } },
+    storeGroups: [{
+      code: "S08",
+      name: "三民義華店",
+      sourceCodes: ["S08"],
+      staff: [{ id: "p1", employeeName: "測試人員", role: "正式人員" }],
+    }],
+  });
+
+  assert.deepEqual(model.stores[0].staff[0].leaveDays, [5, 10, 15]);
+  assert.equal((buildPrintableScheduleHtml(model).match(/class="leave"/g) || []).length, 3);
+});
+
 test("個人班表只包含本人日期、時段、門店及職稱", () => {
   const model = buildScheduleExportModel({
     periodMonth: "2026-08", version: 4,

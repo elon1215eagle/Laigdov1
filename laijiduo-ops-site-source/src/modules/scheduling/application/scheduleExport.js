@@ -1,6 +1,16 @@
 function leaveDaysFromDraft(draft = {}) {
-  const source = Array.isArray(draft.dates) ? draft.dates : String(draft.dates || "").split(/[，,\s]+/);
-  return new Set(source.map(Number).filter((day) => day >= 1 && day <= 31));
+  const source = Array.isArray(draft.dates)
+    ? draft.dates
+    : String(draft.dates || "").split(/[、，,\s]+/);
+  return new Set(
+    source
+      .map((value) => {
+        if (Number.isInteger(value)) return value;
+        const match = String(value).match(/(\d{1,2})(?!.*\d)/);
+        return match ? Number(match[1]) : null;
+      })
+      .filter((day) => Number.isInteger(day) && day >= 1 && day <= 31),
+  );
 }
 
 function escapeHtml(value) {
