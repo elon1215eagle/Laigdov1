@@ -1256,7 +1256,7 @@ function PersonalSchedulePublicPage({ token }) {
               <em>{row.label}</em>
               <div className="personal-shifts">
                 {row.shifts.map((shift, index) => <span key={`${row.date}-${index}`}><strong>{shift.start_time}–{shift.end_time}</strong><small>{shift.store_code}</small></span>)}
-                {!row.shifts.length && <span>-</span>}
+                {!row.shifts.length && <span>{row.status === "workday" ? "依門店月排假，未設定時段" : "-"}</span>}
               </div>
             </article>
           ))}
@@ -4336,9 +4336,6 @@ function MonthlyLeavePlanner({
     setPersonalLinkSaving(true);
     try {
       const snapshot = buildPersonalScheduleSnapshot(scheduleExportModel, personalLinkStaffId);
-      if (!snapshot.rows.some((row) => row.shifts.length > 0)) {
-        throw new Error("此人員尚無正式班次，請先完成班表再建立連結");
-      }
       const token = secureRandomToken();
       const tokenHash = await sha256Hex(token);
       await issuePersonalScheduleLink({
@@ -5003,7 +5000,7 @@ function MonthlyLeavePlanner({
       <section className="personal-link-panel">
         <div>
           <strong>個人班表連結</strong>
-          <p>只顯示已正式排定的本人班次；未排日期顯示待排，網址僅在建立時顯示一次。</p>
+          <p>依本人月排假顯示上班日與休假日；如有正式班次則一併顯示時段與工作門店。網址僅在建立時顯示一次。</p>
         </div>
         <div className="personal-link-actions">
           <label>

@@ -124,7 +124,7 @@ test("個人班表預設於月份結束後七天台北時間失效", () => {
   assert.equal(personalScheduleExpiry("2026-08"), "2026-09-07T15:59:59.999Z");
 });
 
-test("個人班表沒有正式班次時不得用主檔或營業時間虛構上班資料", () => {
+test("個人班表沒有正式時段時仍連動月排假且不虛構上班時間", () => {
   const model = buildScheduleExportModel({
     periodMonth: "2026-08",
     storeGroups: [{
@@ -148,6 +148,8 @@ test("個人班表沒有正式班次時不得用主檔或營業時間虛構上�
   });
 
   const snapshot = buildPersonalScheduleSnapshot(model, "p1");
-  assert.equal(snapshot.rows[0].status, "unscheduled");
+  assert.equal(snapshot.source, "monthly_leave_plan");
+  assert.equal(snapshot.rows[0].status, "workday");
+  assert.equal(snapshot.rows[0].label, "上班日");
   assert.deepEqual(snapshot.rows[0].shifts, []);
 });

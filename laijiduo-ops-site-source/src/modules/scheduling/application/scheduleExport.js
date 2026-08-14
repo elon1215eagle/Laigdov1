@@ -136,7 +136,7 @@ export function buildPersonalScheduleSnapshot(model, staffId) {
           shift_type: shift.shift_type || "override",
         }));
       if (explicit.length) return { date, status: "work", label: "上班", shifts: explicit };
-      return { date, status: "unscheduled", label: "待排", shifts: [] };
+      return { date, status: "workday", label: "上班日", shifts: [] };
     });
     return {
       period_month: model.periodMonth,
@@ -144,6 +144,7 @@ export function buildPersonalScheduleSnapshot(model, staffId) {
       employee_name: person.name,
       role_name: person.role,
       home_store_code: person.homeStoreCode,
+      source: "monthly_leave_plan",
       rows,
     };
   }
