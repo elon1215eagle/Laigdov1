@@ -121,7 +121,6 @@ import {
 import {
   buildHalfHourStaffingMatrix,
   buildPersonalScheduleSnapshot,
-  buildPrintableScheduleHtml,
   buildScheduleExcelXml,
   buildScheduleExportModel,
   buildDailyShiftCommand,
@@ -4417,16 +4416,6 @@ function MonthlyLeavePlanner({
     });
   }
 
-  function printSchedule() {
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return onNotify?.("瀏覽器已阻擋列印視窗，請允許彈出視窗後再試一次");
-    printWindow.document.open();
-    printWindow.document.write(buildPrintableScheduleHtml(scheduleExportModel));
-    printWindow.document.close();
-    printWindow.focus();
-    window.setTimeout(() => printWindow.print(), 250);
-  }
-
   async function scheduleImageFile() {
     const exportStoreCode = isStoreScoped || storeFilter !== "all"
       ? selectedMatrixGroup?.code || storeGroups[0]?.code || ""
@@ -5005,7 +4994,6 @@ function MonthlyLeavePlanner({
           <button type="button" onClick={() => downloadExcelFile(buildScheduleExcelXml(scheduleExportModel), `萊吉多${leaveMonth}排假表.xls`)}>
             匯出排假
           </button>
-          <button type="button" onClick={printSchedule}>A4／PDF</button>
           <button type="button" onClick={downloadScheduleImage}>下載圖片</button>
           <button type="button" onClick={shareScheduleImage}>分享班表</button>
           {!isStoreScoped && <button type="button" onClick={clearMonth} disabled={!canBulkEditSchedule}>清空本月</button>}
