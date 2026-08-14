@@ -215,7 +215,11 @@ export function renderScheduleCanvas(model, storeCode = "") {
           context.fillStyle = "#ffe0d8";
           context.fillRect(x + 1, y + 1, dayWidth - 2, rowHeight - 2);
           context.fillStyle = "#c42e18";
-          context.fillText("休", x + 8, y + 34);
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          context.fillText("休", x + dayWidth / 2, y + rowHeight / 2);
+          context.textAlign = "start";
+          context.textBaseline = "alphabetic";
         }
       });
     });
@@ -237,7 +241,11 @@ export function renderScheduleCanvas(model, storeCode = "") {
         const x = nameWidth + dayIndex * dayWidth;
         context.strokeRect(x, y, dayWidth, rowHeight);
         context.fillStyle = summary.color(row);
-        context.fillText(String(summary.value(row)), x + 8, y + 34);
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        context.fillText(String(summary.value(row)), x + dayWidth / 2, y + rowHeight / 2);
+        context.textAlign = "start";
+        context.textBaseline = "alphabetic";
       });
     });
 
