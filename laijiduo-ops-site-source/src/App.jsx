@@ -953,6 +953,7 @@ function AuthenticatedApp() {
         {activeModuleAllowed && activeModule === "ops" && role === "store" && selectedReport && (
           <StoreReportPage
             report={selectedReport}
+            storeCode={canonicalStoreCode(selectedReport)}
             reportDate={reportDate}
             products={products}
             currentRole={currentRole}

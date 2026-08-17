@@ -88,28 +88,30 @@ export function InventoryEditor({ rows, onChange, disabled = false }) {
             className={`stock-row ${kind === "powder" ? "stock-row-powder" : "stock-row-wide"}`}
             key={row.id}
           >
-            <div>
+            <div className="stock-row-summary">
               <strong>{row.name}</strong>
               <span>
                 昨日 {formatInventoryAmount(row, "previous")} · 今日盤點 {formatInventoryAmount(row, "stock")}
                 {" · "}使用量 {numberText(usageCount(row))} {displayUnitForProduct(row.name)}
               </span>
             </div>
-            {kind === "powder" ? (
-              <>
+            <div className="stock-row-controls">
+              {kind === "powder" ? (
+                <>
                 <NumberField disabled={disabled} label="盤點箱" value={row.current_stock_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_boxes: value })} />
                 <NumberField disabled={disabled} label="盤點包" value={row.current_stock_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock_packs: value })} />
-              </>
-            ) : (
-              <>
+                </>
+              ) : (
+                <>
                 <NumberField disabled={disabled} label="盤點" value={row.current_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock: value })} />
                 <UnitField row={row} field="stock_unit" />
-              </>
-            )}
-            <NumberField disabled={disabled} label="耗損" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
-            <span className={`chip ${isBlank ? "neutral" : "good"}`}>
-              {isBlank ? "未填" : "已填"}
-            </span>
+                </>
+              )}
+              <NumberField disabled={disabled} label="耗損" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
+              <span className={`chip stock-row-status ${isBlank ? "neutral" : "good"}`}>
+                {isBlank ? "未填" : "已填"}
+              </span>
+            </div>
           </div>
         );
       })}
@@ -127,40 +129,42 @@ export function IncomingEditor({ rows, onChange, disabled = false }) {
             className={`stock-row ${kind === "powder" ? "stock-row-incoming-powder" : "stock-row-incoming"}`}
             key={row.id}
           >
-            <div>
+            <div className="stock-row-summary">
               <strong>{row.name}</strong>
               <span>填寫今日進貨或門店調撥數量；沒有進貨可維持 0。</span>
             </div>
-            {kind === "powder" ? (
-              <>
+            <div className="stock-row-controls stock-row-controls-incoming">
+              {kind === "powder" ? (
+                <>
                 <NumberField disabled={disabled} label="進貨箱" value={row.incoming_boxes} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_boxes: value })} />
                 <NumberField disabled={disabled} label="進貨包" value={row.incoming_packs} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_packs: value })} />
-              </>
-            ) : (
-              <>
+                </>
+              ) : (
+                <>
                 <NumberField disabled={disabled} label="調撥／進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
                 <UnitField row={row} field="incoming_unit" />
-              </>
-            )}
-            <label className="mini-field">
-              <span>來源</span>
-              <select
-                disabled={disabled}
-                value={row.incoming_source || "廠商進貨"}
-                onChange={(event) => updateInventoryRow(rows, onChange, index, row, { incoming_source: event.target.value })}
-              >
-                <option>廠商進貨</option>
-                <option>門店調撥</option>
-              </select>
-            </label>
-            <label className="mini-field">
-              <span>備註</span>
-              <input
-                disabled={disabled}
-                value={row.transfer_note || ""}
-                onChange={(event) => updateInventoryRow(rows, onChange, index, row, { transfer_note: event.target.value })}
-              />
-            </label>
+                </>
+              )}
+              <label className="mini-field">
+                <span>來源</span>
+                <select
+                  disabled={disabled}
+                  value={row.incoming_source || "廠商進貨"}
+                  onChange={(event) => updateInventoryRow(rows, onChange, index, row, { incoming_source: event.target.value })}
+                >
+                  <option>廠商進貨</option>
+                  <option>門店調撥</option>
+                </select>
+              </label>
+              <label className="mini-field">
+                <span>備註</span>
+                <input
+                  disabled={disabled}
+                  value={row.transfer_note || ""}
+                  onChange={(event) => updateInventoryRow(rows, onChange, index, row, { transfer_note: event.target.value })}
+                />
+              </label>
+            </div>
           </div>
         );
       })}

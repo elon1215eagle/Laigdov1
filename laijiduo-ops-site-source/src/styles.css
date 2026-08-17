@@ -1328,25 +1328,41 @@ tbody tr.selected,
 
 .stock-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px 62px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+}
+
+.stock-row-summary {
+  min-width: 0;
+}
+
+.stock-row-summary strong,
+.stock-row-summary span {
+  display: block;
+}
+
+.stock-row-summary span {
+  margin-top: 4px;
+  line-height: 1.45;
+}
+
+.stock-row-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
   gap: 8px;
 }
 
-.stock-row-wide {
-  grid-template-columns: minmax(0, 1.35fr) 92px 92px 92px 62px;
+.stock-row-controls-incoming {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.stock-row-incoming {
-  grid-template-columns: minmax(0, 1.2fr) 92px 92px 132px minmax(120px, 1fr);
-}
-
-.stock-row-powder {
-  grid-template-columns: minmax(0, 1.2fr) 86px 86px 86px 62px;
-}
-
-.stock-row-incoming-powder {
-  grid-template-columns: minmax(0, 1.2fr) 86px 86px 132px minmax(120px, 1fr);
+.stock-row-status {
+  align-self: end;
+  justify-self: stretch;
+  margin-bottom: 7px;
+  text-align: center;
 }
 
 .mini-field {
@@ -3217,6 +3233,7 @@ tbody tr.selected,
   .priority-item {
     grid-template-columns: 1fr;
   }
+
 
   .leave-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
