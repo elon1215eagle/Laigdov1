@@ -139,7 +139,10 @@ export function StoreReportPage({
   const [operationsRows, setOperationsRows] = useState([]);
   const [operationsLoading, setOperationsLoading] = useState(false);
   const [form, setForm] = useState(() => initialForm(report));
-  const [inventory, setInventory] = useState(() => products.map(blankInventoryProduct));
+  const [inventory, setInventory] = useState(() => products.map((product) => blankInventoryProduct(product, {
+    storeCode: report.store_code || "",
+    reportDate,
+  })));
   const [saving, setSaving] = useState(false);
   const [changeRequests, setChangeRequests] = useState([]);
   const [changeReason, setChangeReason] = useState("");
@@ -183,16 +186,22 @@ export function StoreReportPage({
           fetchInventoryCounts(report.id),
           fetchPreviousInventoryCounts(report.store_id, reportDate),
         ]);
-        if (active) setInventory(mergeInventoryRows(products, savedRows, previousRows));
+        if (active) setInventory(mergeInventoryRows(products, savedRows, previousRows, {
+          storeCode: report.store_code || "",
+          reportDate,
+        }));
       } catch {
-        if (active) setInventory(products.map(blankInventoryProduct));
+        if (active) setInventory(products.map((product) => blankInventoryProduct(product, {
+          storeCode: report.store_code || "",
+          reportDate,
+        })));
       }
     }
     loadInventory();
     return () => {
       active = false;
     };
-  }, [products, report.id, report.store_id, reportDate]);
+  }, [products, report.id, report.store_code, report.store_id, reportDate]);
 
   useEffect(() => {
     let active = true;

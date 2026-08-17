@@ -39,22 +39,11 @@ function NumberField({ label, value, onChange, disabled = false }) {
   );
 }
 
-function UnitField({ row, field, onChange, disabled = false }) {
-  if (productKind(row.name) === "variable") {
-    return (
-      <label className="mini-field">
-        <span>單位</span>
-        <select disabled={disabled} value={row[field] || "箱"} onChange={(event) => onChange(event.target.value)}>
-          <option>箱</option>
-          <option>包</option>
-        </select>
-      </label>
-    );
-  }
+function UnitField({ row, field }) {
   return (
     <label className="mini-field">
       <span>單位</span>
-      <input value={defaultUnitForProduct(row.name)} disabled />
+      <input value={row[field] || defaultUnitForProduct(row.name)} disabled />
     </label>
   );
 }
@@ -114,7 +103,7 @@ export function InventoryEditor({ rows, onChange, disabled = false }) {
             ) : (
               <>
                 <NumberField disabled={disabled} label="盤點" value={row.current_stock} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { current_stock: value })} />
-                <UnitField disabled={disabled} row={row} field="stock_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { stock_unit: value })} />
+                <UnitField row={row} field="stock_unit" />
               </>
             )}
             <NumberField disabled={disabled} label="耗損" value={row.loss_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { loss_count: value })} />
@@ -150,7 +139,7 @@ export function IncomingEditor({ rows, onChange, disabled = false }) {
             ) : (
               <>
                 <NumberField disabled={disabled} label="調撥／進貨" value={row.incoming_count} onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_count: value })} />
-                <UnitField disabled={disabled} row={row} field="incoming_unit" onChange={(value) => updateInventoryRow(rows, onChange, index, row, { incoming_unit: value })} />
+                <UnitField row={row} field="incoming_unit" />
               </>
             )}
             <label className="mini-field">

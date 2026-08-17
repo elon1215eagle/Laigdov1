@@ -11,6 +11,13 @@ export const VARIABLE_UNIT_PRODUCTS = [
 
 export const FIXED_PACK_PRODUCTS = ["米血", "花枝丸", "熱狗", "雞塊", "黑輪"];
 export const POWDER_PRODUCTS = ["湯翅粉", "醃粉", "薯脆粉"];
+export const STORE_UNIT_POLICY_EFFECTIVE_FROM = "2026-08-18";
+export const PIECE_UNIT_STORES = ["S01", "S05", "S06"];
+export const SWEET_POTATO_PIECE_UNIT_STORES = ["S01", "S06"];
+export const PACKS_PER_PIECE_RULES = Object.freeze({
+  default: Object.freeze([{ effectiveFrom: STORE_UNIT_POLICY_EFFECTIVE_FROM, packsPerPiece: 3 }]),
+  地瓜: Object.freeze([{ effectiveFrom: STORE_UNIT_POLICY_EFFECTIVE_FROM, packsPerPiece: 3 }]),
+});
 export const PRODUCT_ORDER = [
   ...VARIABLE_UNIT_PRODUCTS,
   ...FIXED_PACK_PRODUCTS,
@@ -30,11 +37,46 @@ export function productKind(name = "") {
 
 export function defaultUnitForProduct(name) {
   const kind = productKind(name);
-  if (kind === "variable") return "箱";
+  if (kind === "variable") return "件";
   if (kind === "pack" || kind === "powder") return "包";
   if (kind === "skewer") return "串";
   if (kind === "barrel") return "桶";
   return "件";
+}
+
+export function inventoryUnitForStoreProduct(storeCode, name) {
+  const code = String(storeCode || "").toUpperCase();
+  if (FIXED_PACK_PRODUCTS.includes(name)) return "包";
+  if (!VARIABLE_UNIT_PRODUCTS.includes(name)) return defaultUnitForProduct(name);
+  if (name === "地瓜") return SWEET_POTATO_PIECE_UNIT_STORES.includes(code) ? "件" : "包";
+  return PIECE_UNIT_STORES.includes(code) ? "件" : "包";
+}
+
+export function packsPerPieceForProduct(name, reportDate = STORE_UNIT_POLICY_EFFECTIVE_FROM) {
+  const rules = PACKS_PER_PIECE_RULES[name] || PACKS_PER_PIECE_RULES.default;
+  return [...rules]
+    .filter((rule) => !reportDate || rule.effectiveFrom <= reportDate)
+    .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom))[0]?.packsPerPiece || 3;
+}
+
+export function storeUnitPolicyApplies(reportDate = "") {
+  return !reportDate || reportDate >= STORE_UNIT_POLICY_EFFECTIVE_FROM;
+}
+
+function convertVariableUnitCount(value, fromUnit, toUnit, name, reportDate) {
+  if (
+    productKind(name) !== "variable"
+    || value === ""
+    || value === null
+    || value === undefined
+    || fromUnit === toUnit
+  ) return value;
+  const count = Number(value);
+  if (!Number.isFinite(count)) return value;
+  const packsPerPiece = packsPerPieceForProduct(name, reportDate);
+  if (toUnit === "包" && (fromUnit === "件" || fromUnit === "箱")) return count * packsPerPiece;
+  if ((toUnit === "件" || toUnit === "箱") && fromUnit === "包") return count / packsPerPiece;
+  return value;
 }
 
 export function displayUnitForProduct(name) {
@@ -62,7 +104,9 @@ export function toManagementQuantity(row, field) {
       ? "previous_stock_unit"
       : "stock_unit";
   const unit = row[unitField] || defaultUnitForProduct(name);
-  if (kind === "variable") return unit === "包" ? count / 3 : count;
+  if (kind === "variable") {
+    return unit === "包" ? count / packsPerPieceForProduct(name, row.report_date || row.reportDate) : count;
+  }
   return count;
 }
 
@@ -94,9 +138,14 @@ export function buildInventorySaveRows(inventoryRows) {
   }));
 }
 
-export function blankInventoryProduct(product) {
+export function blankInventoryProduct(product, options = {}) {
+  const unit = options?.storeCode
+    ? inventoryUnitForStoreProduct(options.storeCode, product.name)
+    : defaultUnitForProduct(product.name);
   return {
     ...product,
+    stock_unit: unit,
+    incoming_unit: unit,
     previous_stock: "",
     previous_stock_boxes: "",
     previous_stock_packs: "",
@@ -110,15 +159,28 @@ export function blankInventoryProduct(product) {
   };
 }
 
-export function mergeInventoryRows(products, savedRows, previousRows) {
+export function mergeInventoryRows(products, savedRows, previousRows, options = {}) {
   const savedByProduct = new Map(savedRows.map((row) => [row.product_id, row]));
   const previousByProduct = new Map(previousRows.map((row) => [row.product_id, row]));
   return products.map((product) => {
     const saved = savedByProduct.get(product.id);
     const previous = previousByProduct.get(product.id);
+    const policyUnit = inventoryUnitForStoreProduct(options.storeCode, product.name);
+    const applyPolicy = Boolean(options.storeCode) && storeUnitPolicyApplies(options.reportDate);
+    const savedStockUnit = saved?.stock_unit || product.unit || defaultUnitForProduct(product.name);
+    const savedIncomingUnit = saved?.incoming_unit || product.unit || defaultUnitForProduct(product.name);
     return {
-      ...blankInventoryProduct(product),
+      ...blankInventoryProduct(product, options),
       ...saved,
+      current_stock: applyPolicy
+        ? convertVariableUnitCount(saved?.current_stock ?? "", savedStockUnit, policyUnit, product.name, options.reportDate)
+        : saved?.current_stock ?? "",
+      incoming_count: applyPolicy
+        ? convertVariableUnitCount(saved?.incoming_count ?? "", savedIncomingUnit, policyUnit, product.name, options.reportDate)
+        : saved?.incoming_count ?? "",
+      stock_unit: applyPolicy ? policyUnit : savedStockUnit,
+      incoming_unit: applyPolicy ? policyUnit : savedIncomingUnit,
+      report_date: options.reportDate || saved?.report_date || "",
       previous_stock: previous?.current_stock ?? "",
       previous_stock_boxes: previous?.current_stock_boxes ?? "",
       previous_stock_packs: previous?.current_stock_packs ?? "",

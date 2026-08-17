@@ -2147,13 +2147,17 @@ function HqReportRecords({
       equipment_issue_detail: report.equipment_issue_detail || "",
       special_event: report.special_event || "",
     });
-    setInventory(products.map(blankInventoryProduct));
+    const inventoryOptions = {
+      storeCode: canonicalStoreCode(report),
+      reportDate: report.report_date,
+    };
+    setInventory(products.map((product) => blankInventoryProduct(product, inventoryOptions)));
     try {
       const [savedRows, previousRows] = await Promise.all([
         fetchInventoryCounts(report.id),
         fetchPreviousInventoryCounts(report.store_id, report.report_date),
       ]);
-      setInventory(mergeInventoryRows(products, savedRows, previousRows));
+      setInventory(mergeInventoryRows(products, savedRows, previousRows, inventoryOptions));
     } catch (error) {
       onNotify?.(`庫存資料讀取失敗：${error.message}`);
     }
@@ -2762,12 +2766,12 @@ function buildUsageDetailRows({ label, rangeLabel, reports, inventoryRows, produ
         report.report_date,
         report.name,
         productName,
-        Number(row.incoming_count || 0),
+        toManagementQuantity({ ...row, report_date: report.report_date }, "incoming_count"),
         row.incoming_source || "廠商進貨",
-        toManagementQuantity(row, "previous_stock"),
-        toManagementQuantity(row, "current_stock"),
+        toManagementQuantity({ ...row, report_date: report.report_date }, "previous_stock"),
+        toManagementQuantity({ ...row, report_date: report.report_date }, "current_stock"),
         Number(row.loss_count || 0),
-        usageCount(row),
+        usageCount({ ...row, report_date: report.report_date }),
         row.transfer_note || "",
       ];
     });
@@ -2792,15 +2796,16 @@ function buildUsageDetailRows({ label, rangeLabel, reports, inventoryRows, produ
       });
     }
     const item = byStoreProduct.get(key);
-    item.incoming += Number(row.incoming_count || 0);
+    const datedRow = { ...row, report_date: report.report_date };
+    item.incoming += toManagementQuantity(datedRow, "incoming_count");
     item.loss += Number(row.loss_count || 0);
-    item.usage += usageCount(row);
-    item.previousStock += toManagementQuantity(row, "previous_stock");
+    item.usage += usageCount(datedRow);
+    item.previousStock += toManagementQuantity(datedRow, "previous_stock");
     if (row.incoming_source) item.sourceSet.add(row.incoming_source);
     if (row.transfer_note) item.noteSet.add(row.transfer_note);
     if (!item.latestDate || report.report_date >= item.latestDate) {
       item.latestDate = report.report_date;
-      item.currentStock = toManagementQuantity(row, "current_stock");
+      item.currentStock = toManagementQuantity(datedRow, "current_stock");
     }
   });
 
@@ -2834,7 +2839,7 @@ function buildUsageSummary(dailyReports, products, periodReports, inventoryRows)
     if (!report) return;
     const productName = row.name || productNames.get(row.product_id);
     if (!isNamedProductName(productName)) return;
-    const amount = usageCount(row);
+    const amount = usageCount({ ...row, report_date: report.report_date });
     const storeId = report.store_id || report.id;
     const productId = row.product_id;
     const key = `${storeId}-${productId}`;
@@ -6455,7 +6460,7 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
     let active = true;
     async function loadInventory() {
       if (!activeReport?.id) {
-        setInventory(products.map(blankInventoryProduct));
+        setInventory(products.map((product) => blankInventoryProduct(product)));
         return;
       }
       try {
@@ -6464,9 +6469,16 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
           fetchPreviousInventoryCounts(activeReport.store_id, activeReport.report_date),
         ]);
         if (!active) return;
-        setInventory(mergeInventoryRows(products, savedRows, previousRows));
+        const inventoryOptions = {
+          storeCode: canonicalStoreCode(activeReport),
+          reportDate: activeReport.report_date,
+        };
+        setInventory(mergeInventoryRows(products, savedRows, previousRows, inventoryOptions));
       } catch {
-        if (active) setInventory(products.map(blankInventoryProduct));
+        if (active) setInventory(products.map((product) => blankInventoryProduct(product, {
+          storeCode: canonicalStoreCode(activeReport),
+          reportDate: activeReport.report_date,
+        })));
       }
     }
     loadInventory();
