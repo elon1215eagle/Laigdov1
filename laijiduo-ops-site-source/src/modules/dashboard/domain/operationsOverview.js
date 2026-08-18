@@ -16,6 +16,7 @@ export function hasSubmittedOperationsReport(report) {
 
 export function buildOperationsOverview({
   reports = [],
+  overdueReports = [],
   handovers = [],
   staffRoster = [],
   scheduleRows = [],
@@ -69,6 +70,7 @@ export function buildOperationsOverview({
     reportedRows,
     reportRate: (reportedRows.length / Math.max(1, reports.length)) * 100,
     unreported,
+    overdueReports,
     cashIssues,
     lowRevenue,
     shortageRows,
@@ -84,6 +86,14 @@ export function buildOperationsOverview({
 
 export function buildOperationsPriorities(summary) {
   return [
+    ...(summary.overdueReports || []).map((row) => ({
+      id: `overdue-report-${row.report_date}-${row.store_id || row.id}`,
+      store_id: row.store_id || row.id,
+      storeName: row.name,
+      type: "逾期未回報",
+      level: "重大",
+      message: `${row.report_date} 營運回報已超過上午10:00截止時間`,
+    })),
     ...summary.unreported.map((row) => ({
       id: `unreported-${row.store_id || row.id}`,
       store_id: row.store_id || row.id,

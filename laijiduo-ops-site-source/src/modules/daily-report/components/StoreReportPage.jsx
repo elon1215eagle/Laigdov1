@@ -35,6 +35,10 @@ import {
 } from "../../inventory/components/index.js";
 import { StoreOperationsView } from "./StoreOperationsView.jsx";
 import { EmployeeMealEditor } from "./EmployeeMealEditor.jsx";
+import {
+  dailyReportDeadlineDate,
+  overdueReportBusinessDate,
+} from "../domain/businessDate.js";
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
@@ -131,6 +135,7 @@ export function StoreReportPage({
   currentRole,
   staffRoster,
   today,
+  reportClock,
   onDateChange,
   onSave,
 }) {
@@ -332,6 +337,8 @@ export function StoreReportPage({
   }
 
   const isPastDateDraft = dateDraft < today;
+  const lateReportDate = overdueReportBusinessDate(reportClock);
+  const requiresPastDateAuth = isPastDateDraft && dateDraft !== lateReportDate;
   const hasInventoryInput = inventory.some(
     (row) => (
       !isBlankNumber(row.current_stock)
@@ -340,6 +347,7 @@ export function StoreReportPage({
     ),
   );
   const staffingDiffers = Number(form.actual_staff_count || 0) !== scheduledHeadcount;
+  const reportDeadline = dailyReportDeadlineDate(reportDate);
 
   function addWasteItem() {
     setWasteItems((rows) => [
@@ -374,7 +382,7 @@ export function StoreReportPage({
 
         <div className="report-date-card">
           <label>
-            回報日期
+            營業日
             <input
               type="date"
               min={minReportDate}
@@ -383,7 +391,7 @@ export function StoreReportPage({
               onChange={(event) => setDateDraft(event.target.value)}
             />
           </label>
-          {isPastDateDraft && (
+          {requiresPastDateAuth && (
             <label>
               修改授權碼
               <input
@@ -398,10 +406,17 @@ export function StoreReportPage({
           <button
             type="button"
             onClick={applyReportDate}
-            disabled={dateDraft === reportDate || (isPastDateDraft && authCode !== "8599")}
+            disabled={dateDraft === reportDate || (requiresPastDateAuth && authCode !== "8599")}
           >
-            {isPastDateDraft ? "確認修改日期" : "載入日期"}
+            {requiresPastDateAuth ? "確認修改日期" : "載入營業日"}
           </button>
+        </div>
+
+        <div className="alert-line">
+          目前回報：{reportDate} 營運數據。請於 {reportDeadline} 上午10:00前完成。
+          {reportClock?.isBeforeCutoff && reportDate === reportClock.businessDate
+            ? " 上午10:00前系統預設開啟前一日資料。"
+            : ""}
         </div>
 
         <div className="alert-line">
@@ -412,9 +427,8 @@ export function StoreReportPage({
             每日回報修改僅開放最近 {STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天；門店營運視圖可查看本月完整營收。
           </div>
         )}
-        {reportDate < today && (
-          <div className="alert-line warn">目前正在修改歷史營業日 {reportDate}。</div>
-        )}
+        {reportDate === lateReportDate && <div className="alert-line warn">目前正在補填已逾上午10:00截止時間的前一營業日。</div>}
+        {reportDate < today && reportDate !== lateReportDate && <div className="alert-line warn">目前正在修改歷史營業日 {reportDate}。</div>}
         {workflowAccess.isLocked && (
           <div className="alert-line warn">
             此回報已由總部確認鎖定。如需修改，請填寫原因並送出修改申請。

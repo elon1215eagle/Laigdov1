@@ -50,6 +50,10 @@ import {
 } from "./modules/daily-report";
 import { StoreReportPage } from "./modules/daily-report/components";
 import {
+  getTaipeiReportClock,
+  overdueReportBusinessDate,
+} from "./modules/daily-report/domain/businessDate.js";
+import {
   buildOperationsOverview,
   buildOperationsPriorities,
   hasSubmittedOperationsReport as hasSubmittedReport,
@@ -189,34 +193,8 @@ import {
 } from "./modules/scheduling/supabase";
 import { InspectionApp } from "./InspectionApp";
 
-const taipeiDateTimeParts = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Taipei",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  hourCycle: "h23",
-}).formatToParts(new Date());
-
-function getPart(parts, type) {
-  return Number(parts.find((part) => part.type === type)?.value || 0);
-}
-
-function formatDateFromUtc(date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function getTaipeiBusinessDate(parts = taipeiDateTimeParts) {
-  const year = getPart(parts, "year");
-  const month = getPart(parts, "month");
-  const day = getPart(parts, "day");
-  const hour = getPart(parts, "hour");
-  const taipeiDateAsUtc = Date.UTC(year, month - 1, day);
-  const businessDate = hour < 6 ? new Date(taipeiDateAsUtc - 86400000) : new Date(taipeiDateAsUtc);
-  return formatDateFromUtc(businessDate);
-}
-
-const today = getTaipeiBusinessDate();
+const reportClock = getTaipeiReportClock();
+const today = reportClock.businessDate;
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
 const numberText = (value, digits = 2) => Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: digits });
 const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
@@ -584,11 +562,13 @@ function AuthenticatedApp() {
 
   async function changeReportDate(nextDate, authCode = "") {
     if (!nextDate) return false;
+    const lateReportDate = overdueReportBusinessDate(reportClock);
+    const isLateReportDate = Boolean(lateReportDate && nextDate === lateReportDate);
     if (currentRole === "store_manager" && !isStoreManagerRevenueDateAllowed(nextDate, today)) {
       show(`店長帳號僅可查閱最近 ${STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天營收資料`);
       return false;
     }
-    if (nextDate < today && authCode !== "8599") {
+    if (nextDate < today && !isLateReportDate && authCode !== "8599") {
       show("過往日期需輸入認證碼 8599");
       return false;
     }
@@ -596,7 +576,7 @@ function AuthenticatedApp() {
     try {
       setReportDate(nextDate);
       await loadWorkspace(profile, selectedStoreId, nextDate);
-      show(nextDate < today ? "已解鎖過往日期回報" : "已切換回今日回報");
+      show(isLateReportDate ? "已切換至前一營業日逾期補填" : nextDate < today ? "已解鎖過往日期回報" : "已切換至目前營業日");
       return true;
     } catch (error) {
       show(`切換日期失敗：${error.message}`);
@@ -959,6 +939,7 @@ function AuthenticatedApp() {
             currentRole={currentRole}
             staffRoster={staffRoster}
             today={today}
+            reportClock={reportClock}
             onDateChange={changeReportDate}
             onSave={saveReport}
           />
@@ -1501,7 +1482,7 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
       title: "管理層營運指揮中心",
       subtitle: "優先處理逾期異常、巡檢缺失、任務追蹤與排班缺口。",
       metrics: [
-        ["逾期任務", `${summary.overdueTasks.length} 件`, summary.overdueTasks[0]?.title || "無逾期", summary.overdueTasks.length ? "bad" : "good"],
+        ["逾期回報", `${summary.overdueReports.length} 店`, summary.overdueReports[0]?.name || "無逾期", summary.overdueReports.length ? "bad" : "good"],
         ["排班缺口", `${summary.shortageRows.length} 筆`, summary.shortageRows[0]?.storeName || "目前足夠", summary.shortageRows.length ? "bad" : "good"],
         ["交接追蹤", `${summary.handoverIssues.length} 筆`, "現金、清潔、待辦", summary.handoverIssues.length ? "warn" : "good"],
         ["低達成店", `${summary.lowRevenue.length} 店`, summary.lowRevenue[0]?.name || "無", summary.lowRevenue.length ? "warn" : "good"],
@@ -1514,7 +1495,7 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
       metrics: [
         ["今日營收", money(summary.total), `目標 ${money(summary.target)}`, "hot"],
         ["現金差異", `${summary.cashIssues.length} 店`, summary.cashIssues[0]?.name || "未見重大差異", summary.cashIssues.length ? "bad" : "good"],
-        ["未回報", `${summary.unreported.length} 店`, summary.unreported[0]?.name || "已完成", summary.unreported.length ? "warn" : "good"],
+        ["逾期回報", `${summary.overdueReports.length} 店`, summary.overdueReports[0]?.name || "無逾期", summary.overdueReports.length ? "bad" : "good"],
         ["回報完成率", pct(summary.reportRate), "財務報表可信度", summary.reportRate >= 90 ? "good" : "warn"],
       ],
       actions: [["營收總覽", "ops"], ["異常中心", "anomaly"], ["制度中心", "system"]],
@@ -1535,7 +1516,7 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
       subtitle: "從待改善、缺報與交接異常開始處理。",
       metrics: [
         ["待改善", `${summary.riskRows.length} 件`, summary.riskRows[0]?.storeName || "目前無", summary.riskRows.length ? "warn" : "good"],
-        ["未回報店", `${summary.unreported.length} 店`, summary.unreported[0]?.name || "已完成", summary.unreported.length ? "warn" : "good"],
+        ["逾期回報", `${summary.overdueReports.length} 店`, summary.overdueReports[0]?.name || "無逾期", summary.overdueReports.length ? "bad" : "good"],
         ["交接追蹤", `${summary.handoverIssues.length} 筆`, "店長需補充", summary.handoverIssues.length ? "warn" : "good"],
         ["排班缺口", `${summary.shortageRows.length} 筆`, "需協調代班", summary.shortageRows.length ? "bad" : "good"],
       ],
@@ -1672,6 +1653,7 @@ function HqDashboard({
 }) {
   const [periodRows, setPeriodRows] = useState([]);
   const [usageRows, setUsageRows] = useState([]);
+  const [periodDataReady, setPeriodDataReady] = useState(false);
   const [targetDrafts, setTargetDrafts] = useState({});
   const [targetMessage, setTargetMessage] = useState("");
   const [savingTargetId, setSavingTargetId] = useState("");
@@ -1684,15 +1666,18 @@ function HqDashboard({
   useEffect(() => {
     let active = true;
     async function loadPeriodData() {
+      setPeriodDataReady(false);
       try {
         const { reports: rows, inventoryRows } = await fetchHqDashboardData(periodStart, today);
         if (!active) return;
         setPeriodRows(rows);
         setUsageRows(inventoryRows);
+        setPeriodDataReady(true);
       } catch {
         if (active) {
           setPeriodRows(reports);
           setUsageRows([]);
+          setPeriodDataReady(false);
         }
       }
     }
@@ -1720,6 +1705,19 @@ function HqDashboard({
   const weeklyComparisonRows = useMemo(() => buildWeeklySameDayRows(periodRows.length ? periodRows : reports, today), [periodRows, reports]);
   const usageMatrix = useMemo(() => buildUsageMatrix(usageSummary.rows), [usageSummary.rows]);
   const dataQuality = useMemo(() => buildDataQualitySummary(reports, handovers, performanceRows), [reports, handovers, performanceRows]);
+  const overdueBusinessDate = overdueReportBusinessDate(reportClock);
+  const overdueReports = useMemo(() => {
+    if (!periodDataReady || !overdueBusinessDate) return [];
+    const submittedStoreCodes = new Set(
+      periodRows
+        .filter((row) => row.report_date === overdueBusinessDate && hasSubmittedReport(row))
+        .map((row) => canonicalStoreCode(row)),
+    );
+    return reports
+      .filter((row) => row.operating_status !== "suspended" && row.is_active !== false)
+      .filter((row) => !submittedStoreCodes.has(canonicalStoreCode(row)))
+      .map((row) => ({ ...row, report_date: overdueBusinessDate }));
+  }, [overdueBusinessDate, periodDataReady, periodRows, reports]);
   const anomalyRows = useMemo(
     () => buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks }),
     [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks],
@@ -1727,6 +1725,7 @@ function HqDashboard({
   const opsSummary = useMemo(
     () => buildOperationsOverview({
       reports,
+      overdueReports,
       handovers,
       staffRoster,
       scheduleRows,
@@ -1735,7 +1734,7 @@ function HqDashboard({
       today,
       resolveStoreCode: canonicalStoreCode,
     }),
-    [reports, handovers, staffRoster, scheduleRows, hqTasks, anomalyRows],
+    [reports, overdueReports, handovers, staffRoster, scheduleRows, hqTasks, anomalyRows],
   );
 
   async function saveMonthlyTarget(report) {
@@ -1769,10 +1768,10 @@ function HqDashboard({
         onOpenModule={onOpenModule}
       />
       <section className="kpi-strip">
-        <Metric label="今日總營收" value={money(opsSummary.total)} detail={`目標 ${money(opsSummary.target)}`} tone="hot" />
-        <Metric label="整體達成率" value={pct(opsSummary.attainmentRate)} detail="依今日目標計算" />
-        <Metric label="已送出" value={`${opsSummary.reportedRows.length} 間`} detail="今日已有回報紀錄" tone="good" />
-        <Metric label="未回報" value={`${opsSummary.unreported.length} 間`} detail="提醒門店完成日報" tone="warn" />
+        <Metric label="目前營業日營收" value={money(opsSummary.total)} detail={`營業日 ${today}`} tone="hot" />
+        <Metric label="整體達成率" value={pct(opsSummary.attainmentRate)} detail="依目前營業日目標計算" />
+        <Metric label="已送出" value={`${opsSummary.reportedRows.length} 間`} detail="目前營業日已有回報" tone="good" />
+        <Metric label="尚未完成" value={`${opsSummary.unreported.length} 間`} detail="目前營業日回報進度" tone="warn" />
         <Metric label="已達標" value={`${opsSummary.achievedRows.length} 間`} detail="營收高於目標" tone="good" />
       </section>
       <HqOperationsView rows={weeklyComparisonRows} />

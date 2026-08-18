@@ -35,6 +35,7 @@ const reports = [
 test("operations overview centralizes revenue, reporting and exception metrics", () => {
   const overview = buildOperationsOverview({
     reports,
+    overdueReports: [{ store_id: "s3", name: "中山店", report_date: "2026-07-31" }],
     handovers: [{ status: "需追蹤", cash_status: "正常", cleaning_status: "完成" }],
     staffRoster: [{ store_code: "S01", role: "店長", is_active: true }],
     scheduleRows: [{ storeCode: "S02", storeName: "凱旋店", status: "人力不足" }],
@@ -55,6 +56,7 @@ test("operations overview centralizes revenue, reporting and exception metrics",
   assert.equal(overview.attainmentRate, 80);
   assert.deepEqual(overview.reportedRows.map((row) => row.store_code), ["S01"]);
   assert.deepEqual(overview.unreported.map((row) => row.store_code), ["S02"]);
+  assert.deepEqual(overview.overdueReports.map((row) => row.name), ["中山店"]);
   assert.equal(overview.reportRate, 50);
   assert.deepEqual(overview.cashIssues.map((row) => row.store_code), ["S02"]);
   assert.deepEqual(overview.lowRevenue.map((row) => row.store_code), ["S02"]);
@@ -78,11 +80,12 @@ test("active Nanhua store is included in manager coverage checks", () => {
 test("dashboard priorities keep unreported stores ahead of staffing and revenue warnings", () => {
   const overview = buildOperationsOverview({
     reports,
+    overdueReports: [{ store_id: "s3", name: "中山店", report_date: "2026-07-31" }],
     scheduleRows: [{ storeCode: "S02", storeName: "凱旋店", status: "人力不足", note: "缺 1 人" }],
   });
   const priorities = buildOperationsPriorities(overview);
 
-  assert.deepEqual(priorities.map((row) => row.type), ["尚未回報", "排班缺口", "營收未達標"]);
-  assert.equal(priorities[1].message, "缺 1 人");
-  assert.equal(priorities[2].attainment, 60);
+  assert.deepEqual(priorities.map((row) => row.type), ["逾期未回報", "尚未回報", "排班缺口", "營收未達標"]);
+  assert.equal(priorities[2].message, "缺 1 人");
+  assert.equal(priorities[3].attainment, 60);
 });
