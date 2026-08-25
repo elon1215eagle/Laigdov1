@@ -5268,8 +5268,14 @@ function MonthlyLeavePlanner({
       </details>
 
       {!isStoreScoped && leaveAuditRows.length > 0 && (
-        <section className="daily-shift-editor">
-          <div className="panel-head compact-head"><div><h3>排假異動紀錄</h3><p>保留修改前後內容、原因、操作者與時間，供總部追溯。</p></div></div>
+        <details className="daily-shift-editor collapsible-form">
+          <summary className="collapsible-form-summary">
+            <div>
+              <h3>排假異動紀錄</h3>
+              <p>共 {leaveAuditRows.length} 筆，保留修改前後內容、原因、操作者與時間，供總部追溯。</p>
+            </div>
+            <span className="collapsible-form-action">展開</span>
+          </summary>
           <div className="table-wrap compact"><table>
             <thead><tr><th>時間</th><th>門店</th><th>人員</th><th>動作</th><th>原因</th><th>休假日變更</th></tr></thead>
             <tbody>{leaveAuditRows.map((row) => <tr key={row.id}>
@@ -5280,7 +5286,7 @@ function MonthlyLeavePlanner({
               <td>{(row.before_data?.leave_days || []).join("、") || "-"} → {(row.after_data?.leave_days || []).join("、") || "-"}</td>
             </tr>)}</tbody>
           </table></div>
-        </section>
+        </details>
       )}
 
       <details className="daily-shift-editor collapsible-form">
