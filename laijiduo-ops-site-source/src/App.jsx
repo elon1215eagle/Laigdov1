@@ -4983,7 +4983,26 @@ function MonthlyLeavePlanner({
   );
 
   return (
-    <section className="panel wide leave-planner">
+    <>
+      <section className="panel wide support-panel schedule-support-panel">
+        <label>
+          臨時支援日期
+          <input type="date" value={supportDate} min={`${leaveMonth}-01`} max={`${leaveMonth}-${String(monthDays.length).padStart(2, "0")}`} onChange={(event) => setSupportDate(event.target.value)} />
+        </label>
+        <div className="support-list">
+          {supportRows.map((store) => (
+            <div className={`support-card ${store.surplus < 0 ? "bad" : store.surplus > 0 ? "good" : ""}`} key={store.code}>
+              <strong>{store.code} {store.name}</strong>
+              <span>有效 {staffingCountText(store.effectiveCount)} / 需求 {store.demand}</span>
+              <span>{store.segmentRows.map((segment) => `${segment.label} ${staffingCountText(segment.count)}`).join(" · ")}</span>
+              {store.partTimeMissingHours > 0 && <span className="warn-text">兼職 {store.partTimeMissingHours} 人未填工時</span>}
+              <em>{store.surplus > 0 ? `可支援 ${staffingCountText(store.surplus)} 人` : store.surplus < 0 ? `缺 ${staffingCountText(Math.abs(store.surplus))} 人` : "剛好滿編"}</em>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel wide leave-planner">
       <div className="panel-head">
         <div>
           <h2>每月各店排假表</h2>
@@ -5459,25 +5478,8 @@ function MonthlyLeavePlanner({
         </section>
       )}
 
-      <div className="support-panel">
-        <label>
-          臨時支援日期
-          <input type="date" value={supportDate} min={`${leaveMonth}-01`} max={`${leaveMonth}-${String(monthDays.length).padStart(2, "0")}`} onChange={(event) => setSupportDate(event.target.value)} />
-        </label>
-        <div className="support-list">
-          {supportRows.map((store) => (
-            <div className={`support-card ${store.surplus < 0 ? "bad" : store.surplus > 0 ? "good" : ""}`} key={store.code}>
-              <strong>{store.code} {store.name}</strong>
-              <span>有效 {staffingCountText(store.effectiveCount)} / 需求 {store.demand}</span>
-              <span>{store.segmentRows.map((segment) => `${segment.label} ${staffingCountText(segment.count)}`).join(" · ")}</span>
-              {store.partTimeMissingHours > 0 && <span className="warn-text">兼職 {store.partTimeMissingHours} 人未填工時</span>}
-              <em>{store.surplus > 0 ? `可支援 ${staffingCountText(store.surplus)} 人` : store.surplus < 0 ? `缺 ${staffingCountText(Math.abs(store.surplus))} 人` : "剛好滿編"}</em>
-            </div>
-          ))}
-        </div>
-      </div>
-
-    </section>
+      </section>
+    </>
   );
 }
 
