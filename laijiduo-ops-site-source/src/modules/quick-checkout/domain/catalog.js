@@ -17,9 +17,10 @@ export const QUICK_CHECKOUT_DEMO_PRODUCTS = Object.freeze([
   { code: "triangle_bone", name: "三角骨", price: 50, category: "份量商品", fixedWeightGrams: 250 },
   { code: "squid_ball", name: "花枝丸", price: 30, category: "點心" },
   { code: "rice_blood", name: "米血", price: 15, category: "點心" },
-  { code: "hot_dog", name: "熱狗", price: null, category: "點心", isPriceConfirmed: false },
+  { code: "hot_dog", name: "熱狗", price: 30, category: "點心" },
+  { code: "chicken_neck", name: "雞脖子", price: null, category: "點心", isPriceConfirmed: false },
   { code: "chicken_skin", name: "雞皮", price: 20, category: "點心" },
-  { code: "oden_slice", name: "黑輪片", price: null, category: "點心", isPriceConfirmed: false },
+  { code: "oden_slice", name: "黑輪片", price: 30, category: "點心" },
   { code: "chicken_nuggets", name: "麥克雞塊", price: 30, category: "點心" },
 ]);
 
