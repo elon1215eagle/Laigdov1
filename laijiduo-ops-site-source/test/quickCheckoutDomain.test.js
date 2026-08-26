@@ -66,12 +66,14 @@ test("同商品多份可拆開並分別設定辣與不辣", () => {
   assert.equal(orderTotals(activeOrder(workspace)).total, 130);
 });
 
-test("點心價格與順序符合核定內容，未核價商品不能加入", () => {
+test("點心價格與順序符合核定內容", () => {
   const snacks = QUICK_CHECKOUT_DEMO_PRODUCTS.filter((product) => product.category === "點心");
   assert.deepEqual(snacks.map((product) => product.name), ["花枝丸", "米血", "熱狗", "雞脖子", "雞皮", "黑輪片", "麥克雞塊"]);
   assert.equal(snacks.find((product) => product.code === "hot_dog").price, 30);
+  assert.equal(snacks.find((product) => product.code === "chicken_neck").price, 10);
   assert.equal(snacks.find((product) => product.code === "oden_slice").price, 30);
-  assert.throws(() => orderCommand(workspaceWithOrder(), { type: "add_product", productCode: "chicken_neck" }), /價格尚未設定/);
+  const workspace = orderCommand(workspaceWithOrder(), { type: "add_product", productCode: "chicken_neck" });
+  assert.equal(orderTotals(activeOrder(workspace)).total, 10);
 });
 
 test("四種以上商品必須再次核對才能收款", () => {
