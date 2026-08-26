@@ -139,3 +139,13 @@ test("Supabase Adapter 僅透過裝置憑證 RPC 存取工作區", async () => {
   ]);
   assert.equal(calls.every((call) => call.parameters.p_device_token === "device-secret"), true);
 });
+
+test("新綁定裝置沒有工作區時回傳空值而不是 RPC 包裝物件", async () => {
+  const client = {
+    async rpc() {
+      return { data: { workspace: null }, error: null };
+    },
+  };
+  const adapter = createSupabaseQuickCheckoutAdapter({ client, deviceToken: "device-secret" });
+  assert.equal(await adapter.loadWorkspace(), null);
+});

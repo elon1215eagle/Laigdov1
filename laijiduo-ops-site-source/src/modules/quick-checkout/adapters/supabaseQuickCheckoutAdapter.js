@@ -1,6 +1,8 @@
 function unwrapWorkspace(data) {
   if (!data) return null;
-  if (data.workspace && typeof data.workspace === "object") return data.workspace;
+  if (Object.prototype.hasOwnProperty.call(data, "workspace")) {
+    return data.workspace && typeof data.workspace === "object" ? data.workspace : null;
+  }
   return typeof data === "object" ? data : null;
 }
 
