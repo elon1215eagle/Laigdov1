@@ -1849,9 +1849,9 @@ tbody tr.selected,
   position: sticky;
   left: 0;
   z-index: 3;
-  width: 132px !important;
-  min-width: 132px !important;
-  max-width: 132px;
+  width: 190px !important;
+  min-width: 190px !important;
+  max-width: 190px;
   background: #fff6ee;
   text-align: left !important;
 }
@@ -1865,9 +1865,16 @@ tbody tr.selected,
   display: block;
 }
 
+.leave-staff-col strong {
+  font-size: 32px;
+  line-height: 1.2;
+  font-weight: 900;
+}
+
 .leave-staff-col span {
   color: #856d60;
-  font-size: 12px;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .leave-day-cell {
