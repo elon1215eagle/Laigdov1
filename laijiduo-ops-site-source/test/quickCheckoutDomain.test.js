@@ -5,6 +5,7 @@ import {
   createCheckoutWorkspace,
   createMemoryQuickCheckoutAdapter,
   createQuickCheckoutModule,
+  createSupabaseQuickCheckoutAdapter,
   executeWorkspaceCommand,
   orderTotals,
   QUICK_CHECKOUT_DEMO_PRODUCTS,
@@ -116,4 +117,25 @@ test("Memory Adapter 透過模組 Interface 自動保存並恢復", async () => 
   workspace = await module.execute(workspace, { type: "order_command", command: { type: "add_product", productCode: "chicken_leg" } });
   const restored = await module.loadWorkspace();
   assert.equal(orderTotals(activeOrder(restored)).total, 35);
+});
+
+test("Supabase Adapter 僅透過裝置憑證 RPC 存取工作區", async () => {
+  const calls = [];
+  const client = {
+    async rpc(name, parameters) {
+      calls.push({ name, parameters });
+      if (name === "quick_checkout_load_workspace") return { data: { workspace: { storeCode: "S01" } }, error: null };
+      return { data: true, error: null };
+    },
+  };
+  const adapter = createSupabaseQuickCheckoutAdapter({ client, deviceToken: "device-secret" });
+  assert.deepEqual(await adapter.loadWorkspace(), { storeCode: "S01" });
+  await adapter.saveWorkspace({ storeCode: "S01", orders: [] });
+  await adapter.clearWorkspace();
+  assert.deepEqual(calls.map((call) => call.name), [
+    "quick_checkout_load_workspace",
+    "quick_checkout_save_workspace",
+    "quick_checkout_clear_workspace",
+  ]);
+  assert.equal(calls.every((call) => call.parameters.p_device_token === "device-secret"), true);
 });
