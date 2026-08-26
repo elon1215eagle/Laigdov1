@@ -53,6 +53,8 @@ button, input, select { font: inherit; }
 .qc-product-grid { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; }
 .qc-product-button { display: grid; min-height: 104px; align-content: center; gap: 3px; padding: 12px; border: 1px solid #e6d3c7; border-radius: 7px; background: #fffaf6; color: var(--qc-ink); text-align: left; }
 .qc-product-button:active { transform: translateY(1px); background: #fff0e6; }
+.qc-product-button:disabled { background: #f3efec; color: #8a7b73; cursor: not-allowed; }
+.qc-product-button:disabled em { color: #8a7b73; }
 .qc-product-button strong { font-size: 19px; }
 .qc-product-button span { color: var(--qc-muted); font-size: 13px; }
 .qc-product-button em { color: #bd2f1d; font-size: 17px; font-style: normal; font-weight: 900; }
@@ -73,6 +75,7 @@ button, input, select { font: inherit; }
 .qc-quantity-control { display: grid; grid-template-columns: 48px 56px 48px; align-items: center; }
 .qc-quantity-control button { height: 44px; border: 1px solid #dac8bd; background: white; font-size: 24px; }
 .qc-quantity-control strong { text-align: center; font-size: 20px; }
+.qc-split-line { width: fit-content; min-height: 40px; padding: 0 12px; border: 1px solid var(--order-color); border-radius: 7px; background: var(--order-bg); color: var(--order-color); font-weight: 900; }
 .qc-seasonings { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
 .qc-seasonings button { min-height: 42px; border: 1px solid #dccac0; border-radius: 7px; background: white; }
 .qc-seasonings button.selected { border-color: var(--order-color); background: var(--order-bg); color: var(--order-color); font-weight: 900; }

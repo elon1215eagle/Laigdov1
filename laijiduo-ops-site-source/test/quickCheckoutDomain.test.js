@@ -51,6 +51,27 @@ test("固定份量與調味保留在訂單明細", () => {
   assert.deepEqual(line.seasonings, ["plum"]);
 });
 
+test("同商品多份可拆開並分別設定辣與不辣", () => {
+  let workspace = workspaceWithOrder();
+  workspace = orderCommand(workspace, { type: "add_product", productCode: "chicken_cutlet" });
+  workspace = orderCommand(workspace, { type: "add_product", productCode: "chicken_cutlet" });
+  const combinedLine = activeOrder(workspace).lines[0];
+  assert.equal(combinedLine.quantity, 2);
+  workspace = orderCommand(workspace, { type: "split_line", lineId: combinedLine.id });
+  const spicyLine = activeOrder(workspace).lines[0];
+  workspace = orderCommand(workspace, { type: "toggle_seasoning", lineId: spicyLine.id, seasoning: "spicy" });
+  const lines = activeOrder(workspace).lines;
+  assert.equal(lines.length, 2);
+  assert.deepEqual(lines.map((line) => line.seasonings), [["spicy"], []]);
+  assert.equal(orderTotals(activeOrder(workspace)).total, 130);
+});
+
+test("未核定價格商品可顯示但不能加入訂單", () => {
+  const hotDog = QUICK_CHECKOUT_DEMO_PRODUCTS.find((product) => product.code === "hot_dog");
+  assert.equal(hotDog.isPriceConfirmed, false);
+  assert.throws(() => orderCommand(workspaceWithOrder(), { type: "add_product", productCode: "hot_dog" }), /價格尚未設定/);
+});
+
 test("四種以上商品必須再次核對才能收款", () => {
   let workspace = workspaceWithOrder();
   for (const productCode of ["chicken_wing", "chicken_leg", "thigh_steak", "chicken_cutlet"]) {

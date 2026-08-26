@@ -30,6 +30,7 @@ export function OrderPanel({ editable = true, onCommand, order }) {
                   <strong>{line.quantity}</strong>
                   <button type="button" onClick={() => onCommand({ type: "change_quantity", lineId: line.id, quantity: line.quantity + 1 })}>＋</button>
                 </div>
+                {line.quantity > 1 && <button className="qc-split-line" onClick={() => onCommand({ type: "split_line", lineId: line.id })} type="button">分開一份調味</button>}
                 <div className="qc-seasonings" aria-label={`${line.productName}調味`}>
                   {SEASONINGS.map((seasoning) => (
                     <button

@@ -17,7 +17,7 @@ function sortedSeasonings(values = []) {
 }
 
 function lineKey(line) {
-  return `${line.productCode}:${sortedSeasonings(line.seasonings).join(",")}`;
+  return `${line.productCode}:${sortedSeasonings(line.seasonings).join(",")}:${line.variantId || "default"}`;
 }
 
 function mergeMatchingLines(lines = []) {
@@ -94,6 +94,7 @@ export function executeOrderCommand(order, command, products = [], now = new Dat
       assertDraft(order);
       const product = productByCode.get(command.productCode);
       if (!product || product.isActive === false) throw new Error("商品目前不可使用");
+      if (product.isPriceConfirmed === false) throw new Error("商品價格尚未設定");
       const nextLines = mergeMatchingLines([...order.lines, {
         id: uniqueId("line"),
         productCode: product.code,
@@ -103,6 +104,7 @@ export function executeOrderCommand(order, command, products = [], now = new Dat
         quantity: 1,
         seasonings: [],
         packed: false,
+        variantId: null,
       }]);
       return appendEvent({ ...order, lines: nextLines, reviewConfirmed: false }, "product_added", { productCode: product.code }, now);
     }
@@ -121,6 +123,20 @@ export function executeOrderCommand(order, command, products = [], now = new Dat
         return { ...line, seasonings: [...selected] };
       });
       return appendEvent({ ...order, lines: mergeMatchingLines(nextLines) }, "seasoning_changed", { lineId: command.lineId, seasoning: command.seasoning }, now);
+    }
+    case "split_line": {
+      assertDraft(order);
+      const source = order.lines.find((line) => line.id === command.lineId);
+      if (!source || source.quantity < 2) throw new Error("至少二份才能分開調味");
+      const splitKey = uniqueId("variant");
+      const nextLines = order.lines.flatMap((line) => {
+        if (line.id !== source.id) return line;
+        return [
+          { ...line, quantity: line.quantity - 1, variantId: line.variantId || `${splitKey}-base` },
+          { ...line, id: uniqueId("line"), quantity: 1, variantId: `${splitKey}-split` },
+        ];
+      });
+      return appendEvent({ ...order, lines: nextLines, reviewConfirmed: false }, "line_split", { lineId: command.lineId }, now);
     }
     case "confirm_review":
       return appendEvent({ ...order, reviewConfirmed: true }, "large_order_reviewed", {}, now);
