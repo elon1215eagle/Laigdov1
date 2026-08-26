@@ -2,8 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import {
   activeOrder,
   allItemsPacked,
-  createMemoryQuickCheckoutAdapter,
+  bindQuickCheckoutDevice,
+  clearQuickCheckoutDevice,
   createQuickCheckoutModule,
+  createSupabaseQuickCheckoutAdapter,
+  loadQuickCheckoutDevice,
   orderItemCount,
   orderLineSummary,
   orderTotals,
@@ -12,6 +15,7 @@ import {
   requiresOrderReview,
   visibleOrders,
 } from "./index.js";
+import { hasSupabaseConfig, supabase } from "../../lib/supabase.js";
 import { CustomerTabs } from "./components/CustomerTabs.jsx";
 import { OrderPanel } from "./components/OrderPanel.jsx";
 import { PaymentSheet } from "./components/PaymentSheet.jsx";
@@ -25,40 +29,89 @@ const DEMO_STORES = [
   ["S10", "屏東潮州店"], ["S11", "屏東潮二店"],
 ];
 
-const quickCheckout = createQuickCheckoutModule({
-  adapter: createMemoryQuickCheckoutAdapter(),
-  products: QUICK_CHECKOUT_DEMO_PRODUCTS,
-});
-
-function SetupScreen({ onStart }) {
+function DeviceBindingScreen({ message, onBound }) {
   const [storeCode, setStoreCode] = useState("S01");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(message || "");
+
+  async function bindDevice(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const device = await bindQuickCheckoutDevice({
+        email: email.trim(), password, storeCode, label: `${storeCode} 前台點單裝置`,
+      });
+      onBound(device);
+    } catch (bindError) {
+      setError(bindError.message || "裝置綁定失敗");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <main className="qc-setup-shell">
+      <form className="qc-setup-card" onSubmit={bindDevice}>
+        <div className="qc-brand-mark">萊</div>
+        <div><span>萊吉多</span><h1>綁定門市裝置</h1><p>只需設定一次，之後員工免帳號即可使用。</p></div>
+        {error && <div className="qc-inline-error" role="alert">{error}</div>}
+        <label>使用門市<select value={storeCode} onChange={(event) => setStoreCode(event.target.value)}>{DEMO_STORES.map(([code, name]) => <option key={code} value={code}>{code} {name}</option>)}</select></label>
+        <label>管理者帳號<input autoComplete="username" inputMode="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>管理者密碼<input autoComplete="current-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <button className="qc-primary-action" disabled={saving || !email || !password} type="submit">{saving ? "綁定中..." : "確認綁定此門市"}</button>
+        <small>僅 CEO、COO、總部管理者或該店店長可執行綁定；密碼不會儲存在裝置。</small>
+      </form>
+    </main>
+  );
+}
+
+function SetupScreen({ device, onStart, onUnbind }) {
   const [employeeCode, setEmployeeCode] = useState("");
-  const store = DEMO_STORES.find(([code]) => code === storeCode);
   return (
     <main className="qc-setup-shell">
       <section className="qc-setup-card">
         <div className="qc-brand-mark">萊</div>
         <div><span>萊吉多</span><h1>簡易點單結算</h1><p>員工點單、收款與打包核對</p></div>
-        <label>這台裝置使用門店<select value={storeCode} onChange={(event) => setStoreCode(event.target.value)}>{DEMO_STORES.map(([code, name]) => <option key={code} value={code}>{code} {name}</option>)}</select></label>
+        <label>這台裝置使用門市<input disabled value={`${device.storeCode} ${device.storeName}`} /></label>
         <label>操作人員員工碼<input autoComplete="off" inputMode="numeric" placeholder="請輸入員工碼" value={employeeCode} onChange={(event) => setEmployeeCode(event.target.value.trim())} /></label>
-        <button className="qc-primary-action" disabled={!employeeCode} onClick={() => onStart({ storeCode, storeName: store[1], operator: { id: employeeCode, name: `員工 ${employeeCode}` } })} type="button">開始點單</button>
-        <small>開發驗收模式：正式版會由店長或總部一次性綁定門店，售價亦須經總部核定。</small>
+        <button className="qc-primary-action" disabled={!employeeCode} onClick={() => onStart({ storeCode: device.storeCode, storeName: device.storeName, operator: { id: employeeCode, name: `員工 ${employeeCode}` } })} type="button">開始點單</button>
+        <button className="qc-text-action" onClick={onUnbind} type="button">解除這台裝置的門市綁定</button>
+        <small>完成綁定後，員工每天只需輸入員工碼，不需管理者帳號。</small>
       </section>
     </main>
   );
 }
 
 export function QuickCheckoutPage() {
+  const [device, setDevice] = useState(() => loadQuickCheckoutDevice());
   const [workspace, setWorkspace] = useState(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
+  const quickCheckout = useMemo(() => device && hasSupabaseConfig
+    ? createQuickCheckoutModule({
+      adapter: createSupabaseQuickCheckoutAdapter({ client: supabase, deviceToken: device.deviceToken }),
+      products: QUICK_CHECKOUT_DEMO_PRODUCTS,
+    })
+    : null, [device]);
 
   useEffect(() => {
-    quickCheckout.loadWorkspace().then((saved) => { setWorkspace(saved); setLoading(false); });
-  }, []);
+    if (!quickCheckout) { setLoading(false); return; }
+    setLoading(true);
+    quickCheckout.loadWorkspace()
+      .then((saved) => setWorkspace(saved))
+      .catch(() => {
+        clearQuickCheckoutDevice();
+        setDevice(null);
+        setMessage("裝置綁定已失效，請由管理者重新綁定門市。");
+      })
+      .finally(() => setLoading(false));
+  }, [quickCheckout]);
 
   const orders = useMemo(() => workspace ? visibleOrders(workspace) : [], [workspace]);
   const order = workspace ? activeOrder(workspace) : null;
@@ -82,9 +135,16 @@ export function QuickCheckoutPage() {
   }
 
   async function resetDevice() {
-    if (!window.confirm("確定結束目前操作並清除此裝置上的開發測試資料？")) return;
+    if (!window.confirm("確定結束目前操作？進行中的訂單將清除，門市綁定會保留。")) return;
     await quickCheckout.reset();
     setWorkspace(null);
+  }
+
+  function unbindDevice() {
+    if (!window.confirm("確定解除門市綁定？之後需由管理者重新驗證。")) return;
+    clearQuickCheckoutDevice();
+    setWorkspace(null);
+    setDevice(null);
   }
 
   async function cancelDraft() {
@@ -95,7 +155,8 @@ export function QuickCheckoutPage() {
   }
 
   if (loading) return <div className="qc-loading">載入點單資料...</div>;
-  if (!workspace) return <SetupScreen onStart={startWorkspace} />;
+  if (!device) return <DeviceBindingScreen message={message} onBound={(boundDevice) => { setMessage(""); setDevice(boundDevice); }} />;
+  if (!workspace) return <SetupScreen device={device} onStart={startWorkspace} onUnbind={unbindDevice} />;
 
   return (
     <main className="qc-app-shell">

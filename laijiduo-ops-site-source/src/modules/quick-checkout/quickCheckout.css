@@ -19,6 +19,9 @@ button, input, select { font: inherit; }
 .qc-setup-card p, .qc-setup-card small { margin: 0; color: var(--qc-muted); line-height: 1.55; }
 .qc-setup-card label { display: grid; gap: 7px; font-weight: 800; }
 .qc-setup-card input, .qc-setup-card select { min-height: 52px; padding: 0 14px; border: 1px solid #d9c8bd; border-radius: 7px; background: white; font-size: 18px; }
+.qc-setup-card input:disabled { background: #f4efeb; color: var(--qc-ink); opacity: 1; }
+.qc-inline-error { padding: 12px 14px; border-left: 4px solid #c7301e; background: #fff0ed; color: #882417; font-weight: 800; line-height: 1.45; }
+.qc-text-action { min-height: 44px; border: 0; background: transparent; color: #795f52; text-decoration: underline; }
 
 .qc-app-shell { min-height: 100vh; padding-bottom: 116px; }
 .qc-topbar { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 20px; border-bottom: 1px solid var(--qc-line); background: #fffcfaf2; backdrop-filter: blur(12px); }

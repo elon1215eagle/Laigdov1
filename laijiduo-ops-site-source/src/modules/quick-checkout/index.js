@@ -3,4 +3,5 @@ export { allItemsPacked, distinctProductCount, executeOrderCommand, orderItemCou
 export { activeOrder, createCheckoutWorkspace, executeWorkspaceCommand, ORDER_COLORS, visibleOrders } from "./domain/workspace.js";
 export { createMemoryQuickCheckoutAdapter } from "./adapters/memoryQuickCheckoutAdapter.js";
 export { createSupabaseQuickCheckoutAdapter } from "./adapters/supabaseQuickCheckoutAdapter.js";
+export { bindQuickCheckoutDevice, clearQuickCheckoutDevice, loadQuickCheckoutDevice } from "./adapters/quickCheckoutDeviceBinding.js";
 export { createQuickCheckoutModule } from "./application/quickCheckoutModule.js";
