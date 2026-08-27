@@ -162,6 +162,7 @@ import {
   validateSalarySetting,
   validateStoreSettingsDraft,
 } from "./modules/store-settings";
+import { QuickCheckoutManagementPage } from "./modules/quick-checkout-management";
 import {
   confirmMonthlySchedule,
   deleteDailyStaffShift,
@@ -1019,6 +1020,9 @@ function AuthenticatedApp() {
             }}
           />
         )}
+        {activeModuleAllowed && activeModule === "checkoutManagement" && (
+          <QuickCheckoutManagementPage onNotify={show} />
+        )}
         {activeModuleAllowed && activeModule === "schedule" && (
           <ScheduleModule
             scheduleRows={effectiveScheduleRows}
@@ -1436,6 +1440,7 @@ function TopBar({ activeModule, reportDate, role, profileRole: currentRole, repo
     tasks: "總部任務派遣",
     hrFlow: "人資異動流程",
     anomaly: "總部異常中心",
+    checkoutManagement: "總部點單管理",
   };
   const title = titleMap[activeModule] || (role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "門店回報審核台");
   return (

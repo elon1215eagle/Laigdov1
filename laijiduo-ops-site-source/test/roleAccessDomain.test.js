@@ -26,6 +26,12 @@ test("headquarters roles retain distinct management permissions", () => {
   assert.equal(canEditMonthlyTargets("cfo"), true);
   assert.equal(canExportRole("cfo"), true);
   assert.equal(canManageDailyReportData("hq"), true);
+  for (const role of ["ceo", "coo", "admin", "hq", "cso"]) {
+    assert.equal(canAccessModule(role, "checkoutManagement"), true);
+  }
+  for (const role of ["cfo", "general_affairs", "supervisor", "store_manager"]) {
+    assert.equal(canAccessModule(role, "checkoutManagement"), false);
+  }
 });
 
 test("hidden modules remain inaccessible without deleting their implementation", () => {

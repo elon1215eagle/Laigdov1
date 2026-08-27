@@ -11,13 +11,13 @@ export const ROLE_LABELS = {
 };
 
 const ROLE_MODULES = {
-  ceo: ["ops", "handover", "schedule", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
-  coo: ["ops", "handover", "schedule", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
+  ceo: ["ops", "handover", "schedule", "checkoutManagement", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
+  coo: ["ops", "handover", "schedule", "checkoutManagement", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system", "security"],
   cfo: ["ops", "anomaly", "system"],
   general_affairs: ["ops", "handover", "schedule", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "inspection", "system"],
-  cso: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
-  admin: ["ops", "handover", "schedule", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
-  hq: ["ops", "handover", "schedule", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
+  cso: ["ops", "handover", "schedule", "checkoutManagement", "anomaly", "tasks", "performance", "inspection", "system"],
+  admin: ["ops", "handover", "schedule", "checkoutManagement", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
+  hq: ["ops", "handover", "schedule", "checkoutManagement", "storeSettings", "anomaly", "tasks", "hr", "hrFlow", "performance", "inspection", "system"],
   supervisor: ["ops", "handover", "schedule", "anomaly", "tasks", "performance", "inspection", "system"],
   store_manager: ["ops", "handover", "schedule", "system"],
 };
@@ -45,6 +45,7 @@ export const MODULE_GROUPS = [
   {
     title: "總部管理",
     items: [
+      ["checkoutManagement", "點單管理"],
       ["anomaly", "異常中心"],
       ["tasks", "任務派遣"],
       ["storeSettings", "門店營運設定"],

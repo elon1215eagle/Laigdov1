@@ -1,0 +1,57 @@
+.qcm-page { min-width: 0; }
+.qcm-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.qcm-heading h2 { margin: 0 0 6px; }
+.qcm-heading p { margin: 0; color: #80695d; }
+.qcm-filters { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)) auto; gap: 10px; align-items: end; padding: 14px; background: #fff8f3; border: 1px solid #ecd8cd; border-radius: 6px; }
+.qcm-filters label { display: grid; gap: 5px; color: #684b3c; font-weight: 700; }
+.qcm-filters input, .qcm-filters select { width: 100%; min-height: 42px; }
+.qcm-error { margin: 14px 0; padding: 12px 14px; color: #9f2519; background: #fff0ed; border: 1px solid #f1bcb5; border-radius: 6px; }
+.qcm-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+.qcm-kpi { min-height: 92px; padding: 14px; background: #fff; border: 1px solid #ead8ce; border-radius: 6px; }
+.qcm-kpi span, .qcm-kpi small { display: block; color: #80695d; }
+.qcm-kpi strong { display: block; margin: 6px 0 2px; font-size: 24px; }
+.qcm-kpi.danger strong { color: #c72f1e; }
+.qcm-tabs { display: inline-grid; grid-template-columns: repeat(3, auto); margin-bottom: 12px; border: 1px solid #e6cfc2; border-radius: 6px; overflow: hidden; }
+.qcm-tabs button { border: 0; border-radius: 0; min-height: 44px; }
+.qcm-tabs button.active { color: #fff; background: #e73b24; }
+.qcm-table-wrap { width: 100%; overflow-x: auto; border: 1px solid #ead8ce; border-radius: 6px; }
+.qcm-table { width: 100%; border-collapse: collapse; background: #fff; }
+.qcm-table th { padding: 12px; text-align: left; white-space: nowrap; background: #fff4ec; color: #6f4d3d; }
+.qcm-table td { padding: 12px; border-top: 1px solid #f0e2da; vertical-align: top; }
+.qcm-cell-note { display: block; margin-top: 4px; color: #8a7569; font-size: 13px; }
+.qcm-status { display: inline-block; padding: 5px 9px; border-radius: 999px; white-space: nowrap; font-weight: 700; background: #eee; }
+.qcm-status.active, .qcm-status.completed { color: #137547; background: #e7f7ed; }
+.qcm-status.disabled, .qcm-status.cancelled { color: #9a4c00; background: #fff1dc; }
+.qcm-status.revoked, .qcm-status.voided { color: #a32318; background: #ffe9e5; }
+.qcm-status.draft, .qcm-status.paid { color: #15598a; background: #e6f2fb; }
+.qcm-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.qcm-actions .danger { color: #b42a1b; border-color: #e8aaa2; }
+.qcm-order-detail { min-width: 240px; padding: 8px 0; }
+.qcm-order-detail p { margin: 5px 0; }
+.qcm-order-detail .event { color: #a12d20; }
+.qcm-table summary { cursor: pointer; color: #ba321f; font-weight: 700; }
+.qcm-empty { padding: 30px 16px; text-align: center; color: #80695d; background: #fff; }
+
+@media (max-width: 1050px) {
+  .qcm-filters { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .qcm-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .qcm-heading { align-items: stretch; }
+  .qcm-heading button { min-width: 96px; }
+  .qcm-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; }
+  .qcm-filters label:nth-of-type(3), .qcm-filters label:nth-of-type(4), .qcm-filters label:nth-of-type(5), .qcm-filters > button { grid-column: 1 / -1; }
+  .qcm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qcm-kpi { min-height: 78px; padding: 10px; }
+  .qcm-kpi strong { font-size: 21px; }
+  .qcm-tabs { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); }
+  .qcm-table-wrap { overflow: visible; border: 0; }
+  .qcm-table, .qcm-table tbody, .qcm-table tr, .qcm-table td { display: block; width: 100%; }
+  .qcm-table thead { display: none; }
+  .qcm-table tr { margin-bottom: 10px; padding: 6px 12px; border: 1px solid #ead8ce; border-radius: 6px; background: #fff; }
+  .qcm-table td { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; padding: 9px 0; border-top: 1px solid #f0e2da; overflow-wrap: anywhere; }
+  .qcm-table td:first-child { border-top: 0; }
+  .qcm-table td::before { content: attr(data-label); color: #80695d; font-weight: 700; }
+  .qcm-actions { align-items: flex-start; }
+}
