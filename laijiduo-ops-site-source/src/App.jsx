@@ -3453,13 +3453,14 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
           </details>
         )}
       </section>
-      <section className="panel wide">
-        <div className="panel-head">
+      <details className="panel wide collapsible-form">
+        <summary className="collapsible-form-summary">
           <div>
             <h2>人員調店與歸屬歷程</h2>
             <p>調店依生效日建立新版本；舊門店與歷史班表不會被覆蓋。</p>
           </div>
-        </div>
+          <span className="collapsible-form-action">展開</span>
+        </summary>
         {canEditStaff && (
           <form className="staff-admin-grid" onSubmit={submitStaffTransfer}>
             <label>
@@ -3499,9 +3500,12 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             </tbody>
           </table>
         </div>
-      </section>
-      <section className="panel wide">
-        <div className="panel-head"><div><h2>工作崗位與員工技能</h2><p>每人可具備多項技能，主要崗位用於排班缺口判斷。</p></div></div>
+      </details>
+      <details className="panel wide collapsible-form">
+        <summary className="collapsible-form-summary">
+          <div><h2>工作崗位與員工技能</h2><p>每人可具備多項技能，主要崗位用於排班缺口判斷。</p></div>
+          <span className="collapsible-form-action">展開</span>
+        </summary>
         {canEditStaff && (
           <form className="staff-admin-grid" onSubmit={submitStaffSkills}>
             <label>
@@ -3540,7 +3544,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
           })}
           {!staffSkills.length && <tr><td colSpan="3">尚未設定員工技能。</td></tr>}
         </tbody></table></div>
-      </section>
+      </details>
 <section className="panel wide">
         <div className="panel-head">
           <div>
@@ -3570,13 +3574,14 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
         </div>
       </section>
 
-      <section className="panel">
-        <div className="panel-head">
+      <details className="panel collapsible-form">
+        <summary className="collapsible-form-summary">
           <div>
             <h2>薪資職級設定</h2>
             <p>作為招募、升遷、績效獎金與人事成本控管基準。</p>
           </div>
-        </div>
+          <span className="collapsible-form-action">展開</span>
+        </summary>
         <div className="table-wrap compact">
           <table>
             <thead>
@@ -3598,7 +3603,7 @@ function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staff
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
 
       <section className="panel">
         <div className="panel-head">

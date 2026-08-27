@@ -1583,6 +1583,7 @@ tbody tr.selected,
   display: none;
 }
 
+.collapsible-form-summary h2,
 .collapsible-form-summary h3 {
   margin: 0 0 4px;
 }
