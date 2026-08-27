@@ -2,6 +2,8 @@ import { seasoningLabel } from "./catalog.js";
 
 export const ORDER_STATUS = Object.freeze({
   DRAFT: "draft",
+  PACKING: "packing",
+  PACKED: "packed",
   PAID: "paid",
   COMPLETED: "completed",
   CANCELLED: "cancelled",
@@ -84,7 +86,13 @@ function appendEvent(order, type, details, now) {
 }
 
 function assertDraft(order) {
-  if (order.status !== ORDER_STATUS.DRAFT) throw new Error("此訂單已收款，不能直接修改商品");
+  if (order.status !== ORDER_STATUS.DRAFT) throw new Error("此訂單已進入打包核對，不能直接修改商品");
+}
+
+function assertUnpaid(order) {
+  if (![ORDER_STATUS.DRAFT, ORDER_STATUS.PACKING, ORDER_STATUS.PACKED].includes(order.status)) {
+    throw new Error("此訂單已完成收款");
+  }
 }
 
 export function executeOrderCommand(order, command, products = [], now = new Date().toISOString()) {
@@ -140,32 +148,45 @@ export function executeOrderCommand(order, command, products = [], now = new Dat
     }
     case "confirm_review":
       return appendEvent({ ...order, reviewConfirmed: true }, "large_order_reviewed", {}, now);
-    case "pay": {
+    case "begin_packing": {
       assertDraft(order);
       if (!order.lines.length) throw new Error("請先加入商品");
       if (requiresOrderReview(order)) throw new Error("四種以上商品，請先完成再次核對");
+      return appendEvent({
+        ...order,
+        status: ORDER_STATUS.PACKING,
+        lines: order.lines.map((line) => ({ ...line, packed: false })),
+      }, "packing_started", {}, now);
+    }
+    case "pay": {
+      if (order.status !== ORDER_STATUS.PACKED) throw new Error("請先完成全部打包核對");
       const { total } = orderTotals(order);
       const received = Math.max(0, Math.round(Number(command.received) || 0));
       if (received < total) throw new Error("付款金額不足");
       return appendEvent({
         ...order,
-        status: ORDER_STATUS.PAID,
+        status: ORDER_STATUS.COMPLETED,
         payment: { received, change: received - total, paidAt: now },
-        lines: order.lines.map((line) => ({ ...line, packed: false })),
+        completedAt: now,
       }, "payment_completed", { received, total, change: received - total }, now);
     }
     case "toggle_packed": {
-      if (order.status !== ORDER_STATUS.PAID) throw new Error("請先完成收款");
+      if (![ORDER_STATUS.PACKING, ORDER_STATUS.PAID].includes(order.status)) throw new Error("請先進入打包核對");
       const nextLines = order.lines.map((line) => line.id === command.lineId ? { ...line, packed: !line.packed } : line);
       return appendEvent({ ...order, lines: nextLines }, "packing_checked", { lineId: command.lineId }, now);
     }
+    case "packing_complete": {
+      if (order.status !== ORDER_STATUS.PACKING) throw new Error("請先進入打包核對");
+      if (!allItemsPacked(order)) throw new Error("尚有商品未完成打包核對");
+      return appendEvent({ ...order, status: ORDER_STATUS.PACKED }, "packing_completed", {}, now);
+    }
     case "complete": {
-      if (order.status !== ORDER_STATUS.PAID) throw new Error("請先完成收款");
+      if (order.status !== ORDER_STATUS.PAID) throw new Error("此舊訂單尚未完成收款");
       if (!allItemsPacked(order)) throw new Error("尚有商品未完成打包核對");
       return appendEvent({ ...order, status: ORDER_STATUS.COMPLETED, completedAt: now }, "order_completed", {}, now);
     }
     case "cancel": {
-      assertDraft(order);
+      assertUnpaid(order);
       const reason = String(command.reason || "").trim();
       if (!reason) throw new Error("取消訂單請填寫原因");
       return appendEvent({ ...order, status: ORDER_STATUS.CANCELLED }, "order_cancelled", { reason }, now);

@@ -77,28 +77,36 @@ test("點心價格與順序符合核定內容", () => {
   assert.equal(orderTotals(activeOrder(workspace)).total, 10);
 });
 
-test("四種以上商品必須再次核對才能收款", () => {
+test("四種以上商品必須再次核對才能進入打包", () => {
   let workspace = workspaceWithOrder();
   for (const productCode of ["chicken_wing", "chicken_leg", "thigh_steak", "chicken_cutlet"]) {
     workspace = orderCommand(workspace, { type: "add_product", productCode });
   }
   assert.equal(requiresOrderReview(activeOrder(workspace)), true);
-  assert.throws(() => orderCommand(workspace, { type: "pay", received: 500 }), /再次核對/);
+  assert.throws(() => orderCommand(workspace, { type: "begin_packing" }), /再次核對/);
   workspace = orderCommand(workspace, { type: "confirm_review" });
+  workspace = orderCommand(workspace, { type: "begin_packing" });
+  for (const line of activeOrder(workspace).lines) {
+    workspace = orderCommand(workspace, { type: "toggle_packed", lineId: line.id });
+  }
+  workspace = orderCommand(workspace, { type: "packing_complete" });
   workspace = orderCommand(workspace, { type: "pay", received: 500 });
-  assert.equal(activeOrder(workspace).payment.change, 340);
+  assert.equal(workspace.orders[0].payment.change, 340);
 });
 
-test("付款不足會阻擋，付款完成後需逐項打包", () => {
+test("必須逐項打包完成後才能輸入付款與找零", () => {
   let workspace = workspaceWithOrder();
   workspace = orderCommand(workspace, { type: "add_product", productCode: "chicken_cutlet" });
-  assert.throws(() => orderCommand(workspace, { type: "pay", received: 50 }), /付款金額不足/);
-  workspace = orderCommand(workspace, { type: "pay", received: 100 });
-  assert.throws(() => orderCommand(workspace, { type: "complete" }), /尚有商品/);
+  assert.throws(() => orderCommand(workspace, { type: "pay", received: 100 }), /打包核對/);
+  workspace = orderCommand(workspace, { type: "begin_packing" });
+  assert.throws(() => orderCommand(workspace, { type: "packing_complete" }), /尚有商品/);
   const lineId = activeOrder(workspace).lines[0].id;
   workspace = orderCommand(workspace, { type: "toggle_packed", lineId });
-  workspace = orderCommand(workspace, { type: "complete" });
+  workspace = orderCommand(workspace, { type: "packing_complete" });
+  assert.throws(() => orderCommand(workspace, { type: "pay", received: 50 }), /付款金額不足/);
+  workspace = orderCommand(workspace, { type: "pay", received: 100 });
   assert.equal(visibleOrders(workspace).length, 0);
+  assert.equal(workspace.orders[0].payment.change, 35);
 });
 
 test("取消訂單必填原因並保留事件", () => {

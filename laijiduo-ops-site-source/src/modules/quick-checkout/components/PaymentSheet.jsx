@@ -9,7 +9,7 @@ export function PaymentSheet({ onClose, onPay, order }) {
   return (
     <div className="qc-overlay" role="presentation">
       <section className={`qc-payment-sheet color-${order.colorKey}`} role="dialog" aria-modal="true" aria-label="收款結帳">
-        <header><div><span>{order.pickupNumber}</span><h2>收款結帳</h2></div><button aria-label="關閉" onClick={onClose} type="button">×</button></header>
+        <header><div><span>{order.pickupNumber}</span><h2>確認總額及找零</h2></div><button aria-label="關閉" onClick={onClose} type="button">×</button></header>
         <div className="qc-payment-total"><span>應收金額</span><strong>NT${total}</strong></div>
         <div className="qc-payment-shortcuts">
           {[total, 300, 500, 1000].filter((value, index, values) => value >= total && values.indexOf(value) === index).map((value) => (
@@ -18,7 +18,7 @@ export function PaymentSheet({ onClose, onPay, order }) {
         </div>
         <label>客人付款金額<input autoFocus inputMode="numeric" min={0} onChange={(event) => setReceived(event.target.value)} type="number" value={received} /></label>
         <div className={`qc-change ${change < 0 ? "short" : ""}`}><span>{change < 0 ? "尚差" : "找零"}</span><strong>NT${Math.abs(change)}</strong></div>
-        <button className="qc-primary-action" disabled={change < 0} onClick={() => onPay(paid)} type="button">確認收款</button>
+        <button className="qc-primary-action" disabled={change < 0} onClick={() => onPay(paid)} type="button">確認總額及找零</button>
       </section>
     </div>
   );

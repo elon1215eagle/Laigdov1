@@ -154,6 +154,11 @@ export function QuickCheckoutPage() {
     setCancelReason("");
   }
 
+  async function completePacking() {
+    const next = await run({ type: "order_command", command: { type: "packing_complete" } });
+    if (next) setPaymentOpen(true);
+  }
+
   if (loading) return <div className="qc-loading">載入點單資料...</div>;
   if (!device) return <DeviceBindingScreen message={message} onBound={(boundDevice) => { setMessage(""); setDevice(boundDevice); }} />;
   if (!workspace) return <SetupScreen device={device} onStart={startWorkspace} onUnbind={unbindDevice} />;
@@ -191,7 +196,21 @@ export function QuickCheckoutPage() {
               <button className="qc-secondary-action" onClick={() => setCancelOpen(true)} type="button">取消本單</button>
               {requiresOrderReview(order)
                 ? <button className="qc-primary-action" onClick={() => run({ type: "order_command", command: { type: "confirm_review" } })} type="button">四種以上，核對完成</button>
-                : <button className="qc-primary-action" disabled={!order.lines.length} onClick={() => setPaymentOpen(true)} type="button">收款結帳</button>}
+                : <button className="qc-primary-action" disabled={!order.lines.length} onClick={() => run({ type: "order_command", command: { type: "begin_packing" } })} type="button">開始打包核對</button>}
+            </div>
+          )}
+          {order.status === ORDER_STATUS.PACKING && (
+            <div className="qc-pack-actions">
+              <span>先依畫面逐項完成打包核對。</span>
+              <button className="qc-secondary-action" onClick={() => setCancelOpen(true)} type="button">取消本單</button>
+              <button className="qc-primary-action" disabled={!allItemsPacked(order)} onClick={completePacking} type="button">全部打包完成</button>
+            </div>
+          )}
+          {order.status === ORDER_STATUS.PACKED && (
+            <div className="qc-pack-actions">
+              <span>打包核對已完成</span>
+              <button className="qc-secondary-action" onClick={() => setCancelOpen(true)} type="button">取消本單</button>
+              <button className="qc-primary-action" onClick={() => setPaymentOpen(true)} type="button">輸入付款金額</button>
             </div>
           )}
           {order.status === ORDER_STATUS.PAID && (
@@ -203,9 +222,10 @@ export function QuickCheckoutPage() {
         </footer>
       )}
 
-      {order?.status === ORDER_STATUS.PAID && (
+      {[ORDER_STATUS.PACKING, ORDER_STATUS.PAID].includes(order?.status) && (
         <section className={`qc-packing-panel color-${order.colorKey}`}>
           <h2>{order.pickupNumber} 打包核對</h2>
+          <p>先依畫面逐項完成打包核對。全部完成後按「全部打包完成」。</p>
           {order.lines.map((line) => (
             <button className={line.packed ? "packed" : ""} key={line.id} onClick={() => run({ type: "order_command", command: { type: "toggle_packed", lineId: line.id } })} type="button">
               <span>{line.packed ? "✓" : "□"}</span><strong>{orderLineSummary(line)}</strong>
@@ -214,7 +234,7 @@ export function QuickCheckoutPage() {
         </section>
       )}
 
-      {paymentOpen && order && <PaymentSheet order={order} onClose={() => setPaymentOpen(false)} onPay={async (received) => { const next = await run({ type: "order_command", command: { type: "pay", received } }); if (next) setPaymentOpen(false); }} />}
+      {paymentOpen && order?.status === ORDER_STATUS.PACKED && <PaymentSheet order={order} onClose={() => setPaymentOpen(false)} onPay={async (received) => { const next = await run({ type: "order_command", command: { type: "pay", received } }); if (next) setPaymentOpen(false); }} />}
       {cancelOpen && order && (
         <div className="qc-overlay">
           <section aria-label="取消訂單" aria-modal="true" className={`qc-cancel-sheet color-${order.colorKey}`} role="dialog">

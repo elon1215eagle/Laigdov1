@@ -2,6 +2,8 @@ const FINAL_EXCEPTION_STATUSES = new Set(["cancelled", "voided"]);
 
 export const QUICK_CHECKOUT_STATUS_LABELS = {
   draft: "進行中",
+  packing: "打包核對中",
+  packed: "打包完成待收款",
   paid: "已收款待打包",
   completed: "已完成",
   cancelled: "已取消",

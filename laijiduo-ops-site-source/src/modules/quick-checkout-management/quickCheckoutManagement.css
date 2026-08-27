@@ -23,7 +23,7 @@
 .qcm-status.active, .qcm-status.completed { color: #137547; background: #e7f7ed; }
 .qcm-status.disabled, .qcm-status.cancelled { color: #9a4c00; background: #fff1dc; }
 .qcm-status.revoked, .qcm-status.voided { color: #a32318; background: #ffe9e5; }
-.qcm-status.draft, .qcm-status.paid { color: #15598a; background: #e6f2fb; }
+.qcm-status.draft, .qcm-status.packing, .qcm-status.packed, .qcm-status.paid { color: #15598a; background: #e6f2fb; }
 .qcm-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .qcm-actions .danger { color: #b42a1b; border-color: #e8aaa2; }
 .qcm-order-detail { min-width: 240px; padding: 8px 0; }
