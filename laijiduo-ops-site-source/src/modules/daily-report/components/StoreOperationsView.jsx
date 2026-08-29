@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 
-import { buildStoreOperationsModel, buildWeeklySameDayRows } from "../index.js";
+import { buildStoreOperationsModel, buildStoreWeeklyComparisonRows } from "../index.js";
 
 const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 0 })}`;
 const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
@@ -57,9 +57,12 @@ export function StoreOperationsView({
     monthlyTarget,
   }), [reports, referenceDate, dailyTarget, monthlyTarget]);
   const weeklyRows = useMemo(
-    () => buildWeeklySameDayRows(reports, referenceDate).filter((row) => row.currentTotal || row.previousTotal),
+    () => buildStoreWeeklyComparisonRows(reports, referenceDate),
     [reports, referenceDate],
   );
+  const weeklySummary = weeklyRows[0]?.comparisonPeriod === "latest"
+    ? "最近有資料週與前一週"
+    : "本週與上週同日";
 
   if (loading) return <div className="empty-text">門店營運資料讀取中...</div>;
 
@@ -94,7 +97,7 @@ export function StoreOperationsView({
       <AccordionSection
         sectionKey="weekly"
         title="週業績對比"
-        summary="本週與上週同日"
+        summary={weeklySummary}
         openSection={openSection}
         onToggle={setOpenSection}
       >

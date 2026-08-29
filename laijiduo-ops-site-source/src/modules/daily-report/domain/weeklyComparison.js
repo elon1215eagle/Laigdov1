@@ -72,3 +72,22 @@ export function buildWeeklySameDayRows(
     };
   }));
 }
+
+export function buildStoreWeeklyComparisonRows(reports = [], referenceDate) {
+  const currentRows = buildWeeklySameDayRows(reports, referenceDate)
+    .filter((row) => Boolean(row.current));
+  if (currentRows.length) {
+    return currentRows.map((row) => ({ ...row, comparisonPeriod: "current" }));
+  }
+
+  const latestReportDate = reports
+    .map((report) => report.report_date)
+    .filter((date) => date && date <= referenceDate)
+    .sort()
+    .at(-1);
+  if (!latestReportDate) return [];
+
+  return buildWeeklySameDayRows(reports, latestReportDate)
+    .filter((row) => Boolean(row.current))
+    .map((row) => ({ ...row, comparisonPeriod: "latest" }));
+}

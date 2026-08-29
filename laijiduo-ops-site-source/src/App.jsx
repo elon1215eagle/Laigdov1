@@ -5494,8 +5494,18 @@ function MonthlyLeavePlanner({
 }
 
 function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSchedule, canEditStaffSchedule, clearStore, dailyShifts, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, scheduleStaff, store, toggleLeaveDay, updateDraft, uploadStore }) {
+  const [leaveActionTarget, setLeaveActionTarget] = useState(null);
   const totalLeaveDays = store.staff.reduce((sum, person) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates), 0);
   const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
+
+  const applyLeaveAction = (action) => {
+    if (!leaveActionTarget) return;
+    const { person, day, checked } = leaveActionTarget;
+    if ((action === "add" && !checked) || (action === "clear" && checked)) {
+      toggleLeaveDay(person.id, day);
+    }
+    setLeaveActionTarget(null);
+  };
 
   return (
     <div className="store-leave-card">
@@ -5565,8 +5575,10 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
                           className={checked ? `leave-dot on ${source}` : "leave-dot"}
                           type="button"
                           disabled={!canEditPerson}
-                          onClick={() => toggleLeaveDay(person.id, day)}
-                        />
+                          onClick={() => setLeaveActionTarget({ person, day, checked })}
+                        >
+                          {checked ? "休" : ""}
+                        </button>
                       </td>
                     );
                   })}
@@ -5611,6 +5623,30 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
           </tbody>
         </table>
       </div>
+      {leaveActionTarget && (
+        <div className="leave-action-backdrop" role="presentation" onClick={() => setLeaveActionTarget(null)}>
+          <section
+            aria-labelledby={`leave-action-title-${store.code}`}
+            aria-modal="true"
+            className="leave-action-sheet"
+            role="dialog"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="leave-action-heading">
+              <div>
+                <small>{store.code} {store.name}</small>
+                <h4 id={`leave-action-title-${store.code}`}>{leaveActionTarget.person.employeeName}｜{Number(leaveMonth.slice(5))}月{leaveActionTarget.day}日</h4>
+              </div>
+              <button aria-label="關閉排休操作" className="leave-action-close" type="button" onClick={() => setLeaveActionTarget(null)}>×</button>
+            </div>
+            <p>目前僅使用既有排假資料，先提供排休與清除；其他假別尚未啟用。</p>
+            <div className="leave-action-options">
+              <button className="leave-action-rest" type="button" disabled={leaveActionTarget.checked} onClick={() => applyLeaveAction("add")}>休<span>設定為休假日</span></button>
+              <button type="button" disabled={!leaveActionTarget.checked} onClick={() => applyLeaveAction("clear")}>清除<span>恢復未排休</span></button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
