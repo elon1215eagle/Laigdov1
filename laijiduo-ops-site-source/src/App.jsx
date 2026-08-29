@@ -3769,6 +3769,15 @@ function leaveDaySource(draft, day) {
   return "";
 }
 
+const scheduleDayStatusOptions = ["休", "例", "國", "休出", "國出", "特"];
+const nonWorkingDayStatuses = new Set(["休", "例", "國", "特"]);
+
+function scheduleDayStatus(draft = {}, day) {
+  const status = draft.dayStatuses?.[day] || draft.dayStatuses?.[String(day)];
+  if (scheduleDayStatusOptions.includes(status)) return status;
+  return isLeaveDay(draft.dates, day) ? "休" : "";
+}
+
 const leaveTypeOptions = ["排休", "特休", "事假", "病假", "其他"];
 
 function timeToMinutes(value, fallback = 0) {
@@ -3820,7 +3829,7 @@ function firstSixDayWorkViolationWindow(leaveDays, monthDays) {
   return null;
 }
 
-function buildLeavePlanPayload({ month, person, dates, manualDates, autoDates, leaveType = "排休", note = "" }) {
+function buildLeavePlanPayload({ month, person, dates, manualDates, autoDates, dayStatuses = {}, leaveType = "排休", note = "" }) {
   const parsedDates = parseLeaveDays(dates);
   const parsedManualDays = manualDates === undefined ? parsedDates : parseLeaveDays(manualDates);
   const parsedAutoDays = autoDates === undefined ? [] : parseLeaveDays(autoDates);
@@ -3834,6 +3843,7 @@ function buildLeavePlanPayload({ month, person, dates, manualDates, autoDates, l
     leave_days: parsedDates,
     manual_leave_days: parsedManualDays.filter((day) => parsedDates.includes(day)),
     auto_leave_days: parsedAutoDays.filter((day) => parsedDates.includes(day)),
+    day_statuses: dayStatuses,
     leave_type: leaveType,
     note,
   };
@@ -3962,6 +3972,7 @@ function MonthlyLeavePlanner({
               dates: formatLeaveDays(row.period_month, row.leave_days || []),
               manualDays: formatLeaveDays(row.period_month, row.manual_leave_days || row.leave_days || []),
               autoDays: formatLeaveDays(row.period_month, row.auto_leave_days || []),
+              dayStatuses: row.day_statuses || {},
               leaveType: row.leave_type || "排休",
               note: row.note || "",
             };
@@ -4638,6 +4649,7 @@ function MonthlyLeavePlanner({
         dates: draft.dates || "",
         manualDates: draft.manualDays || draft.dates || "",
         autoDates: draft.autoDays || "",
+        dayStatuses: draft.dayStatuses || {},
         leaveType: draft.leaveType || "排休",
         note: draft.note || "",
       }));
@@ -4660,6 +4672,7 @@ function MonthlyLeavePlanner({
       dates: draft.dates || "",
       manualDates: draft.manualDays || draft.dates || "",
       autoDates: draft.autoDays || "",
+      dayStatuses: draft.dayStatuses || {},
       leaveType: draft.leaveType || "排休",
       note: draft.note || "",
     });
@@ -4728,7 +4741,7 @@ function MonthlyLeavePlanner({
     }
   };
 
-  const toggleLeaveDay = (staffId, day) => {
+  const toggleLeaveDay = (staffId, day, status = "休") => {
     if (!canEditSchedule) {
       onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
       return;
@@ -4740,16 +4753,19 @@ function MonthlyLeavePlanner({
       const leaveDays = parseLeaveDays(currentDraft.dates);
       const manualDays = parseLeaveDays(currentDraft.manualDays);
       const autoDays = parseLeaveDays(currentDraft.autoDays);
-      const nextDays = leaveDays.includes(day) ? leaveDays.filter((item) => item !== day) : [...leaveDays, day].sort((a, b) => a - b);
-      const nextManualDays = leaveDays.includes(day)
-        ? manualDays.filter((item) => item !== day)
-        : [...manualDays.filter((item) => item !== day), day].sort((a, b) => a - b);
+      const isNonWorking = nonWorkingDayStatuses.has(status);
+      const nextDays = isNonWorking ? [...leaveDays.filter((item) => item !== day), day].sort((a, b) => a - b) : leaveDays.filter((item) => item !== day);
+      const nextManualDays = isNonWorking ? [...manualDays.filter((item) => item !== day), day].sort((a, b) => a - b) : manualDays.filter((item) => item !== day);
       const nextAutoDays = autoDays.filter((item) => item !== day);
+      const nextStatuses = { ...(currentDraft.dayStatuses || {}) };
+      if (status) nextStatuses[day] = status;
+      else delete nextStatuses[day];
       const nextDraft = {
         ...currentDraft,
         dates: formatLeaveDays(leaveMonth, nextDays),
         manualDays: formatLeaveDays(leaveMonth, nextManualDays),
         autoDays: formatLeaveDays(leaveMonth, nextAutoDays),
+        dayStatuses: nextStatuses,
       };
       saveDraft(person, nextDraft);
       return {
@@ -5500,10 +5516,8 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
 
   const applyLeaveAction = (action) => {
     if (!leaveActionTarget) return;
-    const { person, day, checked } = leaveActionTarget;
-    if ((action === "add" && !checked) || (action === "clear" && checked)) {
-      toggleLeaveDay(person.id, day);
-    }
+    const { person, day } = leaveActionTarget;
+    toggleLeaveDay(person.id, day, action === "clear" ? "" : action);
     setLeaveActionTarget(null);
   };
 
@@ -5566,8 +5580,9 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
                     )}
                   </th>
                   {monthDays.map((day) => {
-                    const checked = isLeaveDay(draft.dates, day);
-                    const source = checked ? leaveDaySource(draft, day) : "";
+                    const dayStatus = scheduleDayStatus(draft, day);
+                    const checked = Boolean(dayStatus);
+                    const source = nonWorkingDayStatuses.has(dayStatus) ? leaveDaySource(draft, day) : "working";
                     return (
                       <td className="leave-day-cell" key={day}>
                         <button
@@ -5577,7 +5592,7 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
                           disabled={!canEditPerson}
                           onClick={() => setLeaveActionTarget({ person, day, checked })}
                         >
-                          {checked ? "休" : ""}
+                          {dayStatus}
                         </button>
                       </td>
                     );
@@ -5639,10 +5654,12 @@ function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSche
               </div>
               <button aria-label="關閉排休操作" className="leave-action-close" type="button" onClick={() => setLeaveActionTarget(null)}>×</button>
             </div>
-            <p>目前僅使用既有排假資料，先提供排休與清除；其他假別尚未啟用。</p>
+            <p>紅字為未出勤；藍字為假日出勤並計入有效人力。</p>
             <div className="leave-action-options">
-              <button className="leave-action-rest" type="button" disabled={leaveActionTarget.checked} onClick={() => applyLeaveAction("add")}>休<span>設定為休假日</span></button>
-              <button type="button" disabled={!leaveActionTarget.checked} onClick={() => applyLeaveAction("clear")}>清除<span>恢復未排休</span></button>
+              {scheduleDayStatusOptions.map((status) => (
+                <button className={nonWorkingDayStatuses.has(status) ? "leave-action-rest" : "leave-action-work"} type="button" key={status} onClick={() => applyLeaveAction(status)}>{status}</button>
+              ))}
+              <button type="button" onClick={() => applyLeaveAction("clear")}>清除<span>恢復未設定</span></button>
             </div>
           </section>
         </div>

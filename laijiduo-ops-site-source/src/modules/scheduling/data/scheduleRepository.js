@@ -4,7 +4,7 @@ import { normalizeTime24 } from "../domain/staffingRules.js";
 const MONTHLY_LEAVE_FIELDS = [
   "id", "period_month", "store_code", "store_name", "staff_id",
   "employee_name", "role_name", "leave_days", "manual_leave_days",
-  "auto_leave_days", "leave_type", "note", "updated_by", "created_at", "updated_at",
+  "auto_leave_days", "day_statuses", "leave_type", "note", "updated_by", "created_at", "updated_at",
 ].join(", ");
 
 const MONTHLY_SCHEDULE_LOCK_FIELDS = [
@@ -72,6 +72,7 @@ function buildLeavePayload(payload, userId) {
     leave_days: normalizeLeaveDays(payload.leave_days),
     manual_leave_days: normalizeLeaveDays(payload.manual_leave_days),
     auto_leave_days: normalizeLeaveDays(payload.auto_leave_days),
+    day_statuses: payload.day_statuses || {},
     leave_type: payload.leave_type || "排休",
     updated_by: userId,
   };

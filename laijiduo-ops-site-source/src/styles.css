@@ -1911,6 +1911,12 @@ tbody tr.selected,
   background: #ffe1dc;
 }
 
+.leave-dot.on.working {
+  border-color: #6c9ed8;
+  background: #eaf3ff;
+  color: #145dac;
+}
+
 .leave-dot:hover {
   outline: 2px solid #efb7b0;
 }
@@ -1995,6 +2001,12 @@ tbody tr.selected,
 }
 
 .leave-action-options .leave-action-rest span {
+  color: #fff;
+}
+
+.leave-action-options .leave-action-work {
+  border-color: #6c9ed8;
+  background: #145dac;
   color: #fff;
 }
 
