@@ -3769,8 +3769,8 @@ function leaveDaySource(draft, day) {
   return "";
 }
 
-const scheduleDayStatusOptions = ["休", "例", "國", "休出", "國出", "特"];
-const nonWorkingDayStatuses = new Set(["休", "例", "國", "特"]);
+const scheduleDayStatusOptions = ["休", "例", "國", "事假", "休出", "國出", "特"];
+const nonWorkingDayStatuses = new Set(["休", "例", "國", "事假", "特"]);
 
 function scheduleDayStatus(draft = {}, day) {
   const status = draft.dayStatuses?.[day] || draft.dayStatuses?.[String(day)];
