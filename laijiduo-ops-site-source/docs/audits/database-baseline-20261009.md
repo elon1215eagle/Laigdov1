@@ -67,6 +67,8 @@
 - `docs/audits/database-trigger-inventory-20261009.csv`：23 個 trigger 清冊
 - `supabase/production_security_catalog_audit.sql`：可重複執行的唯讀驗證 SQL
 - `supabase/production_maintenance_20261009_security_baseline_hardening.sql`：已套用的維修與回滾紀錄
+- `docs/audits/database-rpc-behavior-verification-20261009.md`：5 支匿名與 39 支登入 RPC 的行為及權限驗證
+- `supabase/migrations/20261009034937_harden_authenticated_rpc_guards.sql`：3 支登入 RPC 的 fail-closed 驗證修正
 
 ## 已安裝 Extension
 
@@ -114,3 +116,11 @@
 - 瀏覽器 console：0 個 error／warning。
 - 驗證過程未送出測試業績，未新增、修改或刪除營運資料。
 - 人資主檔未讀寫、未變更。
+
+## RPC 行為驗證與第二階段維修
+
+- 5 / 5 支匿名 SECURITY DEFINER RPC 已完成權限及負向行為驗證。
+- 39 / 39 支原始登入 SECURITY DEFINER RPC 已完成權限及無身分行為驗證。
+- `request_coo_salary_access`、`review_staffing_demand_change_request`、`revoke_personal_schedule_link` 已改為先驗證 `auth.uid()`，避免 SQL `NULL` 判斷略過拒絕或先查詢資料。
+- migration `20261009034937_harden_authenticated_rpc_guards` 已套用正式庫並列入 migration history。
+- 修正後正式資料筆數不變；全系統 316 / 316 測試通過。
