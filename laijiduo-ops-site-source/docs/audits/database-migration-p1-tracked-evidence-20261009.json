@@ -1,0 +1,410 @@
+{
+  "project_id": "wfhaqnicwqjfgzjcfmsq",
+  "captured_date": "2026-10-09",
+  "source": "supabase_migrations.schema_migrations.statements",
+  "production_writes": false,
+  "normalization": "strip leading BOM, normalize CRLF/CR to LF, trim outer whitespace; no SQL/comment rewriting",
+  "counts": {
+    "total": 35,
+    "exact_normalized": 33,
+    "formatting_only_reviewed": 1,
+    "historical_sql_difference": 1
+  },
+  "live_readonly_checks": {
+    "demand_columns": [
+      "baseline_demand",
+      "dinner_peak_demand",
+      "lunch_peak_demand"
+    ],
+    "segmented_demand_present": true,
+    "lunch_demand_present": true,
+    "dinner_demand_present": true
+  },
+  "entries": [
+    {
+      "production_version": "20260729053929",
+      "name": "store_identity_and_operating_scope",
+      "local_version": "20260729054000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260729054000_store_identity_and_operating_scope.sql",
+      "archive_path": "docs/audits/production-migration-history/20260729053929_store_identity_and_operating_scope.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "408c20770a76f918fb4ddb19183796cca66b6c29614b1d27249d886fd2ae93ca",
+      "production_sha256": "408c20770a76f918fb4ddb19183796cca66b6c29614b1d27249d886fd2ae93ca"
+    },
+    {
+      "production_version": "20260729053931",
+      "name": "part_time_default_and_daily_shifts",
+      "local_version": "20260729054100",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260729054100_part_time_default_and_daily_shifts.sql",
+      "archive_path": "docs/audits/production-migration-history/20260729053931_part_time_default_and_daily_shifts.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "829895e5d50ac1c7cd666cface9271e71f4959bb91fd46381caecaac58843877",
+      "production_sha256": "829895e5d50ac1c7cd666cface9271e71f4959bb91fd46381caecaac58843877"
+    },
+    {
+      "production_version": "20260729053936",
+      "name": "store_schedule_privacy_and_support_summary",
+      "local_version": "20260729054200",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260729054200_store_schedule_privacy_and_support_summary.sql",
+      "archive_path": "docs/audits/production-migration-history/20260729053936_store_schedule_privacy_and_support_summary.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "8b1823e89fceef374060874bc889784829ded8ce8b53a22e52637e2e8db70df7",
+      "production_sha256": "8b1823e89fceef374060874bc889784829ded8ce8b53a22e52637e2e8db70df7"
+    },
+    {
+      "production_version": "20260729053938",
+      "name": "schedule_lock_closed_loop",
+      "local_version": "20260729054500",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260729054500_schedule_lock_closed_loop.sql",
+      "archive_path": "docs/audits/production-migration-history/20260729053938_schedule_lock_closed_loop.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "baa425f5177e564ff1001ea26ef80694d9cc1d05590f28c95b2d16554ed2fb7b",
+      "production_sha256": "baa425f5177e564ff1001ea26ef80694d9cc1d05590f28c95b2d16554ed2fb7b"
+    },
+    {
+      "production_version": "20260729061002",
+      "name": "schedule_group_change_requests",
+      "local_version": "20260729060000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260729060000_schedule_group_change_requests.sql",
+      "archive_path": "docs/audits/production-migration-history/20260729061002_schedule_group_change_requests.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "dee450f57581ed0c42c40e11847ad3c39f33f5ce28c1383def2d5e9e8ee43ae9",
+      "production_sha256": "dee450f57581ed0c42c40e11847ad3c39f33f5ce28c1383def2d5e9e8ee43ae9"
+    },
+    {
+      "production_version": "20260731134022",
+      "name": "daily_report_lock_closed_loop",
+      "local_version": "20260731133904",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260731133904_daily_report_lock_closed_loop.sql",
+      "archive_path": "docs/audits/production-migration-history/20260731134022_daily_report_lock_closed_loop.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "b94847523f5e569de651d4444c1d6ddce935b51d2328ec5a25825ffdc595bd14",
+      "production_sha256": "b94847523f5e569de651d4444c1d6ddce935b51d2328ec5a25825ffdc595bd14"
+    },
+    {
+      "production_version": "20260731134027",
+      "name": "daily_report_operational_details",
+      "local_version": "20260731133908",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260731133908_daily_report_operational_details.sql",
+      "archive_path": "docs/audits/production-migration-history/20260731134027_daily_report_operational_details.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "744d4180ec442f9c01beab240083a54e82333195e2b276540b4ef7c2617f13cb",
+      "production_sha256": "744d4180ec442f9c01beab240083a54e82333195e2b276540b4ef7c2617f13cb"
+    },
+    {
+      "production_version": "20260802141841",
+      "name": "workforce_staff_classification",
+      "local_version": "20260802111742",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802111742_workforce_staff_classification.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141841_workforce_staff_classification.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "e2e25108ab17630496c062ed39f620dd403f668e35a9cc751e123baf13785724",
+      "production_sha256": "e2e25108ab17630496c062ed39f620dd403f668e35a9cc751e123baf13785724"
+    },
+    {
+      "production_version": "20260802141843",
+      "name": "staff_store_assignment_history",
+      "local_version": "20260802112233",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802112233_staff_store_assignment_history.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141843_staff_store_assignment_history.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "91e2114a6c5fde4dca8d75b56dd24771abb85b2d0f03452ee4154d8b5dbb3cbb",
+      "production_sha256": "91e2114a6c5fde4dca8d75b56dd24771abb85b2d0f03452ee4154d8b5dbb3cbb"
+    },
+    {
+      "production_version": "20260802141844",
+      "name": "staff_transfer_hq_write_policy",
+      "local_version": "20260802112331",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802112331_staff_transfer_hq_write_policy.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141844_staff_transfer_hq_write_policy.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "5b5ddbc0b58f6cb24eac4fdb36ca57ea5a5acfdbb33ed6a079d69f8cf055acc0",
+      "production_sha256": "5b5ddbc0b58f6cb24eac4fdb36ca57ea5a5acfdbb33ed6a079d69f8cf055acc0"
+    },
+    {
+      "production_version": "20260802141846",
+      "name": "effective_store_management_relations",
+      "local_version": "20260802113845",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802113845_effective_store_management_relations.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141846_effective_store_management_relations.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "9a8dee00ed70498350b08ba8593421dae39f7636adc584b7d4a55ebaa06bd299",
+      "production_sha256": "9a8dee00ed70498350b08ba8593421dae39f7636adc584b7d4a55ebaa06bd299"
+    },
+    {
+      "production_version": "20260802141847",
+      "name": "staff_positions_and_skills",
+      "local_version": "20260802115527",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802115527_staff_positions_and_skills.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141847_staff_positions_and_skills.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "cabfd673f0af7bafb0dae92e5b59cc0e578fe262aacdb7c783102345090dc5b9",
+      "production_sha256": "cabfd673f0af7bafb0dae92e5b59cc0e578fe262aacdb7c783102345090dc5b9"
+    },
+    {
+      "production_version": "20260802141848",
+      "name": "staffing_demand_rules",
+      "local_version": "20260802115728",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802115728_staffing_demand_rules.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141848_staffing_demand_rules.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "329a3b16feece05128c8f1f62c9a02c11738f9940bda0e0f6373e3b2ca09186e",
+      "production_sha256": "329a3b16feece05128c8f1f62c9a02c11738f9940bda0e0f6373e3b2ca09186e"
+    },
+    {
+      "production_version": "20260802141849",
+      "name": "multi_segment_daily_staff_shifts",
+      "local_version": "20260802120237",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802120237_multi_segment_daily_staff_shifts.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141849_multi_segment_daily_staff_shifts.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "06a1c93a86eda80b9f60537e8d9d4743fb824da37d28165598c0156ba718fed8",
+      "production_sha256": "06a1c93a86eda80b9f60537e8d9d4743fb824da37d28165598c0156ba718fed8"
+    },
+    {
+      "production_version": "20260802141915",
+      "name": "scoped_schedule_change_approvals",
+      "local_version": "20260802121315",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802121315_scoped_schedule_change_approvals.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141915_scoped_schedule_change_approvals.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "a90ae7fd99ead6d9393bc8fbe6d8cdcfc3cc70bfeeb700a7ecf43e65b6d7791a",
+      "production_sha256": "a90ae7fd99ead6d9393bc8fbe6d8cdcfc3cc70bfeeb700a7ecf43e65b6d7791a"
+    },
+    {
+      "production_version": "20260802141921",
+      "name": "support_shift_approval_closed_loop",
+      "local_version": "20260802121842",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802121842_support_shift_approval_closed_loop.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141921_support_shift_approval_closed_loop.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "ad356a3f1304a8249931c052d509f0d2fdd123fded07026ce84686550c85dfab",
+      "production_sha256": "ad356a3f1304a8249931c052d509f0d2fdd123fded07026ce84686550c85dfab"
+    },
+    {
+      "production_version": "20260802141922",
+      "name": "workforce_safe_cutover_control",
+      "local_version": "20260802122444",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802122444_workforce_safe_cutover_control.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141922_workforce_safe_cutover_control.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "b1e029fb2dcb8a0802211dec5835dd176313bfedf05e8cf1e731cd9855fc793a",
+      "production_sha256": "b1e029fb2dcb8a0802211dec5835dd176313bfedf05e8cf1e731cd9855fc793a"
+    },
+    {
+      "production_version": "20260802141923",
+      "name": "staff_estimated_cost_fields",
+      "local_version": "20260802123110",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802123110_staff_estimated_cost_fields.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141923_staff_estimated_cost_fields.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "50a66e8a3a884923245aa1351f4c01fd58f82e18c5ed7c05c283651eaa3a9f6c",
+      "production_sha256": "50a66e8a3a884923245aa1351f4c01fd58f82e18c5ed7c05c283651eaa3a9f6c"
+    },
+    {
+      "production_version": "20260802141924",
+      "name": "revoke_anon_workforce_rpcs",
+      "local_version": "20260802123320",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802123320_revoke_anon_workforce_rpcs.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141924_revoke_anon_workforce_rpcs.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "ae4acebc3d9bc9541b354a381203c9eaeb57c0efe87c2b89d2c3a4b419e41906",
+      "production_sha256": "ae4acebc3d9bc9541b354a381203c9eaeb57c0efe87c2b89d2c3a4b419e41906"
+    },
+    {
+      "production_version": "20260802141926",
+      "name": "personal_schedule_links",
+      "local_version": "20260802124010",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802124010_personal_schedule_links.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141926_personal_schedule_links.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "de59214c60081aff611d4b7ad727b2a2799252d4d8f44c2c24007495a4b7aadd",
+      "production_sha256": "de59214c60081aff611d4b7ad727b2a2799252d4d8f44c2c24007495a4b7aadd"
+    },
+    {
+      "production_version": "20260802141927",
+      "name": "secure_legacy_public_tables",
+      "local_version": "20260802124430",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802124430_secure_legacy_public_tables.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141927_secure_legacy_public_tables.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "90e2ed874020579a117c3bf78006856b33047ca170ec8e8af2daa8019206391b",
+      "production_sha256": "90e2ed874020579a117c3bf78006856b33047ca170ec8e8af2daa8019206391b"
+    },
+    {
+      "production_version": "20260802141929",
+      "name": "harden_public_schedule_token_rpc",
+      "local_version": "20260802124620",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802124620_harden_public_schedule_token_rpc.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141929_harden_public_schedule_token_rpc.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "03a3fcf513cee26353253be1c2fac5afed091759016da2d79cae7a6dbc923d0b",
+      "production_sha256": "03a3fcf513cee26353253be1c2fac5afed091759016da2d79cae7a6dbc923d0b"
+    },
+    {
+      "production_version": "20260802141930",
+      "name": "workforce_performance_indexes",
+      "local_version": "20260802124900",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802124900_workforce_performance_indexes.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141930_workforce_performance_indexes.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "493d50c7a2f7c26aa3d4da9e0a435c6c693cdd139e487a1ecfba3b3dde3a9314",
+      "production_sha256": "493d50c7a2f7c26aa3d4da9e0a435c6c693cdd139e487a1ecfba3b3dde3a9314"
+    },
+    {
+      "production_version": "20260802141931",
+      "name": "standard_shift_templates",
+      "local_version": "20260802143000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802143000_standard_shift_templates.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141931_standard_shift_templates.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "3c0c841b21e91b80d13f65a1875b253272920ddbde3421acba5ea9531194496f",
+      "production_sha256": "3c0c841b21e91b80d13f65a1875b253272920ddbde3421acba5ea9531194496f"
+    },
+    {
+      "production_version": "20260802141932",
+      "name": "leave_audit_and_demand_requests",
+      "local_version": "20260802150000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802150000_leave_audit_and_demand_requests.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141932_leave_audit_and_demand_requests.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "6a13f11e24429690774f88814a3b936599940ed7f4dd3237acc4e7091099d3d4",
+      "production_sha256": "6a13f11e24429690774f88814a3b936599940ed7f4dd3237acc4e7091099d3d4"
+    },
+    {
+      "production_version": "20260802141934",
+      "name": "secure_salary_access",
+      "local_version": "20260802153000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802153000_secure_salary_access.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141934_secure_salary_access.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "9050854c6f7ef3f36da0c9b16e9ec77a72de0c7647a403fc5a7bc756e22070e1",
+      "production_sha256": "9050854c6f7ef3f36da0c9b16e9ec77a72de0c7647a403fc5a7bc756e22070e1"
+    },
+    {
+      "production_version": "20260802141935",
+      "name": "enforce_workforce_single_writer",
+      "local_version": "20260802160000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802160000_enforce_workforce_single_writer.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141935_enforce_workforce_single_writer.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "e36e3f12d76e488b3f779867e5862753b8c77cbcb58675dc26d54bdcea319c40",
+      "production_sha256": "e36e3f12d76e488b3f779867e5862753b8c77cbcb58675dc26d54bdcea319c40"
+    },
+    {
+      "production_version": "20260802141936",
+      "name": "secure_line_internal_tables",
+      "local_version": "20260802170000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802170000_secure_line_internal_tables.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141936_secure_line_internal_tables.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "3941162bf9365ae6991d6924a2e8049bb46414e2324853cd75d68aa6fb22f346",
+      "production_sha256": "3941162bf9365ae6991d6924a2e8049bb46414e2324853cd75d68aa6fb22f346"
+    },
+    {
+      "production_version": "20260802141937",
+      "name": "harden_identity_helper_rpcs",
+      "local_version": "20260802171000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260802171000_harden_identity_helper_rpcs.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802141937_harden_identity_helper_rpcs.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "bb206f0d340185cde7ff150dd0563dc000e103bebdeb8ab4f3b3a11c63ffb6cd",
+      "production_sha256": "bb206f0d340185cde7ff150dd0563dc000e103bebdeb8ab4f3b3a11c63ffb6cd"
+    },
+    {
+      "production_version": "20260802213557",
+      "name": "secure_store_staff_upsert",
+      "local_version": "20260803100000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260803100000_secure_store_staff_upsert.sql",
+      "archive_path": "docs/audits/production-migration-history/20260802213557_secure_store_staff_upsert.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "9a141b137dcfed65ea3d9a025f8aeabb4058542e6d736a02f9e7c6c6b8c19a58",
+      "production_sha256": "9a141b137dcfed65ea3d9a025f8aeabb4058542e6d736a02f9e7c6c6b8c19a58"
+    },
+    {
+      "production_version": "20260805003227",
+      "name": "store_manager_current_month_revenue_view",
+      "local_version": "20260805090000",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260805090000_store_manager_current_month_revenue_view.sql",
+      "archive_path": "docs/audits/production-migration-history/20260805003227_store_manager_current_month_revenue_view.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "37746e2fd9fa5f1c0215d732639b360cd4dd55e3245a47eab79d594918be04e3",
+      "production_sha256": "37746e2fd9fa5f1c0215d732639b360cd4dd55e3245a47eab79d594918be04e3"
+    },
+    {
+      "production_version": "20260806141652",
+      "name": "store_operating_settings_center",
+      "local_version": "20260806141200",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260806141200_store_operating_settings_center.sql",
+      "archive_path": "docs/audits/production-migration-history/20260806141652_store_operating_settings_center.sql",
+      "comparison": "historical_sql_difference_followup_migration_verified",
+      "statement_count": 1,
+      "local_sha256": "cdadda85c66b76f809a4064072d1fd71431a55d21e12997b9ce200d715410cc7",
+      "production_sha256": "2df581f6af55272950452c003419d6b7f83f448ad4e0b02b60e3ec022aaac80c"
+    },
+    {
+      "production_version": "20260806141934",
+      "name": "store_peak_staffing_demands",
+      "local_version": "20260806141839",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260806141839_store_peak_staffing_demands.sql",
+      "archive_path": "docs/audits/production-migration-history/20260806141934_store_peak_staffing_demands.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "5a9f4de4875710e539a2f999095640b150330c47e6b97c616333c4f034f0691e",
+      "production_sha256": "5a9f4de4875710e539a2f999095640b150330c47e6b97c616333c4f034f0691e"
+    },
+    {
+      "production_version": "20260806144829",
+      "name": "store_backoffice_matrix_and_role_salary_settings",
+      "local_version": "20260806144355",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260806144355_store_backoffice_matrix_and_role_salary_settings.sql",
+      "archive_path": "docs/audits/production-migration-history/20260806144829_store_backoffice_matrix_and_role_salary_settings.sql",
+      "comparison": "equal_after_bom_line_ending_and_outer_whitespace_normalization",
+      "statement_count": 1,
+      "local_sha256": "4db39ac5ba906751a9047c54578bf455a9b41ea56366ff39479ef66b3bda0226",
+      "production_sha256": "4db39ac5ba906751a9047c54578bf455a9b41ea56366ff39479ef66b3bda0226"
+    },
+    {
+      "production_version": "20260806150028",
+      "name": "add_appointed_store_manager_role",
+      "local_version": "20260806145951",
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260806145951_add_appointed_store_manager_role.sql",
+      "archive_path": "docs/audits/production-migration-history/20260806150028_add_appointed_store_manager_role.sql",
+      "comparison": "formatting_only_reviewed",
+      "statement_count": 1,
+      "local_sha256": "bd57152e87578112156a88455e18345194338613d523dd83ac0a0d2116d448ab",
+      "production_sha256": "ae03e6e882f12fa37bd35de19c163fbb3dda0ac129292f837581cac364b3255b"
+    }
+  ]
+}

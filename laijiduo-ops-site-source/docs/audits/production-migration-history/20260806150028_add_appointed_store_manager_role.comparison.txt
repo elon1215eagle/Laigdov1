@@ -1,0 +1,30 @@
+LOCAL = tracked local source; PROD = production saved statement.
+LOCAL 2:   role_name,
+LOCAL 3:   salary_type,
+LOCAL 4:   employment_type,
+LOCAL 5:   insurance_note,
+LOCAL 6:   sort_order,
+LOCAL 7:   is_active
+LOCAL 8: )
+LOCAL 9: values (
+LOCAL 10:   '委任店經理',
+LOCAL 11:   'negotiable',
+LOCAL 12:   '委任經理人',
+LOCAL 13:   '須自保',
+LOCAL 14:   1,
+LOCAL 15:   true
+PROD 2:   role_name, salary_type, employment_type, insurance_note, sort_order, is_active
+PROD 4: values ('委任店經理', 'negotiable', '委任經理人', '須自保', 1, true)
+LOCAL 33: where role_name in (
+LOCAL 34:   '委任店經理',
+LOCAL 35:   '店長',
+LOCAL 36:   '代理店長',
+LOCAL 37:   '副店長',
+LOCAL 38:   '代理副店',
+LOCAL 39:   '資深人員',
+LOCAL 40:   '正式人員',
+LOCAL 41:   '新進人員',
+LOCAL 42:   '兼職人員',
+LOCAL 43:   '總部人員'
+LOCAL 44: );
+PROD 21: where role_name in ('委任店經理','店長','代理店長','副店長','代理副店','資深人員','正式人員','新進人員','兼職人員','總部人員');

@@ -1,0 +1,43 @@
+LOCAL = tracked local source; PROD = production saved statement.
+LOCAL 14:   baseline_demand integer not null default 0 check (baseline_demand >= 0),
+LOCAL 15:   lunch_peak_demand integer not null default 0 check (lunch_peak_demand >= 0),
+LOCAL 16:   dinner_peak_demand integer not null default 0 check (dinner_peak_demand >= 0),
+LOCAL 92:     lunch_report_time, dinner_report_time, close_report_time,
+LOCAL 93:     baseline_demand, lunch_peak_demand, dinner_peak_demand, effective_from, updated_by, updated_at
+PROD 89:     lunch_report_time, dinner_report_time, close_report_time, effective_from, updated_by, updated_at
+LOCAL 101:     (p_payload->>'close_report_time')::time,
+LOCAL 102:     greatest(0,(p_payload->>'baseline_demand')::integer),
+LOCAL 103:     greatest(0,(p_payload->>'lunch_peak_demand')::integer),
+LOCAL 104:     greatest(0,(p_payload->>'dinner_peak_demand')::integer),
+LOCAL 105:     coalesce((p_payload->>'effective_from')::date,current_date), actor_id, now()
+PROD 97:     (p_payload->>'close_report_time')::time, coalesce((p_payload->>'effective_from')::date,current_date), actor_id, now()
+LOCAL 112:     close_report_time=excluded.close_report_time,
+LOCAL 113:     baseline_demand=excluded.baseline_demand, lunch_peak_demand=excluded.lunch_peak_demand,
+LOCAL 114:     dinner_peak_demand=excluded.dinner_peak_demand, effective_from=excluded.effective_from,
+PROD 104:     close_report_time=excluded.close_report_time, effective_from=excluded.effective_from,
+LOCAL 123:   )
+LOCAL 124:   select p_store_code, 'baseline', segment.start_time, segment.end_time, segment.required_count, true, segment.note, actor_id
+LOCAL 125:   from (values
+LOCAL 126:     (baseline_start, (p_payload->>'lunch_peak_start')::time, greatest(0,(p_payload->>'baseline_demand')::integer), '一般時段'),
+LOCAL 127:     ((p_payload->>'lunch_peak_start')::time, (p_payload->>'lunch_peak_end')::time, greatest(0,(p_payload->>'lunch_peak_demand')::integer), '午峰時段'),
+LOCAL 128:     ((p_payload->>'lunch_peak_end')::time, (p_payload->>'dinner_peak_start')::time, greatest(0,(p_payload->>'baseline_demand')::integer), '一般時段'),
+LOCAL 129:     ((p_payload->>'dinner_peak_start')::time, (p_payload->>'dinner_peak_end')::time, greatest(0,(p_payload->>'dinner_peak_demand')::integer), '晚峰時段'),
+LOCAL 130:     ((p_payload->>'dinner_peak_end')::time, baseline_end, greatest(0,(p_payload->>'baseline_demand')::integer), '一般時段')
+LOCAL 131:   ) segment(start_time,end_time,required_count,note)
+LOCAL 132:   where segment.end_time > segment.start_time
+LOCAL 133:   on conflict (store_code, rule_type, coalesce(weekday,-1), coalesce(special_date,date '1900-01-01'), start_time, end_time)
+PROD 113:   ) values (
+PROD 114:     p_store_code, 'baseline', baseline_start, baseline_end,
+PROD 115:     greatest(0,(p_payload->>'baseline_demand')::integer), true, '門店營運設定中心', actor_id
+PROD 116:   ) on conflict (store_code, rule_type, coalesce(weekday,-1), coalesce(special_date,date '1900-01-01'), start_time, end_time)
+LOCAL 166:   lunch_report_time, dinner_report_time, close_report_time,
+LOCAL 167:   baseline_demand, lunch_peak_demand, dinner_peak_demand
+PROD 149:   lunch_report_time, dinner_report_time, close_report_time
+LOCAL 171:   seed.lunch_report::time, seed.dinner_report::time, seed.close_time::time,
+LOCAL 172:   coalesce(demand.required_count,0), coalesce(demand.required_count,0), coalesce(demand.required_count,0)
+PROD 153:   seed.lunch_report::time, seed.dinner_report::time, seed.close_time::time
+LOCAL 188: left join lateral (
+LOCAL 189:   select required_count from public.store_staffing_demand_rules r
+LOCAL 190:   where r.store_code=s.store_code and r.rule_type='baseline' and r.is_active
+LOCAL 191:   order by r.created_at desc limit 1
+LOCAL 192: ) demand on true
