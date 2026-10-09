@@ -1,0 +1,1106 @@
+{
+  "project_id": "wfhaqnicwqjfgzjcfmsq",
+  "captured_date": "2026-10-09",
+  "production_writes": false,
+  "history_count": 108,
+  "history_latest_version": "20261009034937",
+  "comparison_normalization": "strip leading BOM, normalize CRLF/CR to LF, trim outer whitespace; body comparison ignores only CREATE wrapper, not function body text",
+  "counts": {
+    "local_files": 8,
+    "exact_saved_statement_matches": 0,
+    "superseded_reporting_files": 2,
+    "conflicting_business_seed": 1,
+    "live_objects_without_proven_history_source": 5,
+    "function_body_comparisons": 11,
+    "function_body_equal": 9
+  },
+  "entries": [
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260716144921_store_manager_14_day_revenue_access.sql",
+      "local_version": "20260716144921",
+      "local_name": "store_manager_14_day_revenue_access",
+      "normalized_sha256": "fecbcf80c46490a3ede4113404e1cd61c12ad4e43fb9284647a87047a272d6b4",
+      "exact_production_statement_matches": [],
+      "decision": "superseded_by_later_reporting_rules",
+      "evidence": [
+        "正式 20260805003227 與 20261001130053 已重建店長日期政策；現行 SELECT／INSERT 可到上月月初至營業日，不再是 14 日。",
+        "current_taipei_business_date 函式本體一致，但現行 search_path 已加固；daily_report_totals 有 security_invoker=true。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260717135922_part_time_work_hours_staffing_coverage.sql",
+      "local_version": "20260717135922",
+      "local_name": "part_time_work_hours_staffing_coverage",
+      "normalized_sha256": "755064daac68332d756a5854d2c32387350d92cfe911942069cbf1d84f9d8704",
+      "exact_production_statement_matches": [],
+      "decision": "live_schema_present_history_provenance_gap",
+      "evidence": [
+        "store_staff.work_start_time/work_end_time 存在；正式 20260729053931 的回填已依賴這兩欄，但 108 支 statements 未找到 ADD 來源的完全相等檔。",
+        "僅確認欄位存在，無法證明原始執行時間或整支檔曾上線；補入隔離基準時須先於 20260729053931。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260729192216_save_daily_operations_atomic.sql",
+      "local_version": "20260729192216",
+      "local_name": "save_daily_operations_atomic",
+      "normalized_sha256": "018da17aa8fe7870334812738d9515611f4bdc71c4e9b2c6480b9b549d5d9c0d",
+      "exact_production_statement_matches": [],
+      "decision": "superseded_by_expanded_atomic_report_rpc",
+      "evidence": [
+        "正式 20260731134027 已建立三參數 save_daily_operations，現行也只有三參數（第三參數有 DEFAULT）。",
+        "現行支援報廢／員餐、numeric 營收；舊檔會新增兩參數重載，可能使省略第三參數的 RPC 選擇產生歧義，禁止補跑。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260806140506_reactivate_nanhua_and_set_s01_s06_demand.sql",
+      "local_version": "20260806140506",
+      "local_name": "reactivate_nanhua_and_set_s01_s06_demand",
+      "normalized_sha256": "fcad089f1075389cbb97a61da0aca9a6cb800075b78cc30061c4ed3927da1779",
+      "exact_production_statement_matches": [],
+      "decision": "conflicts_with_current_store_status_do_not_replay",
+      "evidence": [
+        "S06 現行 operating_status=suspended、is_active=false；舊腳本會改為 active/true。",
+        "S01-S06 demand 現為 7，但 rule_note 仍寫南華已恢復營業，與實際店狀態不一致；只列待修正，未更動任何營運資料。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826141823_quick_checkout_data_model.sql",
+      "local_version": "20260826141823",
+      "local_name": "quick_checkout_data_model",
+      "normalized_sha256": "f2213d0e2d5560f7f59acfc8cceca53413d5da02432ab3b21e48449bd374d1a8",
+      "exact_production_statement_matches": [],
+      "decision": "live_checkout_schema_present_history_provenance_gap",
+      "evidence": [
+        "五個主表均存在且 RLS 開啟；62 個檔案宣告欄位全部存在；兩個 trigger 函式本體與原檔一致，三個觸發器啟用。",
+        "正式 20260827011108 已依賴 quick_checkout_products，但建表檔的對應執行紀錄未出現在 108 支 statements；初始商品資料／完整約束語意未驗收。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "local_version": "20260826142108",
+      "local_name": "quick_checkout_device_rpc",
+      "normalized_sha256": "c5b6b0f8af8179e5c5c4ab163c79c12ebb117b11039057a862d91ed05c7307e4",
+      "exact_production_statement_matches": [],
+      "decision": "live_checkout_device_rpcs_present_history_provenance_gap",
+      "evidence": [
+        "裝置 workspace 表與五個 RPC 均存在；resolve/create/load/clear 本體一致，save 已被同步版本覆寫。",
+        "resolve 禁 anon/authenticated；create 僅 authenticated；load/save/clear 有 anon/authenticated 權限並在本體驗證 token；僅 catalog 驗證，不代表 token 行為測試通過。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826143955_quick_checkout_workspace_sync.sql",
+      "local_version": "20260826143955",
+      "local_name": "quick_checkout_workspace_sync",
+      "normalized_sha256": "5f9e2c8af539dc942f2f64e97178413150f390ffd4b851ba6d16216ed50da816",
+      "exact_production_statement_matches": [],
+      "decision": "live_checkout_sync_body_equal_history_provenance_gap",
+      "evidence": [
+        "现行 quick_checkout_save_workspace 本體與本機同步版一致；正式 108 支 statements 未有對應函式來源。",
+        "禁止僅據本體一致就標记舊版本 applied；仍需新正式基準及隔離重播。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260829044859_add_monthly_schedule_day_statuses.sql",
+      "local_version": "20260829044859",
+      "local_name": "add_monthly_schedule_day_statuses",
+      "normalized_sha256": "4080fdab6327a868ae6a3f9a383ac6681474da85920d48a587b2e71e64a179fc",
+      "exact_production_statement_matches": [],
+      "decision": "live_day_statuses_and_upsert_present_history_provenance_gap",
+      "evidence": [
+        "monthly_leave_plans.day_statuses 存在且為 jsonb；upsert_monthly_leave_plans_new 本體一致，anon execute=false、authenticated=true。",
+        "正式 108 支 statements 完全未含 day_statuses；現行結構與歷史存在缺口，原始版本／時間仍未能證實。"
+      ],
+      "replay_action": "禁止直接補跑，先在隔離基準驗證"
+    }
+  ],
+  "function_body_comparisons": [
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260716144921_store_manager_14_day_revenue_access.sql",
+      "function_name": "current_taipei_business_date",
+      "body_equal": true,
+      "live_identity": ""
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260729192216_save_daily_operations_atomic.sql",
+      "function_name": "save_daily_operations",
+      "body_equal": false,
+      "live_identity": "p_report jsonb, p_inventory jsonb, p_waste jsonb"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826141823_quick_checkout_data_model.sql",
+      "function_name": "quick_checkout_touch_updated_at",
+      "body_equal": true,
+      "live_identity": ""
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826141823_quick_checkout_data_model.sql",
+      "function_name": "quick_checkout_protect_final_order",
+      "body_equal": true,
+      "live_identity": ""
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "function_name": "quick_checkout_resolve_device",
+      "body_equal": true,
+      "live_identity": "p_device_token text"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "function_name": "quick_checkout_create_device",
+      "body_equal": true,
+      "live_identity": "p_store_code text, p_label text"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "function_name": "quick_checkout_load_workspace",
+      "body_equal": true,
+      "live_identity": "p_device_token text"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "function_name": "quick_checkout_save_workspace",
+      "body_equal": false,
+      "live_identity": "p_device_token text, p_workspace jsonb"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "function_name": "quick_checkout_clear_workspace",
+      "body_equal": true,
+      "live_identity": "p_device_token text"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260826143955_quick_checkout_workspace_sync.sql",
+      "function_name": "quick_checkout_save_workspace",
+      "body_equal": true,
+      "live_identity": "p_device_token text, p_workspace jsonb"
+    },
+    {
+      "local_path": "laijiduo-ops-site-source/supabase/migrations/20260829044859_add_monthly_schedule_day_statuses.sql",
+      "function_name": "upsert_monthly_leave_plans_new",
+      "body_equal": true,
+      "live_identity": "p_rows jsonb"
+    }
+  ],
+  "checkout_column_presence_checks": [
+    {
+      "table": "quick_checkout_products",
+      "expected_columns": [
+        "id",
+        "code",
+        "name",
+        "category",
+        "price",
+        "fixed_weight_grams",
+        "sort_order",
+        "is_active",
+        "updated_by",
+        "created_at",
+        "updated_at"
+      ],
+      "missing_columns": []
+    },
+    {
+      "table": "quick_checkout_devices",
+      "expected_columns": [
+        "id",
+        "store_id",
+        "label",
+        "token_hash",
+        "is_active",
+        "created_by",
+        "last_seen_at",
+        "revoked_at",
+        "created_at"
+      ],
+      "missing_columns": []
+    },
+    {
+      "table": "quick_checkout_orders",
+      "expected_columns": [
+        "id",
+        "client_order_id",
+        "order_number",
+        "store_id",
+        "device_id",
+        "operator_code",
+        "operator_name",
+        "status",
+        "subtotal",
+        "discount",
+        "total",
+        "received",
+        "change_due",
+        "review_confirmed",
+        "paid_at",
+        "completed_at",
+        "cancelled_at",
+        "voided_at",
+        "created_at",
+        "updated_at"
+      ],
+      "missing_columns": []
+    },
+    {
+      "table": "quick_checkout_order_lines",
+      "expected_columns": [
+        "id",
+        "order_id",
+        "product_id",
+        "product_code",
+        "product_name",
+        "unit_price",
+        "fixed_weight_grams",
+        "quantity",
+        "seasonings",
+        "packed",
+        "line_total",
+        "created_at"
+      ],
+      "missing_columns": []
+    },
+    {
+      "table": "quick_checkout_order_events",
+      "expected_columns": [
+        "id",
+        "order_id",
+        "store_id",
+        "event_type",
+        "actor_type",
+        "actor_code",
+        "reason",
+        "details",
+        "created_by",
+        "created_at"
+      ],
+      "missing_columns": []
+    }
+  ],
+  "live_catalog_snapshot": {
+    "nanhua": [
+      {
+        "is_active": false,
+        "store_code": "S06",
+        "operating_status": "suspended"
+      }
+    ],
+    "columns": [
+      {
+        "type": "time without time zone",
+        "table": "store_staff",
+        "column": "work_start_time"
+      },
+      {
+        "type": "time without time zone",
+        "table": "store_staff",
+        "column": "work_end_time"
+      },
+      {
+        "type": "time without time zone",
+        "table": "store_staff",
+        "column": "weekday_start_time"
+      },
+      {
+        "type": "time without time zone",
+        "table": "store_staff",
+        "column": "weekday_end_time"
+      },
+      {
+        "type": "time without time zone",
+        "table": "store_staff",
+        "column": "holiday_start_time"
+      },
+      {
+        "type": "time without time zone",
+        "table": "store_staff",
+        "column": "holiday_end_time"
+      },
+      {
+        "type": "jsonb",
+        "table": "monthly_leave_plans",
+        "column": "day_statuses"
+      }
+    ],
+    "relation": [
+      {
+        "demand": 7,
+        "rule_note": "五甲與南華合併排假、合併看人力；南華已恢復營業並由五甲統籌。",
+        "group_code": "S01-S06"
+      }
+    ],
+    "functions": [
+      {
+        "name": "current_taipei_business_date",
+        "identity": "",
+        "definition": "CREATE OR REPLACE FUNCTION public.current_taipei_business_date()\n RETURNS date\n LANGUAGE sql\n STABLE\n SET search_path TO 'pg_catalog'\nAS $function$\r\n  select case\r\n    when extract(hour from now() at time zone 'Asia/Taipei') < 6\r\n      then ((now() at time zone 'Asia/Taipei')::date - 1)\r\n    else (now() at time zone 'Asia/Taipei')::date\r\n  end\r\n$function$\n"
+      },
+      {
+        "name": "quick_checkout_clear_workspace",
+        "identity": "p_device_token text",
+        "definition": "CREATE OR REPLACE FUNCTION public.quick_checkout_clear_workspace(p_device_token text)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions'\nAS $function$\ndeclare\n  resolved_device_id uuid := public.quick_checkout_resolve_device(p_device_token);\nbegin\n  if resolved_device_id is null then\n    raise exception 'invalid or revoked device';\n  end if;\n\n  delete from public.quick_checkout_device_workspaces\n  where device_id = resolved_device_id;\n\n  return true;\nend;\n$function$\n"
+      },
+      {
+        "name": "quick_checkout_create_device",
+        "identity": "p_store_code text, p_label text",
+        "definition": "CREATE OR REPLACE FUNCTION public.quick_checkout_create_device(p_store_code text, p_label text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions'\nAS $function$\ndeclare\n  actor_role text := coalesce((select public.current_profile_role())::text, '');\n  actor_store_id uuid := (select public.current_profile_store_id());\n  target_store public.stores%rowtype;\n  raw_token text := encode(gen_random_bytes(32), 'hex');\n  created_device public.quick_checkout_devices%rowtype;\nbegin\n  if auth.uid() is null then\n    raise exception 'authentication required';\n  end if;\n\n  select * into target_store\n  from public.stores\n  where upper(store_code) = upper(trim(p_store_code))\n    and is_active = true;\n\n  if target_store.id is null then\n    raise exception 'active store not found';\n  end if;\n\n  if actor_role not in ('ceo', 'coo', 'admin', 'hq')\n     and not (actor_role = 'store_manager' and actor_store_id = target_store.id) then\n    raise exception 'not authorized to bind this store device';\n  end if;\n\n  if nullif(trim(p_label), '') is null then\n    raise exception 'device label is required';\n  end if;\n\n  insert into public.quick_checkout_devices\n    (store_id, label, token_hash, created_by)\n  values\n    (target_store.id, trim(p_label), encode(digest(raw_token, 'sha256'), 'hex'), auth.uid())\n  returning * into created_device;\n\n  return jsonb_build_object(\n    'deviceId', created_device.id,\n    'deviceToken', raw_token,\n    'storeCode', target_store.store_code,\n    'storeName', target_store.name\n  );\nend;\n$function$\n"
+      },
+      {
+        "name": "quick_checkout_load_workspace",
+        "identity": "p_device_token text",
+        "definition": "CREATE OR REPLACE FUNCTION public.quick_checkout_load_workspace(p_device_token text)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions'\nAS $function$\ndeclare\n  resolved_device_id uuid := public.quick_checkout_resolve_device(p_device_token);\n  saved_workspace jsonb;\nbegin\n  if resolved_device_id is null then\n    raise exception 'invalid or revoked device';\n  end if;\n\n  update public.quick_checkout_devices\n  set last_seen_at = now()\n  where id = resolved_device_id;\n\n  select workspace into saved_workspace\n  from public.quick_checkout_device_workspaces\n  where device_id = resolved_device_id;\n\n  return jsonb_build_object('workspace', saved_workspace);\nend;\n$function$\n"
+      },
+      {
+        "name": "quick_checkout_protect_final_order",
+        "identity": "",
+        "definition": "CREATE OR REPLACE FUNCTION public.quick_checkout_protect_final_order()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  if old.status in ('completed', 'cancelled', 'voided') then\n    raise exception 'final quick-checkout orders are immutable';\n  end if;\n  return new;\nend;\n$function$\n"
+      },
+      {
+        "name": "quick_checkout_resolve_device",
+        "identity": "p_device_token text",
+        "definition": "CREATE OR REPLACE FUNCTION public.quick_checkout_resolve_device(p_device_token text)\n RETURNS uuid\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO 'public', 'extensions'\nAS $function$\n  select device.id\n  from public.quick_checkout_devices device\n  where device.token_hash = encode(digest(p_device_token, 'sha256'), 'hex')\n    and device.is_active = true\n    and device.revoked_at is null\n    and length(p_device_token) >= 32\n  limit 1\n$function$\n"
+      },
+      {
+        "name": "quick_checkout_save_workspace",
+        "identity": "p_device_token text, p_workspace jsonb",
+        "definition": "CREATE OR REPLACE FUNCTION public.quick_checkout_save_workspace(p_device_token text, p_workspace jsonb)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions'\nAS $function$\ndeclare\n  resolved_device_id uuid := public.quick_checkout_resolve_device(p_device_token);\n  device_store public.stores%rowtype;\n  normalized_workspace jsonb;\n  order_json jsonb;\n  line_json jsonb;\n  event_json jsonb;\n  saved_order_id uuid;\n  saved_product_id uuid;\n  existing_final boolean;\n  subtotal_value integer;\nbegin\n  if resolved_device_id is null then\n    raise exception 'invalid or revoked device';\n  end if;\n\n  if p_workspace is null or jsonb_typeof(p_workspace) <> 'object' then\n    raise exception 'workspace must be a JSON object';\n  end if;\n\n  if octet_length(p_workspace::text) > 1048576 then\n    raise exception 'workspace exceeds size limit';\n  end if;\n\n  select store.* into device_store\n  from public.quick_checkout_devices device\n  join public.stores store on store.id = device.store_id\n  where device.id = resolved_device_id;\n\n  normalized_workspace := jsonb_set(p_workspace, '{storeCode}', to_jsonb(device_store.store_code), true);\n  normalized_workspace := jsonb_set(normalized_workspace, '{storeName}', to_jsonb(device_store.name), true);\n\n  insert into public.quick_checkout_device_workspaces (device_id, workspace, updated_at)\n  values (resolved_device_id, normalized_workspace, now())\n  on conflict (device_id) do update set\n    workspace = excluded.workspace,\n    updated_at = excluded.updated_at;\n\n  for order_json in\n    select value from jsonb_array_elements(coalesce(normalized_workspace->'orders', '[]'::jsonb))\n  loop\n    if nullif(order_json->>'id', '') is null then\n      continue;\n    end if;\n\n    select exists (\n      select 1 from public.quick_checkout_orders\n      where device_id = resolved_device_id\n        and client_order_id = order_json->>'id'\n        and status in ('completed', 'cancelled', 'voided')\n    ) into existing_final;\n\n    if existing_final then\n      continue;\n    end if;\n\n    select coalesce(sum(\n      greatest(0, coalesce((line->>'unitPrice')::integer, 0))\n      * greatest(0, coalesce((line->>'quantity')::integer, 0))\n    ), 0)::integer\n    into subtotal_value\n    from jsonb_array_elements(coalesce(order_json->'lines', '[]'::jsonb)) line;\n\n    insert into public.quick_checkout_orders (\n      client_order_id, order_number, store_id, device_id,\n      operator_code, operator_name, status, subtotal, discount,\n      received, change_due, review_confirmed, paid_at, completed_at,\n      cancelled_at, voided_at, created_at, updated_at\n    ) values (\n      order_json->>'id',\n      device_store.store_code || '-' || (order_json->>'id'),\n      device_store.id,\n      resolved_device_id,\n      coalesce(order_json#>>'{operator,id}', ''),\n      coalesce(order_json#>>'{operator,name}', ''),\n      coalesce(order_json->>'status', 'draft'),\n      subtotal_value,\n      greatest(0, coalesce((order_json#>>'{discount,amount}')::integer, 0)),\n      nullif(order_json#>>'{payment,received}', '')::integer,\n      nullif(order_json#>>'{payment,change}', '')::integer,\n      coalesce((order_json->>'reviewConfirmed')::boolean, false),\n      nullif(order_json#>>'{payment,paidAt}', '')::timestamptz,\n      nullif(order_json->>'completedAt', '')::timestamptz,\n      case when order_json->>'status' = 'cancelled' then coalesce(nullif(order_json->>'updatedAt', '')::timestamptz, now()) end,\n      case when order_json->>'status' = 'voided' then coalesce(nullif(order_json->>'updatedAt', '')::timestamptz, now()) end,\n      coalesce(nullif(order_json->>'createdAt', '')::timestamptz, now()),\n      coalesce(nullif(order_json->>'updatedAt', '')::timestamptz, now())\n    )\n    on conflict (device_id, client_order_id) do update set\n      operator_code = excluded.operator_code,\n      operator_name = excluded.operator_name,\n      status = excluded.status,\n      subtotal = excluded.subtotal,\n      discount = excluded.discount,\n      received = excluded.received,\n      change_due = excluded.change_due,\n      review_confirmed = excluded.review_confirmed,\n      paid_at = excluded.paid_at,\n      completed_at = excluded.completed_at,\n      cancelled_at = excluded.cancelled_at,\n      voided_at = excluded.voided_at,\n      updated_at = excluded.updated_at\n    returning id into saved_order_id;\n\n    delete from public.quick_checkout_order_lines where order_id = saved_order_id;\n    delete from public.quick_checkout_order_events where order_id = saved_order_id;\n\n    for line_json in\n      select value from jsonb_array_elements(coalesce(order_json->'lines', '[]'::jsonb))\n    loop\n      select id into saved_product_id\n      from public.quick_checkout_products\n      where code = line_json->>'productCode';\n\n      if saved_product_id is not null and coalesce((line_json->>'quantity')::integer, 0) > 0 then\n        insert into public.quick_checkout_order_lines (\n          order_id, product_id, product_code, product_name, unit_price,\n          fixed_weight_grams, quantity, seasonings, packed\n        ) values (\n          saved_order_id,\n          saved_product_id,\n          line_json->>'productCode',\n          line_json->>'productName',\n          greatest(0, coalesce((line_json->>'unitPrice')::integer, 0)),\n          nullif(line_json->>'fixedWeightGrams', '')::integer,\n          (line_json->>'quantity')::integer,\n          array(select jsonb_array_elements_text(coalesce(line_json->'seasonings', '[]'::jsonb))),\n          coalesce((line_json->>'packed')::boolean, false)\n        );\n      end if;\n    end loop;\n\n    for event_json in\n      select value from jsonb_array_elements(coalesce(order_json->'events', '[]'::jsonb))\n    loop\n      insert into public.quick_checkout_order_events (\n        order_id, store_id, event_type, actor_type, actor_code, reason, details, created_at\n      ) values (\n        saved_order_id,\n        device_store.id,\n        coalesce(event_json->>'type', 'unknown'),\n        'device',\n        coalesce(order_json#>>'{operator,id}', ''),\n        nullif(event_json#>>'{details,reason}', ''),\n        coalesce(event_json->'details', '{}'::jsonb),\n        coalesce(nullif(event_json->>'at', '')::timestamptz, now())\n      );\n    end loop;\n  end loop;\n\n  update public.quick_checkout_devices\n  set last_seen_at = now()\n  where id = resolved_device_id;\n\n  return true;\nend;\n$function$\n"
+      },
+      {
+        "name": "quick_checkout_touch_updated_at",
+        "identity": "",
+        "definition": "CREATE OR REPLACE FUNCTION public.quick_checkout_touch_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO 'public'\nAS $function$\nbegin\n  new.updated_at := now();\n  return new;\nend;\n$function$\n"
+      },
+      {
+        "name": "save_daily_operations",
+        "identity": "p_report jsonb, p_inventory jsonb, p_waste jsonb",
+        "definition": "CREATE OR REPLACE FUNCTION public.save_daily_operations(p_report jsonb, p_inventory jsonb DEFAULT '[]'::jsonb, p_waste jsonb DEFAULT NULL::jsonb)\n RETURNS daily_reports\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$\ndeclare\n  v_report public.daily_reports;\n  v_employee_meals jsonb := p_report->'employee_meals';\nbegin\n  if nullif(p_report->>'store_id', '') is null\n    or nullif(p_report->>'report_date', '') is null then\n    raise exception 'store_id and report_date are required';\n  end if;\n\n  insert into public.daily_reports (\n    store_id,\n    report_date,\n    opened_to_1400_revenue,\n    revenue_1400_to_1900,\n    revenue_1900_to_close,\n    cash_difference,\n    delivery_revenue,\n    scheduled_staff_count,\n    actual_staff_count,\n    staffing_variance_reason,\n    customer_complaint_count,\n    customer_complaint_detail,\n    equipment_issue,\n    equipment_issue_detail,\n    special_event,\n    status,\n    manager_note,\n    submitted_by,\n    submitted_at\n  )\n  values (\n    (p_report->>'store_id')::uuid,\n    (p_report->>'report_date')::date,\n    coalesce((p_report->>'opened_to_1400_revenue')::numeric, 0),\n    coalesce((p_report->>'revenue_1400_to_1900')::numeric, 0),\n    coalesce((p_report->>'revenue_1900_to_close')::numeric, 0),\n    nullif(p_report->>'cash_difference', '')::numeric,\n    coalesce((p_report->>'delivery_revenue')::numeric, 0),\n    coalesce((p_report->>'scheduled_staff_count')::integer, 0),\n    coalesce((p_report->>'actual_staff_count')::integer, 0),\n    coalesce(p_report->>'staffing_variance_reason', ''),\n    coalesce((p_report->>'customer_complaint_count')::integer, 0),\n    coalesce(p_report->>'customer_complaint_detail', ''),\n    coalesce((p_report->>'equipment_issue')::boolean, false),\n    coalesce(p_report->>'equipment_issue_detail', ''),\n    coalesce(p_report->>'special_event', ''),\n    coalesce(nullif(p_report->>'status', '')::public.report_status, 'draft'),\n    coalesce(p_report->>'manager_note', ''),\n    nullif(p_report->>'submitted_by', '')::uuid,\n    nullif(p_report->>'submitted_at', '')::timestamptz\n  )\n  on conflict (store_id, report_date) do update set\n    opened_to_1400_revenue = excluded.opened_to_1400_revenue,\n    revenue_1400_to_1900 = excluded.revenue_1400_to_1900,\n    revenue_1900_to_close = excluded.revenue_1900_to_close,\n    cash_difference = excluded.cash_difference,\n    delivery_revenue = excluded.delivery_revenue,\n    scheduled_staff_count = excluded.scheduled_staff_count,\n    actual_staff_count = excluded.actual_staff_count,\n    staffing_variance_reason = excluded.staffing_variance_reason,\n    customer_complaint_count = excluded.customer_complaint_count,\n    customer_complaint_detail = excluded.customer_complaint_detail,\n    equipment_issue = excluded.equipment_issue,\n    equipment_issue_detail = excluded.equipment_issue_detail,\n    special_event = excluded.special_event,\n    status = excluded.status,\n    manager_note = excluded.manager_note,\n    submitted_by = excluded.submitted_by,\n    submitted_at = excluded.submitted_at,\n    updated_at = now()\n  returning * into v_report;\n\n  insert into public.inventory_counts (\n    report_id, product_id, current_stock, safety_stock, loss_count,\n    incoming_count, stock_unit, incoming_unit, current_stock_boxes,\n    current_stock_packs, incoming_boxes, incoming_packs, incoming_source,\n    transfer_note, is_shortage\n  )\n  select\n    v_report.id, item.product_id, coalesce(item.current_stock, 0),\n    coalesce(item.safety_stock, 0), coalesce(item.loss_count, 0),\n    coalesce(item.incoming_count, 0), item.stock_unit, item.incoming_unit,\n    coalesce(item.current_stock_boxes, 0), coalesce(item.current_stock_packs, 0),\n    coalesce(item.incoming_boxes, 0), coalesce(item.incoming_packs, 0),\n    coalesce(item.incoming_source, '廠商進貨'),\n    coalesce(item.transfer_note, ''), coalesce(item.is_shortage, false)\n  from jsonb_to_recordset(coalesce(p_inventory, '[]'::jsonb)) as item(\n    product_id uuid, current_stock numeric, safety_stock numeric,\n    loss_count numeric, incoming_count numeric, stock_unit text,\n    incoming_unit text, current_stock_boxes numeric, current_stock_packs numeric,\n    incoming_boxes numeric, incoming_packs numeric, incoming_source text,\n    transfer_note text, is_shortage boolean\n  )\n  on conflict (report_id, product_id) do update set\n    current_stock = excluded.current_stock,\n    safety_stock = excluded.safety_stock,\n    loss_count = excluded.loss_count,\n    incoming_count = excluded.incoming_count,\n    stock_unit = excluded.stock_unit,\n    incoming_unit = excluded.incoming_unit,\n    current_stock_boxes = excluded.current_stock_boxes,\n    current_stock_packs = excluded.current_stock_packs,\n    incoming_boxes = excluded.incoming_boxes,\n    incoming_packs = excluded.incoming_packs,\n    incoming_source = excluded.incoming_source,\n    transfer_note = excluded.transfer_note,\n    is_shortage = excluded.is_shortage;\n\n  if p_waste is not null then\n    delete from public.daily_report_waste_items where report_id = v_report.id;\n    insert into public.daily_report_waste_items (\n      report_id, product_id, item_name, quantity, unit, reason\n    )\n    select\n      v_report.id, item.product_id, trim(item.item_name),\n      item.quantity, trim(coalesce(item.unit, '')), trim(coalesce(item.reason, ''))\n    from jsonb_to_recordset(p_waste) as item(\n      product_id uuid, item_name text, quantity numeric, unit text, reason text\n    )\n    where trim(coalesce(item.item_name, '')) <> '' and item.quantity > 0;\n  end if;\n\n  if v_employee_meals is not null then\n    delete from public.daily_report_employee_meals where report_id = v_report.id;\n    insert into public.daily_report_employee_meals (\n      report_id, item_code, item_name, unit_price, quantity\n    )\n    select\n      v_report.id,\n      trim(item.item_code),\n      trim(item.item_name),\n      item.unit_price,\n      item.quantity\n    from jsonb_to_recordset(v_employee_meals) as item(\n      item_code text,\n      item_name text,\n      unit_price numeric,\n      quantity integer\n    )\n    where trim(coalesce(item.item_code, '')) <> ''\n      and item.quantity > 0;\n\n    update public.daily_reports\n    set employee_meal_total = coalesce((\n      select sum(meal.subtotal)\n      from public.daily_report_employee_meals meal\n      where meal.report_id = v_report.id\n    ), 0)\n    where id = v_report.id\n    returning * into v_report;\n  end if;\n\n  return v_report;\nend;\n$function$\n"
+      },
+      {
+        "name": "upsert_monthly_leave_plans_new",
+        "identity": "p_rows jsonb",
+        "definition": "CREATE OR REPLACE FUNCTION public.upsert_monthly_leave_plans_new(p_rows jsonb)\n RETURNS SETOF monthly_leave_plans\n LANGUAGE plpgsql\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nbegin\n  perform set_config('app.workforce_writer', 'new_module', true);\n  return query\n  insert into public.monthly_leave_plans (\n    period_month, store_code, store_name, staff_id, employee_name, role_name,\n    leave_days, manual_leave_days, auto_leave_days, day_statuses, leave_type, note, updated_by\n  )\n  select row_data.period_month, row_data.store_code, row_data.store_name, row_data.staff_id,\n    row_data.employee_name, row_data.role_name, row_data.leave_days,\n    row_data.manual_leave_days, row_data.auto_leave_days, coalesce(row_data.day_statuses, '{}'::jsonb),\n    coalesce(row_data.leave_type, '排休'), coalesce(row_data.note, ''), auth.uid()\n  from jsonb_to_recordset(p_rows) as row_data(\n    period_month text, store_code text, store_name text, staff_id text,\n    employee_name text, role_name text, leave_days integer[], manual_leave_days integer[],\n    auto_leave_days integer[], day_statuses jsonb, leave_type text, note text\n  )\n  on conflict (period_month, staff_id) do update set\n    store_code=excluded.store_code, store_name=excluded.store_name,\n    employee_name=excluded.employee_name, role_name=excluded.role_name,\n    leave_days=excluded.leave_days, manual_leave_days=excluded.manual_leave_days,\n    auto_leave_days=excluded.auto_leave_days, day_statuses=excluded.day_statuses,\n    leave_type=excluded.leave_type, note=excluded.note,\n    updated_by=auth.uid(), updated_at=now()\n  returning *;\nend;\n$function$\n"
+      }
+    ],
+    "checkout_tables": [
+      {
+        "rls": true,
+        "table": "quick_checkout_device_events"
+      },
+      {
+        "rls": true,
+        "table": "quick_checkout_device_workspaces"
+      },
+      {
+        "rls": true,
+        "table": "quick_checkout_devices"
+      },
+      {
+        "rls": true,
+        "table": "quick_checkout_order_events"
+      },
+      {
+        "rls": true,
+        "table": "quick_checkout_order_lines"
+      },
+      {
+        "rls": true,
+        "table": "quick_checkout_orders"
+      },
+      {
+        "rls": true,
+        "table": "quick_checkout_products"
+      }
+    ],
+    "report_policies": [
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "table": "daily_reports",
+        "policy": "admins create reports",
+        "with_check": "((current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'admin'::app_role])) AND (submitted_by = auth.uid()))"
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "table": "daily_reports",
+        "policy": "hq staff create daily reports",
+        "with_check": "((current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'hq'::app_role, 'admin'::app_role])) AND (submitted_by = auth.uid()))"
+      },
+      {
+        "cmd": "DELETE",
+        "qual": "(current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'hq'::app_role, 'admin'::app_role]))",
+        "table": "daily_reports",
+        "policy": "hq staff delete daily reports",
+        "with_check": null
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "((current_profile_role())::text = ANY (ARRAY['ceo'::text, 'coo'::text, 'cfo'::text, 'admin'::text, 'hq'::text, 'cso'::text]))",
+        "table": "daily_reports",
+        "policy": "hq staff update daily reports",
+        "with_check": "((current_profile_role())::text = ANY (ARRAY['ceo'::text, 'coo'::text, 'cfo'::text, 'admin'::text, 'hq'::text, 'cso'::text]))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "(((current_profile_role())::text = ANY (ARRAY['ceo'::text, 'coo'::text, 'cfo'::text, 'general_affairs'::text, 'hq'::text, 'cso'::text, 'supervisor'::text, 'admin'::text])) OR (EXISTS ( SELECT 1\n   FROM store_supervisors ss\n  WHERE ((ss.store_id = daily_reports.store_id) AND (ss.supervisor_id = ( SELECT auth.uid() AS uid))))) OR (((current_profile_role())::text = 'store_manager'::text) AND (store_id = current_profile_store_id()) AND (report_date >= (date_trunc('month'::text, (current_taipei_business_date() - '1 mon'::interval)))::date) AND (report_date <= current_taipei_business_date())))",
+        "table": "daily_reports",
+        "policy": "read reports by role",
+        "with_check": null
+      },
+      {
+        "cmd": "INSERT",
+        "qual": null,
+        "table": "daily_reports",
+        "policy": "store managers create own reports",
+        "with_check": "(((current_profile_role())::text = 'store_manager'::text) AND (store_id = current_profile_store_id()) AND (submitted_by = ( SELECT auth.uid() AS uid)) AND (report_date >= (date_trunc('month'::text, (current_taipei_business_date() - '1 mon'::interval)))::date) AND (report_date <= current_taipei_business_date()) AND ((status)::text = ANY (ARRAY['draft'::text, 'submitted'::text, 'needs_revision'::text])))"
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "(((current_profile_role())::text = 'store_manager'::text) AND (store_id = current_profile_store_id()) AND (((status)::text = ANY (ARRAY['draft'::text, 'needs_revision'::text])) OR (EXISTS ( SELECT 1\n   FROM daily_report_change_requests request\n  WHERE ((request.report_id = daily_reports.id) AND (request.status = 'approved'::text))))))",
+        "table": "daily_reports",
+        "policy": "store managers update own editable reports",
+        "with_check": "(((current_profile_role())::text = 'store_manager'::text) AND (store_id = current_profile_store_id()) AND (submitted_by = ( SELECT auth.uid() AS uid)) AND ((status)::text = ANY (ARRAY['draft'::text, 'submitted'::text, 'needs_revision'::text])))"
+      },
+      {
+        "cmd": "UPDATE",
+        "qual": "(current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'supervisor'::app_role, 'admin'::app_role]))",
+        "table": "daily_reports",
+        "policy": "supervisors update assigned reports",
+        "with_check": "(current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'supervisor'::app_role, 'admin'::app_role]))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "(current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'admin'::app_role]))",
+        "table": "inventory_counts",
+        "policy": "admins manage inventory",
+        "with_check": "(current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'admin'::app_role]))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "(current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'hq'::app_role, 'admin'::app_role]))",
+        "table": "inventory_counts",
+        "policy": "hq staff manage inventory counts",
+        "with_check": "(current_profile_role() = ANY (ARRAY['ceo'::app_role, 'coo'::app_role, 'hq'::app_role, 'admin'::app_role]))"
+      },
+      {
+        "cmd": "SELECT",
+        "qual": "(EXISTS ( SELECT 1\n   FROM daily_reports report\n  WHERE ((report.id = inventory_counts.report_id) AND (((current_profile_role())::text = ANY (ARRAY['ceo'::text, 'coo'::text, 'cfo'::text, 'general_affairs'::text, 'hq'::text, 'cso'::text, 'supervisor'::text, 'admin'::text])) OR (EXISTS ( SELECT 1\n           FROM store_supervisors ss\n          WHERE ((ss.store_id = report.store_id) AND (ss.supervisor_id = ( SELECT auth.uid() AS uid))))) OR (((current_profile_role())::text = 'store_manager'::text) AND (report.store_id = current_profile_store_id()) AND (report.report_date >= (date_trunc('month'::text, (current_taipei_business_date() - '1 mon'::interval)))::date) AND (report.report_date <= current_taipei_business_date()))))))",
+        "table": "inventory_counts",
+        "policy": "read inventory through report access",
+        "with_check": null
+      },
+      {
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM daily_reports dr\n  WHERE ((dr.id = inventory_counts.report_id) AND (dr.store_id = current_profile_store_id()) AND (dr.status = ANY (ARRAY['draft'::report_status, 'needs_revision'::report_status])))))",
+        "table": "inventory_counts",
+        "policy": "store managers manage inventory for own editable reports",
+        "with_check": "(EXISTS ( SELECT 1\n   FROM daily_reports dr\n  WHERE ((dr.id = inventory_counts.report_id) AND (dr.store_id = current_profile_store_id()) AND (dr.status = ANY (ARRAY['draft'::report_status, 'needs_revision'::report_status])))))"
+      },
+      {
+        "cmd": "ALL",
+        "qual": "(EXISTS ( SELECT 1\n   FROM daily_reports report\n  WHERE ((report.id = inventory_counts.report_id) AND ((current_profile_role())::text = 'store_manager'::text) AND (report.store_id = current_profile_store_id()) AND (report.report_date >= (date_trunc('month'::text, (current_taipei_business_date() - '1 mon'::interval)))::date) AND (report.report_date <= current_taipei_business_date()) AND (((report.status)::text = ANY (ARRAY['draft'::text, 'needs_revision'::text, 'submitted'::text])) OR (EXISTS ( SELECT 1\n           FROM daily_report_change_requests request\n          WHERE ((request.report_id = report.id) AND (request.status = 'approved'::text))))))))",
+        "table": "inventory_counts",
+        "policy": "store managers manage inventory for own reports",
+        "with_check": "(EXISTS ( SELECT 1\n   FROM daily_reports report\n  WHERE ((report.id = inventory_counts.report_id) AND ((current_profile_role())::text = 'store_manager'::text) AND (report.store_id = current_profile_store_id()) AND (report.report_date >= (date_trunc('month'::text, (current_taipei_business_date() - '1 mon'::interval)))::date) AND (report.report_date <= current_taipei_business_date()) AND (((report.status)::text = ANY (ARRAY['draft'::text, 'needs_revision'::text, 'submitted'::text])) OR (EXISTS ( SELECT 1\n           FROM daily_report_change_requests request\n          WHERE ((request.report_id = report.id) AND (request.status = 'approved'::text))))))))"
+      }
+    ]
+  },
+  "live_catalog_metadata": {
+    "view": {
+      "exists": true,
+      "options": [
+        "security_invoker=true"
+      ]
+    },
+    "grants": [
+      {
+        "function": "save_daily_operations",
+        "identity": "p_report jsonb, p_inventory jsonb, p_waste jsonb",
+        "anon_execute": false,
+        "authenticated_execute": true
+      },
+      {
+        "function": "quick_checkout_clear_workspace",
+        "identity": "p_device_token text",
+        "anon_execute": true,
+        "authenticated_execute": true
+      },
+      {
+        "function": "quick_checkout_load_workspace",
+        "identity": "p_device_token text",
+        "anon_execute": true,
+        "authenticated_execute": true
+      },
+      {
+        "function": "quick_checkout_save_workspace",
+        "identity": "p_device_token text, p_workspace jsonb",
+        "anon_execute": true,
+        "authenticated_execute": true
+      },
+      {
+        "function": "quick_checkout_touch_updated_at",
+        "identity": "",
+        "anon_execute": true,
+        "authenticated_execute": true
+      },
+      {
+        "function": "quick_checkout_protect_final_order",
+        "identity": "",
+        "anon_execute": true,
+        "authenticated_execute": true
+      },
+      {
+        "function": "quick_checkout_resolve_device",
+        "identity": "p_device_token text",
+        "anon_execute": false,
+        "authenticated_execute": false
+      },
+      {
+        "function": "quick_checkout_create_device",
+        "identity": "p_store_code text, p_label text",
+        "anon_execute": false,
+        "authenticated_execute": true
+      },
+      {
+        "function": "quick_checkout_manage_device",
+        "identity": "p_device_id uuid, p_action text, p_reason text",
+        "anon_execute": false,
+        "authenticated_execute": true
+      },
+      {
+        "function": "upsert_monthly_leave_plans_new",
+        "identity": "p_rows jsonb",
+        "anon_execute": false,
+        "authenticated_execute": true
+      }
+    ],
+    "columns": [
+      {
+        "table": "quick_checkout_device_events",
+        "column": "id",
+        "default": "gen_random_uuid()",
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_device_events",
+        "column": "device_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_device_events",
+        "column": "store_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_device_events",
+        "column": "event_type",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_device_events",
+        "column": "reason",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_device_events",
+        "column": "created_by",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_device_events",
+        "column": "created_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_device_workspaces",
+        "column": "device_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_device_workspaces",
+        "column": "workspace",
+        "default": "'{}'::jsonb",
+        "nullable": "NO",
+        "data_type": "jsonb"
+      },
+      {
+        "table": "quick_checkout_device_workspaces",
+        "column": "updated_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "id",
+        "default": "gen_random_uuid()",
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "store_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "label",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "token_hash",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "is_active",
+        "default": "true",
+        "nullable": "NO",
+        "data_type": "boolean"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "created_by",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "last_seen_at",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "revoked_at",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_devices",
+        "column": "created_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "id",
+        "default": "gen_random_uuid()",
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "order_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "store_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "event_type",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "actor_type",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "actor_code",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "reason",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "details",
+        "default": "'{}'::jsonb",
+        "nullable": "NO",
+        "data_type": "jsonb"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "created_by",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_order_events",
+        "column": "created_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "id",
+        "default": "gen_random_uuid()",
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "order_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "product_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "product_code",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "product_name",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "unit_price",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "fixed_weight_grams",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "quantity",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "seasonings",
+        "default": "'{}'::text[]",
+        "nullable": "NO",
+        "data_type": "ARRAY"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "packed",
+        "default": "false",
+        "nullable": "NO",
+        "data_type": "boolean"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "line_total",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_order_lines",
+        "column": "created_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "id",
+        "default": "gen_random_uuid()",
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "client_order_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "order_number",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "store_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "device_id",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "operator_code",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "operator_name",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "status",
+        "default": "'draft'::text",
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "subtotal",
+        "default": "0",
+        "nullable": "NO",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "discount",
+        "default": "0",
+        "nullable": "NO",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "total",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "received",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "change_due",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "review_confirmed",
+        "default": "false",
+        "nullable": "NO",
+        "data_type": "boolean"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "paid_at",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "completed_at",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "cancelled_at",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "voided_at",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "created_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_orders",
+        "column": "updated_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "id",
+        "default": "gen_random_uuid()",
+        "nullable": "NO",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "code",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "name",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "category",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "text"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "price",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "fixed_weight_grams",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "sort_order",
+        "default": null,
+        "nullable": "NO",
+        "data_type": "integer"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "is_active",
+        "default": "true",
+        "nullable": "NO",
+        "data_type": "boolean"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "updated_by",
+        "default": null,
+        "nullable": "YES",
+        "data_type": "uuid"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "created_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      },
+      {
+        "table": "quick_checkout_products",
+        "column": "updated_at",
+        "default": "now()",
+        "nullable": "NO",
+        "data_type": "timestamp with time zone"
+      }
+    ],
+    "checkout_triggers": [
+      {
+        "name": "quick_checkout_orders_touch_updated_at",
+        "table": "quick_checkout_orders",
+        "enabled": "O"
+      },
+      {
+        "name": "quick_checkout_protect_final_order",
+        "table": "quick_checkout_orders",
+        "enabled": "O"
+      },
+      {
+        "name": "quick_checkout_products_touch_updated_at",
+        "table": "quick_checkout_products",
+        "enabled": "O"
+      }
+    ]
+  }
+}
