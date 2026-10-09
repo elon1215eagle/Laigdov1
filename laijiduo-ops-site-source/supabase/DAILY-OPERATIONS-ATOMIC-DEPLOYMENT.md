@@ -1,51 +1,28 @@
-# 每日營運回報原子儲存部署驗收
+# 每日營運回報維護入口
 
-## 目前狀態
+更新日期：2026-10-09。
 
-- 前端已改用 `saveDailyOperations` 統一儲存營收與庫存。
-- Supabase RPC migration 已建立，但尚未套用任何正式專案。
-- RPC 尚未存在時，程式會相容退回既有兩段式寫入。
-- RPC 存在後，營收與庫存會在同一個資料庫交易內完成或一起失敗。
+## 正式狀態
 
-## Migration
+現行正式庫使用三參數 `save_daily_operations(jsonb,jsonb,jsonb)`，後兩參數具預設值。舊兩參數腳本已被取代，保存於 `history/20260729192216_save_daily_operations_atomic.sql`，僅供歷史測試，不得重新部署或建立兩參數重載。
 
-`migrations/20260729192216_save_daily_operations_atomic.sql`
+本文件取代早期「尚未套用正式專案」說明；不得依舊版文件撤銷正式 RPC 權限或補跑旧 SQL。
 
-## 安全設計
+## 安全驗證指令
 
-- 函式使用 `security invoker`，不繞過既有 RLS。
-- `PUBLIC` 無執行權限。
-- 僅授權 `authenticated` 執行。
-- 門店、總部仍受 `daily_reports` 與 `inventory_counts` 現有政策約束。
-- 權限錯誤不會自動重試成兩段式寫入。
-
-## 開發分支驗收順序
-
-1. 確認操作目標是 Supabase 開發分支，不是正式專案。
-2. 套用 migration。
-3. 重新整理 PostgREST schema cache，或等待自動更新。
-4. 使用總部帳號修改一筆測試日期的營收與庫存。
-5. 確認 `daily_reports` 與 `inventory_counts` 同時更新。
-6. 使用門店帳號更新自己門店的測試資料。
-7. 確認門店無法更新其他門店資料。
-8. 製造一筆無效 `product_id`，確認營收與庫存均未留下部分更新。
-9. 執行 Supabase Security Advisor，確認沒有新增警告。
-
-## 正式部署條件
-
-- 開發分支完成總部與門店帳號驗收。
-- 原子失敗案例確認沒有部分資料。
-- RLS 與函式執行權限驗收通過。
-- 完成正式資料庫備份或還原點。
-- 再將同一 migration 套用正式專案。
-
-## 回復方式
-
-若正式啟用後需要暫停 RPC，可撤銷執行權限：
-
-```sql
-revoke execute on function public.save_daily_operations(jsonb, jsonb)
-from authenticated;
+```powershell
+npm.cmd run db:check
+npm.cmd run db:test
 ```
 
-前端偵測到權限錯誤時會停止寫入，不會在不明狀態下改走兩段式寫入。
+第一個指令只檢查本機來源、封存 SHA-256 與隔離清單。第二個使用無連線網址、無帳密的 PGlite 記憶體資料庫，驗證回報、上月補報、跨店阻擋與交易回滾。
+
+```powershell
+npm.cmd run db:check -- --production
+```
+
+此指令必須失敗，因完整隔離基準與部署驗收未完成。這是維護入口的防護，不是對手動執行 Supabase CLI 的全面攔截。`supabase/migrations` 仍不是可直接部署的正式鏈。
+
+## 驗收邊界
+
+組件測試通過不等於全庫重建完成；現行角色、其他應用及全部 RPC 的端對端回歸仍須補齊。正式維修前需有核准範圍、備份、最小變更與回復方案。

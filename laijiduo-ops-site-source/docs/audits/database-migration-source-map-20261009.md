@@ -66,6 +66,12 @@
 5. 沒有原始證據時，持續禁止 `supabase migration repair`。
 6. 人資主檔與營運資料不在本次處理範圍。
 
+## 整理後狀態
+
+以上 51 支受版控 Migration 與 8 支本機獨有分類是整理前的稽核快照。實作整理已將 3 支高風險舊腳本移至 supabase/history，標準 migrations 目錄受版控檔剩 48 支；原有 13 支未版控來源未修改。新路徑／雜湊映射見 maintenance/database-plan.json；舊快照保留原始位置，不改寫證據。
+
+安全入口 db:check 與 db:test 已建立並通過，完整測試 324/324、建置通過；production_ready 仍為 false，不能直接部署整個 migrations 目錄。完整實作範圍見 database-maintenance-implementation-20261009.md。
+
 ## 明細
 
 完整逐筆對照請見 `database-migration-source-map-20261009.csv`。

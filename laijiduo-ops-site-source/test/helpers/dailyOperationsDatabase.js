@@ -4,7 +4,7 @@ import { PGlite } from '@electric-sql/pglite';
 const root = new URL('../../supabase/', import.meta.url);
 const sql = path => readFile(new URL(path, root), 'utf8');
 
-export async function createDailyOperationsDatabase() {
+export async function createDailyOperationsDatabase({ currentPolicies = false } = {}) {
   // No URL, credentials or production data: this database exists only in WASM memory.
   const db = new PGlite();
   try {
@@ -35,10 +35,19 @@ export async function createDailyOperationsDatabase() {
         add column incoming_boxes numeric not null default 0,
         add column incoming_packs numeric not null default 0;
     `);
-    await db.exec(await sql('migrations/20260716144921_store_manager_14_day_revenue_access.sql'));
-    await db.exec(await sql('migrations/20260729192216_save_daily_operations_atomic.sql'));
+    await db.exec(await sql('history/20260716144921_store_manager_14_day_revenue_access.sql'));
+    await db.exec(await sql('history/20260729192216_save_daily_operations_atomic.sql'));
     await db.exec(await sql('migrations/20260731133904_daily_report_lock_closed_loop.sql'));
     await db.exec(await sql('migrations/20260731133908_daily_report_operational_details.sql'));
+    if (currentPolicies) {
+      const archive = new URL('../../docs/audits/production-migration-history/', import.meta.url);
+      for (const name of [
+        '20260805003227_store_manager_current_month_revenue_view.sql',
+        '20261001130053_allow_store_manager_previous_month_daily_reports.sql',
+      ]) {
+        await db.exec(await readFile(new URL(name, archive), 'utf8'));
+      }
+    }
     await db.exec(`
       grant select, insert, update, delete on all tables in schema public to authenticated;
       insert into auth.users values

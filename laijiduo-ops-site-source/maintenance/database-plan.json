@@ -1,0 +1,75 @@
+{
+  "version": 1,
+  "date": "2026-10-09",
+  "production_ready": false,
+  "production_project_id": "wfhaqnicwqjfgzjcfmsq",
+  "database_runtime": "PGlite in-memory only",
+  "remaining_gates": [
+    "full_schema_rebuild",
+    "full_rpc_and_cross_app_regression",
+    "approved_history_alignment"
+  ],
+  "evidence_files": [
+    "docs/audits/database-migration-p1-evidence-20261009.json",
+    "docs/audits/database-migration-p1-tracked-evidence-20261009.json",
+    "docs/audits/database-migration-p2-evidence-20261009.json"
+  ],
+  "local_sources": [
+    {
+      "path": "supabase/history/20260716144921_store_manager_14_day_revenue_access.sql",
+      "original_path": "supabase/migrations/20260716144921_store_manager_14_day_revenue_access.sql",
+      "normalized_sha256": "fecbcf80c46490a3ede4113404e1cd61c12ad4e43fb9284647a87047a272d6b4",
+      "state": "history_only",
+      "decision": "superseded_by_later_reporting_rules"
+    },
+    {
+      "path": "supabase/migrations/20260717135922_part_time_work_hours_staffing_coverage.sql",
+      "original_path": "supabase/migrations/20260717135922_part_time_work_hours_staffing_coverage.sql",
+      "normalized_sha256": "755064daac68332d756a5854d2c32387350d92cfe911942069cbf1d84f9d8704",
+      "state": "baseline_candidate_not_approved_for_production",
+      "decision": "live_schema_present_history_provenance_gap"
+    },
+    {
+      "path": "supabase/history/20260729192216_save_daily_operations_atomic.sql",
+      "original_path": "supabase/migrations/20260729192216_save_daily_operations_atomic.sql",
+      "normalized_sha256": "018da17aa8fe7870334812738d9515611f4bdc71c4e9b2c6480b9b549d5d9c0d",
+      "state": "history_only",
+      "decision": "superseded_by_expanded_atomic_report_rpc"
+    },
+    {
+      "path": "supabase/history/20260806140506_reactivate_nanhua_and_set_s01_s06_demand.sql",
+      "original_path": "supabase/migrations/20260806140506_reactivate_nanhua_and_set_s01_s06_demand.sql",
+      "normalized_sha256": "fcad089f1075389cbb97a61da0aca9a6cb800075b78cc30061c4ed3927da1779",
+      "state": "history_only",
+      "decision": "conflicts_with_current_store_status_do_not_replay"
+    },
+    {
+      "path": "supabase/migrations/20260826141823_quick_checkout_data_model.sql",
+      "original_path": "supabase/migrations/20260826141823_quick_checkout_data_model.sql",
+      "normalized_sha256": "f2213d0e2d5560f7f59acfc8cceca53413d5da02432ab3b21e48449bd374d1a8",
+      "state": "baseline_candidate_not_approved_for_production",
+      "decision": "live_checkout_schema_present_history_provenance_gap"
+    },
+    {
+      "path": "supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "original_path": "supabase/migrations/20260826142108_quick_checkout_device_rpc.sql",
+      "normalized_sha256": "c5b6b0f8af8179e5c5c4ab163c79c12ebb117b11039057a862d91ed05c7307e4",
+      "state": "baseline_candidate_not_approved_for_production",
+      "decision": "live_checkout_device_rpcs_present_history_provenance_gap"
+    },
+    {
+      "path": "supabase/migrations/20260826143955_quick_checkout_workspace_sync.sql",
+      "original_path": "supabase/migrations/20260826143955_quick_checkout_workspace_sync.sql",
+      "normalized_sha256": "5f9e2c8af539dc942f2f64e97178413150f390ffd4b851ba6d16216ed50da816",
+      "state": "baseline_candidate_not_approved_for_production",
+      "decision": "live_checkout_sync_body_equal_history_provenance_gap"
+    },
+    {
+      "path": "supabase/migrations/20260829044859_add_monthly_schedule_day_statuses.sql",
+      "original_path": "supabase/migrations/20260829044859_add_monthly_schedule_day_statuses.sql",
+      "normalized_sha256": "4080fdab6327a868ae6a3f9a383ac6681474da85920d48a587b2e71e64a179fc",
+      "state": "baseline_candidate_not_approved_for_production",
+      "decision": "live_day_statuses_and_upsert_present_history_provenance_gap"
+    }
+  ]
+}
