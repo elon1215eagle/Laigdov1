@@ -9,7 +9,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "test": "node --test",
     "db:check": "node maintenance/check-database-plan.mjs",
-    "db:test": "node --test test/databaseMaintenancePlan.test.js test/databaseMaintenanceIsolation.test.js test/dailyOperationsDatabase.test.js"
+    "db:test": "node --test test/databaseMaintenancePlan.test.js test/databaseMaintenanceIsolation.test.js test/dailyOperationsDatabase.test.js test/checkoutDatabaseIsolation.test.js test/scheduleDatabaseIsolation.test.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
