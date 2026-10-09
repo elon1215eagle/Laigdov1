@@ -1,0 +1,10 @@
+// Isolated UI fixture. No production reads or writes.
+import React from 'react';
+import {createRoot} from 'react-dom/client';
+import DeliverySheet from '../../src/modules/transfer-delivery/DeliverySheet.jsx';
+import '../../src/modules/transfers/transfers.css';
+const date = new Date().toLocaleDateString('sv-SE');
+const request=(id,number,sender,receiver)=>({id,number,sender,receiver,status:'requested',version:1,data:{date,sender_name:`${sender} 出貨店`,receiver_name:`${receiver} 收貨店`,lines:[{name:'雞腿',quantity:1,unit:'箱'}]}});
+const data={drivers:[{id:'d1',name:'王先生',active:true,version:1}],tasks:[{id:'t1',request_id:'r1',driver_id:'d1',driver_name:'王先生',delivery_date:date,position:1,state:'planned',version:1,request:{number:1,sender:'S01',receiver:'S02',status:'shipped',version:2,data:{sender_name:'鳳山五甲店',receiver_name:'鳳山凱旋店',lines:[{name:'排骨',quantity:2,unit:'包'},{name:'雞腿',quantity:1,unit:'箱'},{name:'雞皮',quantity:30,unit:'支'}],note:'請先電話聯絡收貨店。'}}}],candidates:[request('r2',2,'S02','S04'),request('r3',3,'S08','S03'),request('r4',4,'S01','S05')]};
+const repository={async call(action,p){if(action==='day')return structuredClone(data);if(action==='history')return [];if(action==='assign'){const item=data.candidates.find(row=>row.id===p.request_id);data.tasks.push({id:`t-${item.id}`,request_id:item.id,driver_id:p.driver_id,driver_name:'王先生',delivery_date:p.date,position:p.position,state:'planned',version:1,request:item});data.candidates=data.candidates.filter(row=>row.id!==p.request_id);return data.tasks.at(-1);}if(action==='driver'){data.drivers.push({...p,id:'d2',active:true});return p;}if(action==='pick'){data.tasks[0].state='picked';data.tasks[0].picked_at=new Date().toISOString();return data.tasks[0];}if(action==='deliver'){data.tasks[0].state='delivered';data.tasks[0].delivered_at=new Date().toISOString();return data.tasks[0];}return p;}};
+createRoot(document.getElementById('root')).render(<main className="transfer-center" style={{margin:'0 auto',maxWidth:1100,padding:16}}><p>隔離預覽 · 非正式配送資料</p><DeliverySheet actor={{id:'fixture',is_hq:true,store:'S01'}} repository={repository} onOpen={()=>{}}/></main>);

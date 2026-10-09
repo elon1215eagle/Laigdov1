@@ -91,3 +91,42 @@ export function buildStoreWeeklyComparisonRows(reports = [], referenceDate) {
     .filter((row) => Boolean(row.current))
     .map((row) => ({ ...row, comparisonPeriod: "latest" }));
 }
+
+export function buildWeeklyStoreGroups(rows = []) {
+  const groups = new Map();
+
+  rows.forEach((row) => {
+    const key = row.storeCode || row.storeName;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        storeCode: row.storeCode,
+        storeName: row.storeName,
+        rows: [],
+        currentTotal: 0,
+        previousTotal: 0,
+        currentCount: 0,
+        previousCount: 0,
+      });
+    }
+    const group = groups.get(key);
+    group.rows.push(row);
+    if (row.current) {
+      group.currentTotal += row.currentTotal;
+      group.currentCount += 1;
+    }
+    if (row.previous) {
+      group.previousTotal += row.previousTotal;
+      group.previousCount += 1;
+    }
+  });
+
+  return Array.from(groups.values()).map((group) => {
+    const delta = group.currentTotal - group.previousTotal;
+    return {
+      ...group,
+      delta,
+      growth: growthPct(group.currentTotal, group.previousTotal),
+      comparisonReady: group.currentCount > 0 && group.previousCount > 0,
+    };
+  });
+}

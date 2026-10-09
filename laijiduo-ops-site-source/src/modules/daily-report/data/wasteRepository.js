@@ -8,7 +8,8 @@ export function createWasteRepository(client = null) {
         .eq("report_id", reportId)
         .order("created_at");
       if (error) throw error;
-      return data || [];
+      if (!Array.isArray(data)) throw new Error("耗損資料回應不完整");
+      return data;
     },
 
     async replace(reportId, rows = []) {

@@ -1,3 +1,5 @@
+import { createClient } from "@supabase/supabase-js";
+
 const allowedCategories = [
   "營運管理",
   "產品品質",
@@ -9,6 +11,42 @@ const allowedCategories = [
   "設備安全",
   "其他",
 ];
+
+const inspectionRoles = new Set([
+  "ceo",
+  "coo",
+  "general_affairs",
+  "cso",
+  "admin",
+  "hq",
+  "supervisor",
+]);
+
+export async function authorizeInspectionRequest(request, env = process.env, clientFactory = createClient) {
+  const token = /^Bearer (\S+)$/.exec(request.headers?.authorization || "")?.[1];
+  if (!token) return { status: 401, error: "請重新登入" };
+
+  const url = env.OPS_PUSH_SUPABASE_URL;
+  const key = env.OPS_PUSH_SERVICE_ROLE_KEY;
+  if (!url || !key) return { status: 503, error: "巡檢解析服務尚未啟用" };
+
+  const service = clientFactory(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: auth, error: authError } = await service.auth.getUser(token);
+  if (authError || !auth?.user) return { status: 401, error: "請重新登入" };
+
+  const { data: profile, error: profileError } = await service
+    .from("profiles")
+    .select("role,is_active")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+  if (profileError || !profile || profile.is_active === false || !inspectionRoles.has(profile.role)) {
+    return { status: 403, error: "無權使用巡檢解析" };
+  }
+
+  return { status: 200, user: auth.user, profile };
+}
 
 const inspectionSchema = {
   type: "object",
@@ -49,8 +87,20 @@ function getOutputText(response) {
 }
 
 export default async function handler(request, response) {
+  response.setHeader("Cache-Control", "no-store");
   if (request.method !== "POST") {
     response.status(405).json({ error: "只接受 POST 請求" });
+    return;
+  }
+
+  try {
+    const authorization = await authorizeInspectionRequest(request);
+    if (authorization.status !== 200) {
+      response.status(authorization.status).json({ error: authorization.error });
+      return;
+    }
+  } catch {
+    response.status(503).json({ error: "巡檢解析驗證暫時無法使用" });
     return;
   }
 
@@ -62,8 +112,15 @@ export default async function handler(request, response) {
 
   try {
     const { storeName, manager, date, supervisor, images = [] } = request.body || {};
-    if (!Array.isArray(images) || images.length === 0) {
+    if (!Array.isArray(images) || images.length === 0 || images.length > 8) {
       response.status(400).json({ error: "請至少上傳一張巡檢表照片" });
+      return;
+    }
+    const validImages = images.every((image) =>
+      image && typeof image.url === "string" && /^(data:image\/(?:jpeg|png|webp);base64,|https:\/\/)/i.test(image.url),
+    );
+    if (!validImages) {
+      response.status(400).json({ error: "巡檢表照片格式不正確" });
       return;
     }
 
@@ -82,7 +139,7 @@ export default async function handler(request, response) {
 
     const content = [
       { type: "input_text", text: prompt },
-      ...images.slice(0, 8).map((image) => ({
+      ...images.map((image) => ({
         type: "input_image",
         image_url: image.url,
         detail: "high",

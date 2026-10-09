@@ -1,4 +1,5 @@
 import { validateTimeWindow } from "../domain/staffingRules.js";
+import { scheduleUnitAllowsStaffAssignment } from "../domain/scheduleUnits.js";
 
 export function deriveScheduleAccess({
   isStoreScoped,
@@ -46,6 +47,9 @@ export function buildDailyShiftCommand({
   }
 
   const assignedStoreCode = form.assigned_store_code || homeStoreCode;
+  if (!scheduleUnitAllowsStaffAssignment(person, assignedStoreCode)) {
+    return { valid: false, message: "五甲後勤僅供內部排班，不能安排至其他門店支援" };
+  }
   return {
     valid: true,
     payload: {

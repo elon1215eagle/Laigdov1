@@ -95,6 +95,55 @@ test("Excel 排假表保留紅色休假、週末、三列人力摘要及門店�
   assert.match(xml, /<Row ss:Height="17\.5"><Cell ss:StyleID="Header"/);
 });
 
+test("五甲後勤匯出只保留排班，不輸出門市人力摘要", () => {
+  const model = buildScheduleExportModel({
+    periodMonth: "2026-09",
+    drafts: { "2026-09:back-1": { dates: "2" } },
+    storeGroups: [{
+      code: "S01-BACK",
+      name: "五甲後勤",
+      sourceCodes: ["S01"],
+      scheduleOnly: true,
+      demand: 0,
+      staff: [{ id: "back-1", employeeName: "後勤人員", role: "兼職人員", work_category: "後勤" }],
+    }],
+  });
+  const xml = buildScheduleExcelXml(model);
+  assert.match(xml, /S01-BACK 五甲後勤/);
+  assert.match(xml, /後勤人員/);
+  assert.doesNotMatch(xml, /有效人力/);
+  assert.doesNotMatch(xml, /店面需求/);
+  assert.doesNotMatch(xml, /缺口小計/);
+});
+
+test("排假匯出保留每日假別並區分未出勤紅字與假日出勤藍字", () => {
+  const model = buildScheduleExportModel({
+    periodMonth: "2026-09",
+    drafts: {
+      "2026-09:p1": {
+        dates: "1, 2, 3, 4, 5",
+        dayStatuses: { 1: "休", 2: "例", 3: "國", 4: "事假", 5: "特", 6: "休出", 7: "國出" },
+      },
+    },
+    storeGroups: [{
+      code: "S01", name: "鳳山五甲店", sourceCodes: ["S01"], demand: 0,
+      staff: [{ id: "p1", employeeName: "甲", role: "正式人員" }],
+    }],
+  });
+
+  assert.deepEqual(model.stores[0].staff[0].dayStatuses, {
+    1: "休", 2: "例", 3: "國", 4: "事假", 5: "特", 6: "休出", 7: "國出",
+  });
+  const xml = buildScheduleExcelXml(model);
+  ["休", "例", "國", "事假", "特"].forEach((status) => assert.match(xml, new RegExp(`<Cell ss:StyleID="Leave"><Data ss:Type="String">${status}</Data>`)));
+  ["休出", "國出"].forEach((status) => assert.match(xml, new RegExp(`<Cell ss:StyleID="WorkingHoliday"><Data ss:Type="String">${status}</Data>`)));
+  assert.equal(buildStoreDailyStaffingSummary(model, model.stores[0])[0].effective, 0);
+  assert.equal(buildStoreDailyStaffingSummary(model, model.stores[0])[5].effective, 1);
+  const html = buildPrintableScheduleHtml(model);
+  assert.match(html, /class="working-holiday">休出/);
+  assert.match(html, /class="working-holiday">國出/);
+});
+
 test("個人班表只包含本人日期、時段、門店及職稱", () => {
   const model = buildScheduleExportModel({
     periodMonth: "2026-08", version: 4,

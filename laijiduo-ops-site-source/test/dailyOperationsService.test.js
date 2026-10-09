@@ -34,6 +34,19 @@ function createRepositories() {
   };
 }
 
+test("RPC name in an error does not authorize a sequential retry", async () => {
+  for (const error of [
+    { code: "42501", message: "permission denied for function save_daily_operations" },
+    { code: "57014", message: "save_daily_operations statement timeout" },
+    { code: "42883", message: "function internal_helper() does not exist" },
+  ]) {
+    const repositories = createRepositories();
+    const service = createDailyOperationsService({ ...repositories, client: { rpc: async () => ({ error }) } });
+    await assert.rejects(service.save({ store_id: "store-1" }), (caught) => caught === error);
+    assert.deepEqual(repositories.calls, []);
+  }
+});
+
 test("atomic RPC saves report and inventory in one database operation", async () => {
   const repositories = createRepositories();
   const client = {
@@ -60,7 +73,7 @@ test("atomic RPC saves report and inventory in one database operation", async ()
   assert.deepEqual(repositories.calls, []);
 });
 
-test("missing RPC falls back to the compatible sequential adapters", async () => {
+test("missing production RPC fails closed without sequential writes", async () => {
   const repositories = createRepositories();
   const client = {
     async rpc() {
@@ -75,20 +88,21 @@ test("missing RPC falls back to the compatible sequential adapters", async () =>
   const wasteRows = [{ item_name: "雞翅", quantity: 1 }];
   const employeeMealRows = [{ item_code: "chicken_wing", quantity: 1 }];
 
-  const result = await service.save(
+  await assert.rejects(service.save(
     { store_id: "store-1", report_date: "2026-07-30" },
     inventoryRows,
     wasteRows,
     employeeMealRows,
-  );
+  ), /正式儲存服務尚未就緒/);
+  assert.deepEqual(repositories.calls, []);
+});
 
-  assert.equal(result.atomic, false);
-  assert.deepEqual(repositories.calls, [
-    ["report", { store_id: "store-1", report_date: "2026-07-30" }],
-    ["inventory", "report-1", inventoryRows],
-    ["waste", "report-1", wasteRows],
-    ["employeeMeals", "report-1", employeeMealRows],
-  ]);
+test("omitted meals remain untouched instead of sending JSON null", async () => {
+  const service = createDailyOperationsService({ client: { rpc: async (name, args) => {
+    assert.equal(Object.hasOwn(args.p_report, "employee_meals"), false);
+    return { data: { id: "r1" } };
+  } } });
+  await service.save({ store_id: "store-1" });
 });
 
 test("real RPC errors do not risk a second write attempt", async () => {

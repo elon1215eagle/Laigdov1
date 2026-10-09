@@ -33,8 +33,17 @@ export {
 export {
   normalizeStoreScopedScheduleCode,
   scheduleGroupForStore,
+  sortTemporarySupportRows,
   supportVisibleGroupsForTemporarySupport,
 } from "./domain/scheduleScope.js";
+
+export {
+  WUJIA_BACKOFFICE_UNIT_CODE,
+  WUJIA_STOREFRONT_UNIT_CODE,
+  buildWujiaScheduleUnits,
+  isWujiaBackofficeStaff,
+  scheduleUnitAllowsStaffAssignment,
+} from "./domain/scheduleUnits.js";
 
 export {
   createScheduleRepository,

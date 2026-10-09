@@ -13,7 +13,6 @@ import {
   submitDailyReportChangeRequest,
 } from "../../../lib/api.js";
 import {
-  STORE_MANAGER_REVENUE_LOOKBACK_DAYS,
   buildDailyReportChangeRequest,
   calculateScheduledHeadcount,
   createEmployeeMealRows,
@@ -35,6 +34,7 @@ import {
 } from "../../inventory/components/index.js";
 import { StoreOperationsView } from "./StoreOperationsView.jsx";
 import { EmployeeMealEditor } from "./EmployeeMealEditor.jsx";
+import { readReportInputs, reportInputsReady } from "../data/reportReadSnapshot.js";
 import {
   dailyReportDeadlineDate,
   overdueReportBusinessDate,
@@ -68,19 +68,29 @@ function hasSubmittedReport(report) {
   return Boolean(report?.id && report?.updated_at_label !== "尚未回報");
 }
 
+function hasIncompleteSubmittedRevenue(report) {
+  return report?.status === "submitted" && [
+    report.opened_to_1400_revenue,
+    report.revenue_1400_to_1900,
+    report.revenue_1900_to_close,
+  ].some(isBlankNumber);
+}
+
 function tone(status) {
   if (status === "approved") return "good";
   if (status === "submitted") return "warn";
   return "bad";
 }
 
-function RevenueInput({ label, helper, value, onChange, disabled = false }) {
+export function RevenueInput({ label, helper, value, onChange, disabled = false, stepLabel = "" }) {
   return (
-    <label className="input-card">
-      <span>{label}<small>{helper}</small></span>
+    <label className={`input-card ${stepLabel ? "revenue-step-input" : ""}`}>
+      <span>{stepLabel && <b>{stepLabel}</b>}{label}{helper && <small>{helper}</small>}</span>
       <input
         type="number"
         inputMode="decimal"
+        placeholder="0"
+        aria-label={label}
         value={numericInputValue(value)}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
@@ -157,6 +167,10 @@ export function StoreReportPage({
   const [scheduledHeadcount, setScheduledHeadcount] = useState(Number(report.scheduled_staff_count || 0));
   const [wasteItems, setWasteItems] = useState([]);
   const [employeeMealItems, setEmployeeMealItems] = useState(() => createEmployeeMealRows());
+  const [readState, setReadState] = useState({ phase: "loading" });
+  const [readAttempt, setReadAttempt] = useState(0);
+  const readKey = `${report.store_id}:${report.id || "new"}:${reportDate}:${report.status}:${readAttempt}`;
+  const inputsReady = reportInputsReady(readState, readKey);
 
   const revenueBreakdown = deriveRevenueBreakdown(form);
   const computedCloseRevenue = revenueBreakdown.revenue1900ToClose;
@@ -169,15 +183,10 @@ export function StoreReportPage({
     reportStatus: report.status,
     reportId: report.id,
     changeRequests,
+    hasIncompleteRevenue: hasIncompleteSubmittedRevenue(report),
   });
   const minReportDate = isStoreManagerView ? storeManagerRevenueMinDate(today) : "";
   const target = Math.max(1, Number(report.target || 0));
-  const salesSteps = [
-    ["1", "14:00", "開店至 14:00 營收", form.opened_to_1400_revenue],
-    ["2", "19:00", "14:00 至 19:00 營收", form.revenue_1400_to_1900],
-    ["3", "全日", "打烊後填寫全日總營收", form.full_day_revenue],
-  ];
-
   useEffect(() => {
     setDateDraft(reportDate || today);
     setAuthCode("");
@@ -186,28 +195,42 @@ export function StoreReportPage({
 
   useEffect(() => {
     let active = true;
-    async function loadInventory() {
+    async function loadInputs() {
+      setReadState({ key: readKey, phase: "loading" });
       try {
-        const [savedRows, previousRows] = await Promise.all([
-          fetchInventoryCounts(report.id),
-          fetchPreviousInventoryCounts(report.store_id, reportDate),
-        ]);
-        if (active) setInventory(mergeInventoryRows(products, savedRows, previousRows, {
+        const periodMonth = String(reportDate || today).slice(0, 7);
+        const data = await readReportInputs({
+          inventory: { label: "當日庫存", read: () => fetchInventoryCounts(report.id) },
+          previous: { label: "昨日庫存", read: () => fetchPreviousInventoryCounts(report.store_id, reportDate) },
+          leavePlans: { label: "排假資料", read: () => fetchMonthlyLeavePlans(periodMonth) },
+          shifts: { label: "班次資料", read: () => fetchDailyStaffShifts(periodMonth) },
+          waste: { label: "耗損資料", read: () => fetchDailyReportWasteItems(report.id) },
+          meals: { label: "員餐資料", read: () => fetchDailyReportEmployeeMeals(report.id) },
+          requests: { label: "異動申請", read: () => fetchDailyReportChangeRequests(report.id ? [report.id] : []) },
+        });
+        if (!active) return;
+        const headcount = calculateScheduledHeadcount({ staff: staffRoster,
+          leavePlans: data.leavePlans, shifts: data.shifts, storeCode: report.store_code,
+          storeCodes: report.sourceCodes || [], storeName: report.name, reportDate });
+        setInventory(mergeInventoryRows(products, data.inventory, data.previous, {
           storeCode: storeCode || report.store_code || "",
           reportDate,
         }));
-      } catch {
-        if (active) setInventory(products.map((product) => blankInventoryProduct(product, {
-          storeCode: storeCode || report.store_code || "",
-          reportDate,
-        })));
+        setScheduledHeadcount(headcount);
+        setForm(current => ({ ...current, actual_staff_count: current.actual_staff_count === "" ? headcount : current.actual_staff_count }));
+        setWasteItems(data.waste);
+        setEmployeeMealItems(createEmployeeMealRows(data.meals));
+        setChangeRequests(data.requests);
+        setReadState({ key: readKey, phase: "ready" });
+      } catch (error) {
+        if (active) setReadState({ key: readKey, phase: "error", message: error.message });
       }
     }
-    loadInventory();
+    loadInputs();
     return () => {
       active = false;
     };
-  }, [products, report.id, report.store_code, report.store_id, reportDate, storeCode]);
+  }, [readKey, products, staffRoster, storeCode, today]);
 
   useEffect(() => {
     let active = true;
@@ -237,79 +260,16 @@ export function StoreReportPage({
     };
   }, [report.store_code, report.store_id, today]);
 
-  useEffect(() => {
-    let active = true;
-    async function loadChangeRequests() {
-      try {
-        const rows = await fetchDailyReportChangeRequests(report.id ? [report.id] : []);
-        if (active) setChangeRequests(rows);
-      } catch {
-        if (active) setChangeRequests([]);
-      }
-    }
-    loadChangeRequests();
-    return () => {
-      active = false;
-    };
-  }, [report.id, report.status]);
-
-  useEffect(() => {
-    let active = true;
-    async function loadOperationalDetails() {
-      try {
-        const periodMonth = String(reportDate || today).slice(0, 7);
-        const [leavePlans, shifts, savedWaste, savedEmployeeMeals] = await Promise.all([
-          fetchMonthlyLeavePlans(periodMonth).catch(() => []),
-          fetchDailyStaffShifts(periodMonth).catch(() => []),
-          fetchDailyReportWasteItems(report.id).catch(() => []),
-          fetchDailyReportEmployeeMeals(report.id).catch(() => []),
-        ]);
-        if (!active) return;
-        const headcount = calculateScheduledHeadcount({
-          staff: staffRoster,
-          leavePlans,
-          shifts,
-          storeCode: report.store_code,
-          storeCodes: report.sourceCodes || [],
-          storeName: report.name,
-          reportDate,
-        });
-        setScheduledHeadcount(headcount);
-        setForm((current) => ({
-          ...current,
-          actual_staff_count: current.actual_staff_count === "" ? headcount : current.actual_staff_count,
-        }));
-        setWasteItems(savedWaste);
-        setEmployeeMealItems(createEmployeeMealRows(savedEmployeeMeals));
-      } catch {
-        if (!active) return;
-        const fallbackHeadcount = Number(report.scheduled_staff_count || 0);
-        setScheduledHeadcount(fallbackHeadcount);
-        setForm((current) => ({
-          ...current,
-          actual_staff_count: current.actual_staff_count === "" ? fallbackHeadcount : current.actual_staff_count,
-        }));
-        setWasteItems([]);
-        setEmployeeMealItems(createEmployeeMealRows());
-      }
-    }
-    loadOperationalDetails();
-    return () => {
-      active = false;
-    };
-  }, [report.id, report.scheduled_staff_count, report.store_code, reportDate, staffRoster, today]);
-
   async function submit() {
-    if (!workflowAccess.canEdit) return;
+    if (!workflowAccess.canSubmit || !inputsReady || saving) return;
     setSaving(true);
-    await onSave(
+    try { await onSave(
       form,
       inventory,
       normalizeWasteItems(wasteItems),
       scheduledHeadcount,
       normalizeEmployeeMealItems(employeeMealItems),
-    );
-    setSaving(false);
+    ); } finally { setSaving(false); }
   }
 
   async function requestChange() {
@@ -408,7 +368,7 @@ export function StoreReportPage({
             onClick={applyReportDate}
             disabled={dateDraft === reportDate || (requiresPastDateAuth && authCode !== "8599")}
           >
-            {requiresPastDateAuth ? "確認修改日期" : "載入營業日"}
+            {requiresPastDateAuth ? "確認修改日期" : "確認日期"}
           </button>
         </div>
 
@@ -419,14 +379,6 @@ export function StoreReportPage({
             : ""}
         </div>
 
-        <div className="alert-line">
-          店長只需輸入 14:00、19:00 與全日總營收，系統自動計算 19:00 至打烊。
-        </div>
-        {isStoreManagerView && (
-          <div className="alert-line warn">
-            每日回報修改僅開放最近 {STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天；門店營運視圖可查看本月完整營收。
-          </div>
-        )}
         {reportDate === lateReportDate && <div className="alert-line warn">目前正在補填已逾上午10:00截止時間的前一營業日。</div>}
         {reportDate < today && reportDate !== lateReportDate && <div className="alert-line warn">目前正在修改歷史營業日 {reportDate}。</div>}
         {workflowAccess.isLocked && (
@@ -437,6 +389,9 @@ export function StoreReportPage({
         {workflowAccess.changeRequest?.status === "pending" && (
           <div className="alert-line warn">修改申請已送出，等待總部核准。</div>
         )}
+        {workflowAccess.canRepairIncompleteSubmission && (
+          <div className="alert-line warn">此回報尚未完成營收，可補填後重新送出。</div>
+        )}
         {requestError && <div className="alert-line danger">{requestError}</div>}
         {revenueInvalid && (
           <div className="alert-line danger">
@@ -444,41 +399,38 @@ export function StoreReportPage({
           </div>
         )}
 
+        {!inputsReady && (
+          <div className="alert-line report-read-alert" role={readState.key === readKey && readState.phase === "error" ? "alert" : "status"}>
+            <span>{readState.key === readKey && readState.phase === "error" ? readState.message : "正在讀取回報明細，暫時無法編輯或送出。"}</span>
+            {readState.key === readKey && readState.phase === "error" && <button type="button" onClick={() => setReadAttempt(value => value + 1)}>重新讀取</button>}
+          </div>
+        )}
+        <fieldset className="report-read-guard" disabled={!inputsReady || saving}>
         <div className="store-today-panel">
-          <div>
+          <div className="store-today-progress">
             <span>今日完成進度</span>
             <strong>{completedSteps}/3 個營收節點</strong>
-            <p>完成營收、庫存、進貨及現金差異後即可送出。</p>
-          </div>
-          <div className="store-action-chips">
-            <span className={completedSteps >= 3 ? "done" : ""}>營收</span>
-            <span className={hasInventoryInput ? "done" : ""}>庫存</span>
-            <span className={!isBlankNumber(form.cash_difference) ? "done" : ""}>現金</span>
+            <div className="store-action-chips">
+              <span className={completedSteps >= 3 ? "done" : ""}>營收</span>
+              <span className={hasInventoryInput ? "done" : ""}>庫存</span>
+              <span className={!isBlankNumber(form.cash_difference) ? "done" : ""}>現金</span>
+            </div>
           </div>
         </div>
 
-        <div className="segments">
+        <div className="segments store-report-segments">
           <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
-          <button className={tab === "details" ? "active" : ""} onClick={() => setTab("details")}>營運補充</button>
-          <button className={tab === "ops" ? "active" : ""} onClick={() => setTab("ops")}>門店營運視圖</button>
-          <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
+          <button className={tab === "details" ? "active" : ""} onClick={() => setTab("details")}>補充</button>
           <button className={tab === "incoming" ? "active" : ""} onClick={() => setTab("incoming")}>進貨</button>
+          <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
+          <button className={`wide${tab === "ops" ? " active" : ""}`} onClick={() => setTab("ops")}>門店營運視圖</button>
         </div>
 
         {tab === "sales" ? (
           <div className="mobile-stack">
-            <div className="step-strip">
-              {salesSteps.map(([step, title, detail, value]) => (
-                <div className={!isBlankNumber(value) ? "done" : ""} key={title}>
-                  <span>{step}</span>
-                  <strong>{title}</strong>
-                  <small>{detail}</small>
-                </div>
-              ))}
-            </div>
-            <RevenueInput disabled={!workflowAccess.canEdit} label="14:00" helper="開店至 14:00" value={form.opened_to_1400_revenue} onChange={(value) => setForm({ ...form, opened_to_1400_revenue: value })} />
-            <RevenueInput disabled={!workflowAccess.canEdit} label="19:00" helper="14:00 至 19:00" value={form.revenue_1400_to_1900} onChange={(value) => setForm({ ...form, revenue_1400_to_1900: value })} />
-            <RevenueInput disabled={!workflowAccess.canEdit} label="全日總營收" helper="打烊後的全日總額" value={form.full_day_revenue} onChange={(value) => setForm({ ...form, full_day_revenue: value })} />
+            <RevenueInput stepLabel="1" disabled={!workflowAccess.canEdit} label="14:00" value={form.opened_to_1400_revenue} onChange={(value) => setForm({ ...form, opened_to_1400_revenue: value })} />
+            <RevenueInput stepLabel="2" disabled={!workflowAccess.canEdit} label="19:00" value={form.revenue_1400_to_1900} onChange={(value) => setForm({ ...form, revenue_1400_to_1900: value })} />
+            <RevenueInput stepLabel="3" disabled={!workflowAccess.canEdit} label="全日總營收" value={form.full_day_revenue} onChange={(value) => setForm({ ...form, full_day_revenue: value })} />
             <div className="input-card calculated-card">
               <span>19:00 至打烊<small>全日總營收 - 14:00 - 19:00</small></span>
               <strong>{money(computedCloseRevenue)}</strong>
@@ -632,8 +584,8 @@ export function StoreReportPage({
         )}
 
         {tab !== "ops" && (
-          <button className="submit-button" disabled={saving || revenueInvalid || !workflowAccess.canSubmit} onClick={submit}>
-            {saving ? "送出中..." : "送出每日營運回報"}
+          <button className="submit-button" disabled={!inputsReady || saving || completedSteps < 3 || revenueInvalid || !workflowAccess.canSubmit} onClick={submit}>
+            {saving ? "送出中..." : "送出回報"}
           </button>
         )}
         {workflowAccess.canRequestChange && (
@@ -651,6 +603,7 @@ export function StoreReportPage({
             </button>
           </div>
         )}
+        </fieldset>
       </section>
 
       <section className="panel companion">

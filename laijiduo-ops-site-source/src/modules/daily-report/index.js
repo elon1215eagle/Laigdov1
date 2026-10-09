@@ -4,12 +4,13 @@ export {
   totalRevenue,
 } from "./domain/dailyReport.js";
 export {
+  buildWeeklyStoreGroups,
   buildStoreWeeklyComparisonRows,
   buildWeeklySameDayRows,
 } from "./domain/weeklyComparison.js";
 export { buildStoreOperationsModel } from "./domain/storeOperations.js";
 export {
-  STORE_MANAGER_REVENUE_LOOKBACK_DAYS,
+  STORE_MANAGER_REVENUE_ACCESS_LABEL,
   isStoreManagerRevenueDateAllowed,
   storeManagerRevenueMinDate,
 } from "./domain/reportAccess.js";

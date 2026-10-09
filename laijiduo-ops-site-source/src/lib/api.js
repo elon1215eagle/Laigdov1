@@ -1,11 +1,13 @@
 import { handoverSeed, hqTaskSeed, performanceSeed, productsSeed, staffRosterSeed, storesSeed } from "./mockData";
 import { hasSupabaseConfig, supabase } from "./supabase";
 import { totalRevenue as calculateTotalRevenue } from "../modules/daily-report";
-import { normalizeLoginIdentifier } from "../domain/loginIdentifier.js";
+import { signInWithIdentifier } from "../modules/account-management/shortLogin.js";
+import { modulesForRole } from "../modules/access/index.js";
 import {
   buildStaffProfile,
   createStaffPositionRepository,
   createStaffStoreAssignmentRepository,
+  normalizeAuthorizedStoreStaffRows,
   normalizeStoreStaffRow as normalizeStoreStaffProfileRow,
 } from "../modules/hr";
 import {
@@ -222,14 +224,13 @@ export function statusLabel(status) {
 
 export async function signIn(email, password) {
   if (!supabase) throw new Error("尚未設定 Supabase 環境變數");
-  const loginEmail = normalizeLoginIdentifier(email);
-  const { data, error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
-  if (error) throw error;
-  return data;
+  return signInWithIdentifier(supabase, email, password);
 }
 
 export async function signOut() {
   if (!supabase) return;
+  try { await (await import('../modules/transfer-push/client.js')).stopPushBeforeLogout(); }
+  catch { /* Local subscription/session cleanup must not prevent account logout. */ }
   await supabase.auth.signOut();
 }
 
@@ -244,8 +245,13 @@ export async function getSessionProfile() {
     .from("profiles")
     .select("*")
     .eq("id", user.id)
-    .single();
+    .maybeSingle();
   if (error) throw error;
+  if (!data || !data.is_active || !modulesForRole(data.role).length) {
+    const accessError = new Error("此帳號未開放營運 APP，請回到原所屬 APP 使用；如需營運權限，請由總部另行授權。");
+    accessError.code = "OPERATIONS_ACCESS_DENIED";
+    throw accessError;
+  }
   return data;
 }
 
@@ -712,20 +718,9 @@ export async function fetchStoreStaff() {
     if (isMissingSupabaseTable(error)) return staffRosterSeed;
     throw error;
   }
-  const savedRows = (data || []).map(normalizeStoreStaffProfileRow);
-  const savedById = new Map(savedRows.map((row) => [row.id, row]));
-  const inactiveIds = new Set(savedRows.filter((row) => row.is_active === false).map((row) => row.id));
-  const seedRows = staffRosterSeed
-    .filter((row) => !inactiveIds.has(row.id))
-    .map((row, index) => savedById.get(row.id) || normalizeStoreStaffProfileRow(row, index));
-  const customRows = savedRows.filter((row) => row.is_active !== false && !staffRosterSeed.some((seed) => seed.id === row.id));
-  return [...seedRows, ...customRows]
-    .filter((row) => row.is_active !== false)
-    .sort((a, b) => (
-      String(a.store_code || "").localeCompare(String(b.store_code || "")) ||
-      Number(a.sort_order || 999) - Number(b.sort_order || 999) ||
-      String(a.employeeName || "").localeCompare(String(b.employeeName || ""), "zh-Hant")
-    ));
+  // The secure RPC may intentionally return only the signed-in store's rows.
+  // Never restore unseen legacy seed people, or transferred staff reappear in their former store.
+  return normalizeAuthorizedStoreStaffRows(data || []);
 }
 
 export async function fetchInactiveStoreStaff() {

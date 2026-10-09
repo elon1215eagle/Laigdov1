@@ -3,11 +3,15 @@ import assert from "node:assert/strict";
 import {
   EMPLOYMENT_STATUS_OPTIONS,
   EMPLOYMENT_TYPE_OPTIONS,
+  HR_HEADQUARTERS_STORE,
   STAFF_ROLE_OPTIONS,
   WORK_CATEGORY_OPTIONS,
   buildStaffProfile,
   createStaffForm,
+  defaultWorkCategoryForRole,
+  isOperationalStoreStaff,
   isStoreLeadershipRole,
+  normalizeAuthorizedStoreStaffRows,
   normalizeStoreStaffRow,
   staffRoleRank,
   staffMemberToForm,
@@ -15,7 +19,7 @@ import {
 
 test("人員分類選項符合第一階段核定內容且沒有重複", () => {
   assert.deepEqual(EMPLOYMENT_TYPE_OPTIONS, ["正職", "兼職"]);
-  assert.deepEqual(STAFF_ROLE_OPTIONS, ["委任店經理", "店長", "代理店長", "副店長", "代理副店", "資深人員", "正式人員", "新進人員", "兼職人員", "總部人員"]);
+  assert.deepEqual(STAFF_ROLE_OPTIONS, ["委任店經理", "店長", "代理店長", "副店長", "代理副店", "資深人員", "正式人員", "新進人員", "兼職人員", "送貨人員", "總部人員"]);
   assert.deepEqual(WORK_CATEGORY_OPTIONS, ["門店營運", "後勤", "送貨", "總部"]);
   assert.deepEqual(EMPLOYMENT_STATUS_OPTIONS, ["待到職", "在職", "留職停薪", "已離職", "停用"]);
 });
@@ -30,9 +34,22 @@ test("舊兼職後勤資料會轉成獨立分類而不遺失", () => {
 
 test("舊送貨人員資料會保留送貨工作類別", () => {
   const row = normalizeStoreStaffRow({ role_name: "送貨人員", is_active: true });
-  assert.equal(row.role, "正式人員");
+  assert.equal(row.role, "送貨人員");
   assert.equal(row.employment_type, "正職");
   assert.equal(row.work_category, "送貨");
+});
+
+test("人資主檔提供營運總部歸屬與送貨人員預設分類", () => {
+  assert.deepEqual(HR_HEADQUARTERS_STORE, { store_code: "HQ", name: "營運總部" });
+  assert.equal(defaultWorkCategoryForRole("送貨人員"), "送貨");
+  assert.equal(defaultWorkCategoryForRole("總部人員"), "總部");
+  assert.equal(createStaffForm({ storeCode: "HQ", storeName: "營運總部", roleName: "送貨人員" }).work_category, "送貨");
+});
+
+test("營運總部人員只留在人資主檔，不進入門店營運表格", () => {
+  assert.equal(isOperationalStoreStaff({ store_code: "HQ", store_name: "營運總部" }), false);
+  assert.equal(isOperationalStoreStaff({ store_code: "", store_name: "營運總部" }), false);
+  assert.equal(isOperationalStoreStaff({ store_code: "S01", store_name: "鳳山五甲店" }), true);
 });
 
 test("兼職可使用不同職稱並保留平假日預設工時", () => {
@@ -111,4 +128,16 @@ test("資料列與編輯表單使用同一套分類正規化", () => {
   assert.equal(form.weekday_start_time, "12:00:00");
   assert.equal(form.holiday_end_time, "20:00:00");
   assert.equal(createStaffForm({ storeCode: "S01" }).store_code, "S01");
+});
+
+test("門店授權名單不會補回看不到的舊門店種子人員", () => {
+  const rows = normalizeAuthorizedStoreStaffRows([
+    { id: "staff-12", store_code: "S05", employee_name: "阿斌", role_name: "店長", is_active: true, sort_order: 30 },
+    { id: "staff-17", store_code: "S05", employee_name: "仁彰", role_name: "正式人員", is_active: true, sort_order: 35 },
+    { id: "staff-24", store_code: "S05", employee_name: "道豐", role_name: "新進人員", is_active: true, sort_order: 52 },
+    { id: "inactive", store_code: "S05", employee_name: "停用人員", role_name: "正式人員", is_active: false },
+  ]);
+
+  assert.deepEqual(rows.map((row) => row.employeeName), ["阿斌", "仁彰", "道豐"]);
+  assert.equal(rows.some((row) => ["威廷", "易勳"].includes(row.employeeName)), false);
 });

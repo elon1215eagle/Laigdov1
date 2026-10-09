@@ -13,6 +13,32 @@ function leaveDaysFromDraft(draft = {}) {
   );
 }
 
+const SCHEDULE_DAY_STATUSES = new Set(["休", "例", "國", "事假", "休出", "國出", "特"]);
+const NON_WORKING_DAY_STATUSES = new Set(["休", "例", "國", "事假", "特"]);
+const WORKING_HOLIDAY_STATUSES = new Set(["休出", "國出"]);
+
+function dayStatusesFromDraft(draft = {}, leaveDays = []) {
+  const statuses = Object.fromEntries(
+    Object.entries(draft.dayStatuses || draft.day_statuses || {})
+      .map(([day, status]) => [Number(day), status])
+      .filter(([day, status]) => Number.isInteger(day) && day >= 1 && day <= 31 && SCHEDULE_DAY_STATUSES.has(status)),
+  );
+  leaveDays.forEach((day) => {
+    if (!statuses[day]) statuses[day] = "休";
+  });
+  return statuses;
+}
+
+function personDayStatus(person, day) {
+  return person.dayStatuses?.[day] || (person.leaveDays.includes(day) ? "休" : "");
+}
+
+function dayStatusStyle(status) {
+  if (NON_WORKING_DAY_STATUSES.has(status)) return "Leave";
+  if (WORKING_HOLIDAY_STATUSES.has(status)) return "WorkingHoliday";
+  return "";
+}
+
 function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>"']/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
@@ -39,33 +65,45 @@ export function buildScheduleExportModel({
     generatedAt,
     days,
     weekendDays,
-    stores: storeGroups.map((store) => ({
+    stores: storeGroups.map((store) => {
+      const staffIds = new Set(store.staff.map((person) => String(person.id)));
+      return ({
       code: store.code,
       name: store.name,
       sourceCodes: store.sourceCodes || [store.code],
+      scheduleOnly: Boolean(store.scheduleOnly),
       openTime: store.open_time || "10:00",
       closeTime: store.close_time || store.close_report_time || "23:00",
       demand: Number(store.demand || 0),
-      staff: store.staff.map((person) => ({
-        id: String(person.id),
-        name: person.employeeName || person.employee_name || "",
-        role: person.role || person.role_name || "",
-        homeStoreCode: person.store_code || person.storeCode || store.code,
-        employmentType: person.employment_type || person.employmentType || "",
-        weekdayStartTime: person.weekday_start_time || person.work_start_time || "",
-        weekdayEndTime: person.weekday_end_time || person.work_end_time || "",
-        holidayStartTime: person.holiday_start_time || person.weekday_start_time || person.work_start_time || "",
-        holidayEndTime: person.holiday_end_time || person.weekday_end_time || person.work_end_time || "",
-        leaveDays: [...leaveDaysFromDraft(drafts[`${periodMonth}:${person.id}`])],
-      })),
-      shifts: dailyShifts.filter((shift) => store.sourceCodes.includes(shift.home_store_code) || store.sourceCodes.includes(shift.assigned_store_code)),
-    })),
+      staff: store.staff.map((person) => {
+        const draft = drafts[`${periodMonth}:${person.id}`] || {};
+        const leaveDays = [...leaveDaysFromDraft(draft)];
+        return {
+          id: String(person.id),
+          name: person.employeeName || person.employee_name || "",
+          role: person.role || person.role_name || "",
+          homeStoreCode: person.store_code || person.storeCode || store.code,
+          employmentType: person.employment_type || person.employmentType || "",
+          weekdayStartTime: person.weekday_start_time || person.work_start_time || "",
+          weekdayEndTime: person.weekday_end_time || person.work_end_time || "",
+          holidayStartTime: person.holiday_start_time || person.weekday_start_time || person.work_start_time || "",
+          holidayEndTime: person.holiday_end_time || person.weekday_end_time || person.work_end_time || "",
+          leaveDays,
+          dayStatuses: dayStatusesFromDraft(draft, leaveDays),
+        };
+      }),
+      shifts: dailyShifts.filter((shift) => (
+        shift.staff_id
+          ? staffIds.has(String(shift.staff_id))
+          : store.sourceCodes.includes(shift.home_store_code) || store.sourceCodes.includes(shift.assigned_store_code)
+      )),
+    }); }),
   };
 }
 
 export function buildStoreDailyStaffingSummary(model, store) {
   return model.days.map((day) => {
-    const effective = store.staff.filter((person) => !person.leaveDays.includes(day)).length;
+    const effective = store.staff.filter((person) => !NON_WORKING_DAY_STATUSES.has(personDayStatus(person, day))).length;
     const demand = Number(store.demand || 0);
     return { day, effective, demand, balance: effective - demand };
   });
@@ -92,11 +130,16 @@ export function buildScheduleExcelXml(model) {
     rows.push(`<Row ss:Height="${storeTitleHeight}">${excelCell(`${store.code} ${store.name}`, "StoreTitle")}</Row>`);
     rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("人員", "Header")}${model.days.map((day) => excelCell(`${day}日`, model.weekendDays.includes(day) ? "Weekend" : "Header")).join("")}</Row>`);
     store.staff.forEach((person) => {
-      rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell(`${person.name} ${person.role}`)}${model.days.map((day) => excelCell(person.leaveDays.includes(day) ? "休" : "", person.leaveDays.includes(day) ? "Leave" : "")).join("")}</Row>`);
+      rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell(`${person.name} ${person.role}`)}${model.days.map((day) => {
+        const status = personDayStatus(person, day);
+        return excelCell(status, dayStatusStyle(status));
+      }).join("")}</Row>`);
     });
-    rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("有效人力", "Summary")}${summaries.map((row) => excelCell(row.effective, "Summary")).join("")}</Row>`);
-    rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("店面需求", "Summary")}${summaries.map((row) => excelCell(row.demand, "Summary")).join("")}</Row>`);
-    rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("缺口小計", "Summary")}${summaries.map((row) => excelCell(row.balance, row.balance > 0 ? "Positive" : row.balance < 0 ? "Negative" : "Zero")).join("")}</Row>`);
+    if (!store.scheduleOnly) {
+      rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("有效人力", "Summary")}${summaries.map((row) => excelCell(row.effective, "Summary")).join("")}</Row>`);
+      rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("店面需求", "Summary")}${summaries.map((row) => excelCell(row.demand, "Summary")).join("")}</Row>`);
+      rows.push(`<Row ss:Height="${tableRowHeight}">${excelCell("缺口小計", "Summary")}${summaries.map((row) => excelCell(row.balance, row.balance > 0 ? "Positive" : row.balance < 0 ? "Negative" : "Zero")).join("")}</Row>`);
+    }
     if (storeIndex < model.stores.length - 1) rows.push("<Row/>");
   });
   return `<?xml version="1.0"?><?mso-application progid="Excel.Sheet"?>
@@ -107,6 +150,7 @@ export function buildScheduleExcelXml(model) {
 <Style ss:ID="Header"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1"/><Interior ss:Color="#FBEFE8" ss:Pattern="Solid"/></Style>
 <Style ss:ID="Weekend"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#D92D20"/><Interior ss:Color="#FBEFE8" ss:Pattern="Solid"/></Style>
 <Style ss:ID="Leave"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#D92D20"/></Style>
+<Style ss:ID="WorkingHoliday"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#175CD3"/></Style>
 <Style ss:ID="Summary"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1"/></Style>
 <Style ss:ID="Positive"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#175CD3"/></Style>
 <Style ss:ID="Negative"><Alignment ss:Horizontal="Center"/><Font ss:FontName="Microsoft JhengHei" ss:Bold="1" ss:Color="#D92D20"/></Style>
@@ -126,7 +170,8 @@ export function buildPersonalScheduleSnapshot(model, staffId) {
     if (!person) continue;
     const rows = model.days.map((day) => {
       const date = `${model.periodMonth}-${String(day).padStart(2, "0")}`;
-      if (person.leaveDays.includes(day)) return { date, status: "leave", label: "休假", shifts: [] };
+      const dayStatus = personDayStatus(person, day);
+      if (NON_WORKING_DAY_STATUSES.has(dayStatus)) return { date, status: "leave", label: dayStatus, shifts: [] };
       const explicit = store.shifts
         .filter((shift) => String(shift.staff_id) === String(person.id) && shift.shift_date === date)
         .map((shift) => ({
@@ -135,7 +180,8 @@ export function buildPersonalScheduleSnapshot(model, staffId) {
           store_code: shift.assigned_store_code || person.homeStoreCode,
           shift_type: shift.shift_type || "override",
         }));
-      if (explicit.length) return { date, status: "work", label: "上班", shifts: explicit };
+      if (explicit.length) return { date, status: "work", label: dayStatus || "上班", shifts: explicit };
+      if (WORKING_HOLIDAY_STATUSES.has(dayStatus)) return { date, status: "work", label: dayStatus, shifts: [] };
       return { date, status: "workday", label: "上班日", shifts: [] };
     });
     return {
@@ -154,13 +200,17 @@ export function buildPersonalScheduleSnapshot(model, staffId) {
 export function buildPrintableScheduleHtml(model) {
   const status = model.needsReconfirmation ? "異動後待總部重新確認" : "已核定版本";
   const stores = model.stores.map((store) => {
-    const rows = store.staff.map((person) => `<tr><th>${escapeHtml(person.name)}<small>${escapeHtml(person.role)}</small></th>${model.days.map((day) => `<td class="${person.leaveDays.includes(day) ? "leave" : ""}">${person.leaveDays.includes(day) ? "休" : ""}</td>`).join("")}</tr>`).join("");
+    const rows = store.staff.map((person) => `<tr><th>${escapeHtml(person.name)}<small>${escapeHtml(person.role)}</small></th>${model.days.map((day) => {
+      const dayStatus = personDayStatus(person, day);
+      const className = NON_WORKING_DAY_STATUSES.has(dayStatus) ? "leave" : WORKING_HOLIDAY_STATUSES.has(dayStatus) ? "working-holiday" : "";
+      return `<td class="${className}">${escapeHtml(dayStatus)}</td>`;
+    }).join("")}</tr>`).join("");
     const shifts = store.shifts.length ? `<h3>特殊班次／跨店支援</h3><ul>${store.shifts.map((shift) => `<li>${escapeHtml(shift.shift_date)} ${escapeHtml(shift.employee_name)} ${escapeHtml(shift.home_store_code)} → ${escapeHtml(shift.assigned_store_code)} ${escapeHtml(String(shift.start_time).slice(0, 5))}–${escapeHtml(String(shift.end_time).slice(0, 5))}</li>`).join("")}</ul>` : "";
     return `<section><h2>${escapeHtml(store.code)} ${escapeHtml(store.name)}</h2><table><thead><tr><th>人員</th>${model.days.map((day) => `<th>${day}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>${shifts}</section>`;
   }).join("");
   return `<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><title>萊吉多 ${escapeHtml(model.periodMonth)} 班表</title><style>
   @page{size:A4 landscape;margin:8mm}*{box-sizing:border-box}body{font-family:"Microsoft JhengHei",sans-serif;color:#231815;margin:0}header{border-bottom:3px solid #e63b21;padding-bottom:8px;margin-bottom:10px}h1{font-size:22px;margin:0 0 5px}header p{margin:2px 0;font-size:11px}section{page-break-after:always}section:last-child{page-break-after:auto}h2{font-size:17px;margin:8px 0}h3{font-size:13px;margin:10px 0 4px}table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:9px}th,td{border:1px solid #888;text-align:center;padding:3px 1px}th:first-child{width:90px;text-align:left;padding-left:4px}th small{display:block;font-weight:400;color:#666}.leave{background:#ffe0d8;color:#c42e18;font-weight:700}ul{columns:2;font-size:10px;margin-top:4px}.warn{color:#b42318;font-weight:700}@media print{button{display:none}}
-  </style></head><body><header><h1>萊吉多 ${escapeHtml(model.periodMonth)} 月班表</h1><p>版本 V${model.version} · ${status}</p><p>產生時間：${escapeHtml(new Date(model.generatedAt).toLocaleString("zh-TW"))}</p></header>${stores}</body></html>`;
+  .working-holiday{color:#175cd3;font-weight:700}</style></head><body><header><h1>萊吉多 ${escapeHtml(model.periodMonth)} 月班表</h1><p>版本 V${model.version} · ${status}</p><p>產生時間：${escapeHtml(new Date(model.generatedAt).toLocaleString("zh-TW"))}</p></header>${stores}</body></html>`;
 }
 
 export function selectScheduleImageStores(model, storeCode = "") {
@@ -175,10 +225,9 @@ export function renderScheduleCanvas(model, storeCode = "") {
   const width = 1600;
   const rowHeight = 54;
   const sectionHeaderHeight = 140;
-  const summaryRows = 3;
   const sectionGap = 48;
   const height = 60 + stores.reduce(
-    (total, store) => total + sectionHeaderHeight + (Math.max(store.staff.length, 1) + summaryRows) * rowHeight + sectionGap,
+    (total, store) => total + sectionHeaderHeight + (Math.max(store.staff.length, 1) + (store.scheduleOnly ? 0 : 3)) * rowHeight + sectionGap,
     0,
   );
   const canvas = document.createElement("canvas");
@@ -212,45 +261,50 @@ export function renderScheduleCanvas(model, storeCode = "") {
       model.days.forEach((day, dayIndex) => {
         const x = nameWidth + dayIndex * dayWidth;
         context.strokeRect(x, y, dayWidth, rowHeight);
-        if (person.leaveDays.includes(day)) {
-          context.fillStyle = "#ffe0d8";
-          context.fillRect(x + 1, y + 1, dayWidth - 2, rowHeight - 2);
-          context.fillStyle = "#c42e18";
+        const dayStatus = personDayStatus(person, day);
+        if (dayStatus) {
+          if (NON_WORKING_DAY_STATUSES.has(dayStatus)) {
+            context.fillStyle = "#ffe0d8";
+            context.fillRect(x + 1, y + 1, dayWidth - 2, rowHeight - 2);
+          }
+          context.fillStyle = WORKING_HOLIDAY_STATUSES.has(dayStatus) ? "#175cd3" : "#c42e18";
           context.textAlign = "center";
           context.textBaseline = "middle";
-          context.fillText("休", x + dayWidth / 2, y + rowHeight / 2);
+          context.fillText(dayStatus, x + dayWidth / 2, y + rowHeight / 2);
           context.textAlign = "start";
           context.textBaseline = "alphabetic";
         }
       });
     });
 
-    const summaries = buildStoreDailyStaffingSummary(model, store);
-    const summaryStartY = sectionTop + sectionHeaderHeight + staffRows.length * rowHeight;
-    [
-      { label: "有效人力", value: (row) => row.effective, color: () => "#231815" },
-      { label: "店面需求", value: (row) => row.demand, color: () => "#231815" },
-      { label: "缺口小計", value: (row) => row.balance, color: (row) => row.balance > 0 ? "#175cd3" : row.balance < 0 ? "#d92d20" : "#000000" },
-    ].forEach((summary, summaryIndex) => {
-      const y = summaryStartY + summaryIndex * rowHeight;
-      context.fillStyle = "#f7f7f7";
-      context.fillRect(20, y, width - 40, rowHeight);
-      context.fillStyle = "#231815";
-      context.font = "bold 18px Microsoft JhengHei";
-      context.fillText(summary.label, 36, y + 34);
-      summaries.forEach((row, dayIndex) => {
-        const x = nameWidth + dayIndex * dayWidth;
-        context.strokeRect(x, y, dayWidth, rowHeight);
-        context.fillStyle = summary.color(row);
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-        context.fillText(String(summary.value(row)), x + dayWidth / 2, y + rowHeight / 2);
-        context.textAlign = "start";
-        context.textBaseline = "alphabetic";
+    if (!store.scheduleOnly) {
+      const summaries = buildStoreDailyStaffingSummary(model, store);
+      const summaryStartY = sectionTop + sectionHeaderHeight + staffRows.length * rowHeight;
+      [
+        { label: "有效人力", value: (row) => row.effective, color: () => "#231815" },
+        { label: "店面需求", value: (row) => row.demand, color: () => "#231815" },
+        { label: "缺口小計", value: (row) => row.balance, color: (row) => row.balance > 0 ? "#175cd3" : row.balance < 0 ? "#d92d20" : "#000000" },
+      ].forEach((summary, summaryIndex) => {
+        const y = summaryStartY + summaryIndex * rowHeight;
+        context.fillStyle = "#f7f7f7";
+        context.fillRect(20, y, width - 40, rowHeight);
+        context.fillStyle = "#231815";
+        context.font = "bold 18px Microsoft JhengHei";
+        context.fillText(summary.label, 36, y + 34);
+        summaries.forEach((row, dayIndex) => {
+          const x = nameWidth + dayIndex * dayWidth;
+          context.strokeRect(x, y, dayWidth, rowHeight);
+          context.fillStyle = summary.color(row);
+          context.textAlign = "center";
+          context.textBaseline = "middle";
+          context.fillText(String(summary.value(row)), x + dayWidth / 2, y + rowHeight / 2);
+          context.textAlign = "start";
+          context.textBaseline = "alphabetic";
+        });
       });
-    });
+    }
 
-    sectionTop += sectionHeaderHeight + (staffRows.length + summaryRows) * rowHeight + sectionGap;
+    sectionTop += sectionHeaderHeight + (staffRows.length + (store.scheduleOnly ? 0 : 3)) * rowHeight + sectionGap;
   });
   return canvas;
 }

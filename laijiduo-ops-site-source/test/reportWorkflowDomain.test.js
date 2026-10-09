@@ -38,6 +38,28 @@ test("總部確認後門店鎖定，核准修改申請後才可編輯", () => {
   assert.equal(reopened.canSubmit, true);
 });
 
+test("只允許門店補填營收不完整的已送出回報", () => {
+  const incomplete = deriveDailyReportAccess({
+    roleName: "store_manager",
+    reportStatus: "submitted",
+    reportId: "report-1",
+    hasIncompleteRevenue: true,
+  });
+  const complete = deriveDailyReportAccess({
+    roleName: "store_manager",
+    reportStatus: "submitted",
+    reportId: "report-2",
+    hasIncompleteRevenue: false,
+  });
+
+  assert.equal(incomplete.canRepairIncompleteSubmission, true);
+  assert.equal(incomplete.canEdit, true);
+  assert.equal(incomplete.canSubmit, true);
+  assert.equal(complete.canRepairIncompleteSubmission, false);
+  assert.equal(complete.canEdit, false);
+  assert.equal(complete.canSubmit, false);
+});
+
 test("修改申請必須包含回報、門店及明確原因", () => {
   assert.deepEqual(buildDailyReportChangeRequest({
     reportId: "report-1",

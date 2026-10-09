@@ -35,6 +35,33 @@ test("全日營收小於前兩時段加總時判定無效", () => {
   assert.equal(result.revenue1900ToClose, 0);
 });
 
+test("三個營收節點未完成時不可送出，但明確填寫零元可以送出", () => {
+  assert.throws(
+    () => buildDailyReportPayload({
+      storeId: "store-1",
+      reportDate: "2026-10-07",
+      form: {
+        opened_to_1400_revenue: "",
+        revenue_1400_to_1900: "",
+        full_day_revenue: "",
+      },
+    }),
+    /請先完成 14:00、19:00 與全日總營收/,
+  );
+
+  const payload = buildDailyReportPayload({
+    storeId: "store-1",
+    reportDate: "2026-10-07",
+    form: {
+      opened_to_1400_revenue: 0,
+      revenue_1400_to_1900: 0,
+      full_day_revenue: 0,
+    },
+  });
+  assert.equal(payload.status, "submitted");
+  assert.equal(payload.revenue_1900_to_close, 0);
+});
+
 test("建立門店與總部共用的正式回報 payload", () => {
   const payload = buildDailyReportPayload({
     storeId: "store-1",

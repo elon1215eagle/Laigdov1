@@ -1,21 +1,9 @@
-export function ProductGrid({ onAdd, products }) {
-  const categories = [...new Set(products.map((product) => product.category))];
-  return (
-    <div className="qc-product-groups">
-      {categories.map((category) => (
-        <section className="qc-product-group" key={category}>
-          <h2>{category}</h2>
-          <div className="qc-product-grid">
-            {products.filter((product) => product.category === category).map((product) => (
-              <button className="qc-product-button" disabled={!product.isPriceConfirmed} key={product.code} onClick={() => onAdd(product.code)} type="button">
-                <strong>{product.name}</strong>
-                {product.fixedWeightGrams && <span>{product.fixedWeightGrams} 克</span>}
-                <em>{product.isPriceConfirmed ? `NT$${product.price}` : "待設定價格"}</em>
-              </button>
-            ))}
-          </div>
-        </section>
-      ))}
-    </div>
-  );
+import { useState } from "react";
+export function ProductGrid({ onAdd, products, order }) {
+  const [category, setCategory] = useState("全部");
+  const categories = ["全部", ...new Set(products.map(p => p.category))];
+  return <section className="qc-product-groups" aria-label="商品選單"><div className="qc-filter-tabs">{categories.map(c => <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c)}>{c}</button>)}</div><div className="qc-product-grid">{products.filter(p => category === "全部" || p.category === category).map(p => {
+    const quantity = order?.lines.filter(l => l.productCode === p.code).reduce((sum, l) => sum + l.quantity, 0) || 0;
+    return <button className={`qc-product-button ${quantity ? "has-items" : ""}`} disabled={!p.isPriceConfirmed} key={p.code} onClick={() => onAdd(p.code)} type="button" aria-label={`加入${p.name}`}><strong>{p.name}</strong><span>{p.fixedWeightGrams ? `${p.fixedWeightGrams} 克` : p.category}</span><em>{p.isPriceConfirmed ? `NT$ ${p.price}` : "待設定價格"}</em>{quantity > 0 && <small className="qc-selected-count">已選 {quantity}</small>}</button>;
+  })}</div></section>;
 }

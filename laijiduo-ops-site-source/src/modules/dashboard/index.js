@@ -1,4 +1,5 @@
 export {
+  buildDailyOverviewReports,
   buildOperationsOverview,
   buildOperationsPriorities,
   hasSubmittedOperationsReport,

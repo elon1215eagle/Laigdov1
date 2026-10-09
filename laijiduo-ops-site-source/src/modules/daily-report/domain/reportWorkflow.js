@@ -35,26 +35,34 @@ export function deriveDailyReportAccess({
   reportStatus = REPORT_STATUS.DRAFT,
   reportId = null,
   changeRequests = [],
+  hasIncompleteRevenue = false,
 }) {
   const isStoreManager = roleName === "store_manager";
   const canConfirm = canConfirmDailyReport(roleName);
   const changeRequest = findOpenChangeRequest(changeRequests, reportId);
   const hasApprovedChangeRequest = changeRequest?.status === CHANGE_REQUEST_STATUS.APPROVED;
+  const canRepairIncompleteSubmission = isStoreManager
+    && reportStatus === REPORT_STATUS.SUBMITTED
+    && hasIncompleteRevenue;
   const isLocked = reportStatus === REPORT_STATUS.APPROVED && !hasApprovedChangeRequest;
 
   return {
     canConfirm,
     canEdit: canConfirm
+      || canRepairIncompleteSubmission
       || (isStoreManager && (EDITABLE_REPORT_STATUSES.has(reportStatus) || hasApprovedChangeRequest)),
     canSubmit: canConfirm || (
       isStoreManager
-      && (EDITABLE_REPORT_STATUSES.has(reportStatus) || hasApprovedChangeRequest)
+      && (EDITABLE_REPORT_STATUSES.has(reportStatus)
+        || hasApprovedChangeRequest
+        || canRepairIncompleteSubmission)
     ),
     canRequestChange: isStoreManager
       && Boolean(reportId)
       && reportStatus === REPORT_STATUS.APPROVED
       && !changeRequest,
     canReviewChangeRequest: canConfirm,
+    canRepairIncompleteSubmission,
     changeRequest,
     isLocked,
   };

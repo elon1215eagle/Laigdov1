@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   activeOrder,
   allItemsPacked,
@@ -8,7 +8,6 @@ import {
   createSupabaseQuickCheckoutAdapter,
   loadQuickCheckoutDevice,
   orderItemCount,
-  orderLineSummary,
   orderTotals,
   ORDER_STATUS,
   QUICK_CHECKOUT_DEMO_PRODUCTS,
@@ -20,7 +19,9 @@ import { CustomerTabs } from "./components/CustomerTabs.jsx";
 import { OrderPanel } from "./components/OrderPanel.jsx";
 import { PaymentSheet } from "./components/PaymentSheet.jsx";
 import { ProductGrid } from "./components/ProductGrid.jsx";
+import { PackingPanel } from "./components/PackingPanel.jsx";
 import "./quickCheckout.css";
+import "./checkoutDesign.css";
 
 const DEMO_STORES = [
   ["S01", "鳳山五甲店"], ["S02", "鳳山凱旋店"], ["S03", "鳳山武廟店"],
@@ -89,6 +90,9 @@ export function QuickCheckoutPage() {
   const [device, setDevice] = useState(() => loadQuickCheckoutDevice());
   const [workspace, setWorkspace] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
+  const busy = useRef(false);
   const [message, setMessage] = useState("");
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -102,21 +106,31 @@ export function QuickCheckoutPage() {
 
   useEffect(() => {
     if (!quickCheckout) { setLoading(false); return; }
+    let active = true;
     setLoading(true);
+    setLoadError("");
     quickCheckout.loadWorkspace()
-      .then((saved) => setWorkspace(saved))
-      .catch(() => {
-        clearQuickCheckoutDevice();
-        setDevice(null);
-        setMessage("裝置綁定已失效，請由管理者重新綁定門市。");
+      .then((saved) => { if (active) setWorkspace(saved); })
+      .catch((error) => {
+        if (!active) return;
+        if (error.message === "invalid or revoked device") {
+          clearQuickCheckoutDevice();
+          setDevice(null);
+          setMessage("裝置綁定已失效，請由管理者重新綁定門市。");
+        } else {
+          setLoadError("目前無法確認雲端點單資料，門市綁定已保留。請恢復連線後重試。");
+        }
       })
-      .finally(() => setLoading(false));
-  }, [quickCheckout]);
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [quickCheckout, reloadKey]);
 
   const orders = useMemo(() => workspace ? visibleOrders(workspace) : [], [workspace]);
   const order = workspace ? activeOrder(workspace) : null;
 
   async function run(command) {
+    if (busy.current) return null;
+    busy.current = true;
     try {
       const next = await quickCheckout.execute(workspace, command);
       setWorkspace(next);
@@ -125,19 +139,32 @@ export function QuickCheckoutPage() {
     } catch (error) {
       setMessage(error.message);
       return null;
+    } finally {
+      busy.current = false;
     }
   }
 
   async function startWorkspace(setup) {
-    let next = await quickCheckout.startWorkspace(setup);
-    next = await quickCheckout.execute(next, { type: "open_order" });
-    setWorkspace(next);
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      let next = await quickCheckout.startWorkspace(setup);
+      setWorkspace(next);
+      next = await quickCheckout.execute(next, { type: "open_order" });
+      setWorkspace(next);
+    } catch {
+      setLoadError("操作結果待確認，請重新讀取雲端資料，勿重複建立。");
+    } finally { busy.current = false; }
   }
 
   async function resetDevice() {
-    if (!window.confirm("確定結束目前操作？進行中的訂單將清除，門市綁定會保留。")) return;
-    await quickCheckout.reset();
-    setWorkspace(null);
+    if (busy.current) return;
+    if (orders.length) { setMessage("尚有未完成訂單，請先完成或逐筆取消並留下原因。"); return; }
+    if (!window.confirm("確定結束目前操作？已完成訂單仍保留於雲端。")) return;
+    busy.current = true;
+    try { await quickCheckout.reset(); setWorkspace(null); }
+    catch { setLoadError("結束操作結果待確認，請重新讀取雲端資料。"); }
+    finally { busy.current = false; }
   }
 
   function unbindDevice() {
@@ -160,6 +187,7 @@ export function QuickCheckoutPage() {
   }
 
   if (loading) return <div className="qc-loading">載入點單資料...</div>;
+  if (loadError) return <main className="qc-setup-shell"><section className="qc-setup-card"><p role="alert">{loadError}</p><button type="button" onClick={() => setReloadKey((key) => key + 1)}>重新讀取</button></section></main>;
   if (!device) return <DeviceBindingScreen message={message} onBound={(boundDevice) => { setMessage(""); setDevice(boundDevice); }} />;
   if (!workspace) return <SetupScreen device={device} onStart={startWorkspace} onUnbind={unbindDevice} />;
 
@@ -181,8 +209,10 @@ export function QuickCheckoutPage() {
 
       {order ? (
         <div className="qc-workspace">
-          {order.status === ORDER_STATUS.DRAFT && <ProductGrid products={quickCheckout.catalog} onAdd={(productCode) => run({ type: "order_command", command: { type: "add_product", productCode } })} />}
-          <OrderPanel editable={order.status === ORDER_STATUS.DRAFT} order={order} onCommand={(command) => run({ type: "order_command", command })} />
+          {order.status === ORDER_STATUS.DRAFT && <ProductGrid order={order} products={quickCheckout.catalog} onAdd={(productCode) => run({ type: "order_command", command: { type: "add_product", productCode } })} />}
+          {order.status === ORDER_STATUS.DRAFT
+            ? <OrderPanel key={order.id} order={order} onCommand={(command) => run({ type: "order_command", command })} />
+            : <PackingPanel order={order} readonly={order.status === ORDER_STATUS.PACKED} onCommand={(command) => run({ type: "order_command", command })} />}
         </div>
       ) : (
         <section className="qc-no-orders"><strong>目前沒有進行中訂單</strong><span>請按上方「下一位客人」開始點單</span></section>
@@ -222,19 +252,8 @@ export function QuickCheckoutPage() {
         </footer>
       )}
 
-      {[ORDER_STATUS.PACKING, ORDER_STATUS.PAID].includes(order?.status) && (
-        <section className={`qc-packing-panel color-${order.colorKey}`}>
-          <h2>{order.pickupNumber} 打包核對</h2>
-          <p>先依畫面逐項完成打包核對。全部完成後按「全部打包完成」。</p>
-          {order.lines.map((line) => (
-            <button className={line.packed ? "packed" : ""} key={line.id} onClick={() => run({ type: "order_command", command: { type: "toggle_packed", lineId: line.id } })} type="button">
-              <span>{line.packed ? "✓" : "□"}</span><strong>{orderLineSummary(line)}</strong>
-            </button>
-          ))}
-        </section>
-      )}
 
-      {paymentOpen && order?.status === ORDER_STATUS.PACKED && <PaymentSheet order={order} onClose={() => setPaymentOpen(false)} onPay={async (received) => { const next = await run({ type: "order_command", command: { type: "pay", received } }); if (next) setPaymentOpen(false); }} />}
+      {paymentOpen && order?.status === ORDER_STATUS.PACKED && <PaymentSheet key={order.id} order={order} onClose={() => setPaymentOpen(false)} onPay={async (received) => { const next = await run({ type: "order_command", command: { type: "pay", received } }); if (next) { setPaymentOpen(false); setMessage(`收款完成 · ${order.pickupNumber} · 找零 NT$ ${next.orders.find(o => o.id === order.id)?.payment?.change ?? 0}`); } return next; }} />}
       {cancelOpen && order && (
         <div className="qc-overlay">
           <section aria-label="取消訂單" aria-modal="true" className={`qc-cancel-sheet color-${order.colorKey}`} role="dialog">

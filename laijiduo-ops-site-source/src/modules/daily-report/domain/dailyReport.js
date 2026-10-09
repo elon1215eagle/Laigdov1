@@ -38,6 +38,9 @@ export function buildDailyReportPayload({
   employeeMeals = [],
 }) {
   const revenue = deriveRevenueBreakdown(form);
+  if (revenue.completedSteps < 3) {
+    throw new Error("請先完成 14:00、19:00 與全日總營收");
+  }
   if (!revenue.isValid) {
     throw new Error("全日總營收不可小於 14:00 與 19:00 營收加總");
   }

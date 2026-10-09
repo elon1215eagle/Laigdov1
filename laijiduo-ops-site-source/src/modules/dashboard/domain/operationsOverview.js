@@ -14,6 +14,49 @@ export function hasSubmittedOperationsReport(report) {
   return Boolean(report?.id && report?.updated_at_label !== UNREPORTED_LABEL);
 }
 
+export function buildDailyOverviewReports({
+  stores = [],
+  periodReports = [],
+  date = "",
+  resolveStoreCode = defaultStoreCode,
+}) {
+  const rowsByStore = new Map(
+    periodReports
+      .filter((row) => row.report_date === date)
+      .map((row) => [resolveStoreCode(row), row])
+      .filter(([storeCode]) => Boolean(storeCode)),
+  );
+
+  return stores
+    .filter((store) => store.operating_status !== "suspended" && store.is_active !== false)
+    .map((store) => {
+      const row = rowsByStore.get(resolveStoreCode(store));
+      if (row) {
+        return {
+          ...store,
+          ...row,
+          name: row.name || store.name,
+          store_code: resolveStoreCode(row) || resolveStoreCode(store),
+          target: row.target ?? store.target ?? store.target_daily_revenue ?? 0,
+          updated_at_label: row.updated_at_label || "已回報",
+        };
+      }
+      return {
+        ...store,
+        id: null,
+        report_date: date,
+        opened_to_1400_revenue: 0,
+        revenue_1400_to_1900: 0,
+        revenue_1900_to_close: 0,
+        total_revenue: 0,
+        cash_difference: null,
+        status: "draft",
+        updated_at_label: UNREPORTED_LABEL,
+        target: store.target ?? store.target_daily_revenue ?? 0,
+      };
+    });
+}
+
 export function buildOperationsOverview({
   reports = [],
   overdueReports = [],
@@ -30,7 +73,7 @@ export function buildOperationsOverview({
   const total = reports.reduce((sum, report) => sum + totalRevenue(report), 0);
   const target = reports.reduce((sum, report) => sum + Number(report.target || 0), 0);
   const cashIssues = reports.filter((report) => Math.abs(Number(report.cash_difference || 0)) >= 500);
-  const lowRevenue = reports.filter((report) => totalRevenue(report) < Number(report.target || 0) * 0.8);
+  const lowRevenue = reportedRows.filter((report) => totalRevenue(report) < Number(report.target || 0) * 0.8);
   const shortageRows = scheduleRows.filter((row) => row.status === "人力不足");
   const overdueTasks = hqTasks.filter((row) => row.status !== "已完成" && isOverdue(row.due_date, today));
   const handoverIssues = handovers.filter(
@@ -85,6 +128,9 @@ export function buildOperationsOverview({
 }
 
 export function buildOperationsPriorities(summary) {
+  const overdueStoreKeys = new Set(
+    (summary.overdueReports || []).map((row) => defaultStoreCode(row) || row.store_id || row.id),
+  );
   return [
     ...(summary.overdueReports || []).map((row) => ({
       id: `overdue-report-${row.report_date}-${row.store_id || row.id}`,
@@ -94,14 +140,16 @@ export function buildOperationsPriorities(summary) {
       level: "重大",
       message: `${row.report_date} 營運回報已超過上午10:00截止時間`,
     })),
-    ...summary.unreported.map((row) => ({
-      id: `unreported-${row.store_id || row.id}`,
-      store_id: row.store_id || row.id,
-      storeName: row.name,
-      type: "尚未回報",
-      level: "重大",
-      message: "今日營運回報尚未送出",
-    })),
+    ...summary.unreported
+      .filter((row) => !overdueStoreKeys.has(defaultStoreCode(row) || row.store_id || row.id))
+      .map((row) => ({
+        id: `unreported-${row.store_id || row.id}`,
+        store_id: row.store_id || row.id,
+        storeName: row.name,
+        type: "尚未回報",
+        level: "重大",
+        message: `${summary.referenceDate || "指定日期"} 營運回報尚未送出`,
+      })),
     ...summary.shortageRows.map((row) => ({
       id: `schedule-${row.storeCode || row.storeName}`,
       store_code: row.storeCode,
@@ -109,14 +157,6 @@ export function buildOperationsPriorities(summary) {
       type: "排班缺口",
       level: "提醒",
       message: row.note || "門店人力需求需確認",
-    })),
-    ...summary.lowRevenue.map((row) => ({
-      id: `low-revenue-${row.store_id || row.id}`,
-      store_id: row.store_id || row.id,
-      storeName: row.name,
-      type: "營收未達標",
-      level: "提醒",
-      attainment: (totalRevenue(row) / Math.max(1, Number(row.target || 0))) * 100,
     })),
   ];
 }

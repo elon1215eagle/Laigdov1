@@ -1,11 +1,9 @@
 function isMissingOperationsRpc(error) {
   const code = String(error?.code || "");
   const message = String(error?.message || "");
-  return (
-    code === "PGRST202"
-    || code === "42883"
-    || /save_daily_operations|schema cache.*function/i.test(message)
-  );
+  // A missing entry point needs an explicit service-unavailable message.
+  return code === "PGRST202"
+    || (code === "42883" && /function\s+(?:public\.)?save_daily_operations\s*\([^)]*\)\s+does not exist/i.test(message));
 }
 
 export function createDailyOperationsService({
@@ -42,7 +40,7 @@ export function createDailyOperationsService({
       const { data, error } = await client.rpc("save_daily_operations", {
         p_report: {
           ...reportPayload,
-          employee_meals: employeeMealRows,
+          ...(Array.isArray(employeeMealRows) ? { employee_meals: employeeMealRows } : {}),
         },
         p_inventory: inventoryRows,
         p_waste: wasteRows,
@@ -57,7 +55,7 @@ export function createDailyOperationsService({
         };
       }
       if (!isMissingOperationsRpc(error)) throw error;
-      return saveSequentially(reportPayload, inventoryRows, wasteRows, employeeMealRows);
+      throw new Error("正式儲存服務尚未就緒，資料未改用逐筆儲存；請聯絡總部。");
     },
   };
 }

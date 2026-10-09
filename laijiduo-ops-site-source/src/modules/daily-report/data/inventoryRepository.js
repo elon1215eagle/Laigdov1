@@ -75,7 +75,8 @@ export function createInventoryRepository(client = null) {
         .select("*")
         .eq("report_id", reportId);
       if (error) throw error;
-      return (data || []).map(normalizeInventoryRow);
+      if (!Array.isArray(data)) throw new Error("庫存資料回應不完整");
+      return data.map(normalizeInventoryRow);
     },
 
     async fetchForReports(reportIds) {

@@ -1,6 +1,7 @@
 import { normalizeTime24, validateTimeWindow } from "../../scheduling/domain/staffingRules.js";
 
 export const PART_TIME_ROLE = "兼職人員";
+export const HR_HEADQUARTERS_STORE = Object.freeze({ store_code: "HQ", name: "營運總部" });
 export const EMPLOYMENT_TYPE_OPTIONS = ["正職", "兼職"];
 export const STAFF_ROLE_OPTIONS = [
   "委任店經理",
@@ -12,6 +13,7 @@ export const STAFF_ROLE_OPTIONS = [
   "正式人員",
   "新進人員",
   PART_TIME_ROLE,
+  "送貨人員",
   "總部人員",
 ];
 export const WORK_CATEGORY_OPTIONS = ["門店營運", "後勤", "送貨", "總部"];
@@ -20,8 +22,19 @@ export const EMPLOYMENT_STATUS_OPTIONS = ["待到職", "在職", "留職停薪",
 const LEGACY_TITLE_MAP = {
   正職人員: "正式人員",
   兼職後勤: PART_TIME_ROLE,
-  送貨人員: "正式人員",
 };
+
+export function defaultWorkCategoryForRole(roleName) {
+  if (roleName === "送貨人員") return "送貨";
+  if (roleName === "總部人員") return "總部";
+  return "門店營運";
+}
+
+export function isOperationalStoreStaff(row = {}) {
+  const storeCode = String(row.store_code || row.storeCode || "").trim().toUpperCase();
+  const storeName = String(row.store_name || row.storeName || "").trim();
+  return storeCode !== HR_HEADQUARTERS_STORE.store_code && storeName !== HR_HEADQUARTERS_STORE.name;
+}
 
 export function staffRoleRank(roleName) {
   const normalizedRole = LEGACY_TITLE_MAP[String(roleName || "").trim()] || String(roleName || "").trim();
@@ -80,11 +93,22 @@ export function normalizeStoreStaffRow(row, index = 0) {
   };
 }
 
+export function normalizeAuthorizedStoreStaffRows(rows = []) {
+  return rows
+    .map((row, index) => normalizeStoreStaffRow(row, index))
+    .filter((row) => row.is_active !== false)
+    .sort((a, b) => (
+      String(a.store_code || "").localeCompare(String(b.store_code || "")) ||
+      Number(a.sort_order || 999) - Number(b.sort_order || 999) ||
+      String(a.employeeName || "").localeCompare(String(b.employeeName || ""), "zh-Hant")
+    ));
+}
+
 export function createStaffForm({ storeCode = "", storeName = "", roleName = "正式人員" } = {}) {
   return {
     id: "", store_code: storeCode, store_name: storeName, employee_name: "", role_name: roleName,
     employment_type: roleName === PART_TIME_ROLE ? "兼職" : "正職",
-    work_category: roleName === "總部人員" ? "總部" : "門店營運",
+    work_category: defaultWorkCategoryForRole(roleName),
     employment_status: "在職", auth_user_id: null,
     work_start_time: "", work_end_time: "", weekday_start_time: "", weekday_end_time: "",
     holiday_start_time: "", holiday_end_time: "", estimated_hourly_cost: "", estimated_monthly_cost: "",

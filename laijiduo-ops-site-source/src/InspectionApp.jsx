@@ -6,6 +6,7 @@ import {
   hasSupabaseConfig,
   updateStoreInspection,
 } from "./lib/api";
+import { supabase } from "./lib/supabase";
 import "./styles.css";
 
 const today = new Intl.DateTimeFormat("en-CA", {
@@ -392,9 +393,17 @@ function normalizeAiIssues(issues) {
 }
 
 async function requestAiParse({ store, date, supervisor, imageRows }) {
+  if (!hasSupabaseConfig || !supabase) throw new Error("請先登入正式系統");
+  const { data: sessionData, error } = await supabase.auth.getSession();
+  const accessToken = sessionData?.session?.access_token;
+  if (error || !accessToken) throw new Error("登入已逾時，請重新登入");
+
   const response = await fetch("/api/parse-inspection", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${accessToken}`,
+    },
     body: JSON.stringify({
       storeName: store.name,
       manager: store.manager,
@@ -686,7 +695,7 @@ function buildSingleInspectionHtml(record, output = "document") {
     <thead><tr><th>督導簽名</th><th>店長簽名</th><th>總部複核</th></tr></thead>
     <tbody><tr><td></td><td>${record.managerSignature ? `<img class="signature-img" src="${htmlEscape(record.managerSignature)}" />` : ""}</td><td></td></tr></tbody>
   </table>
-  <p class="footer">本表由萊吉多營運 APP 匯出，作為門店巡檢、改善追蹤與週會檢討依據。</p>
+  <p class="footer">本表由萊吉多營運管理中心匯出，作為門店巡檢、改善追蹤與週會檢討依據。</p>
   </div>
 </body>
 </html>`;

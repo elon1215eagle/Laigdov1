@@ -13,7 +13,7 @@ export function OrderPanel({ editable = true, onCommand, order }) {
       </header>
 
       <div className="qc-order-lines">
-        {!order.lines.length && <div className="qc-empty-order"><strong>尚未加入商品</strong><span>請點左側商品開始點單</span></div>}
+        {!order.lines.length && <div className="qc-empty-order"><strong>尚未加入商品</strong></div>}
         {order.lines.map((line) => (
           <article className="qc-order-line" key={line.id}>
             <div className="qc-line-heading">
@@ -30,22 +30,24 @@ export function OrderPanel({ editable = true, onCommand, order }) {
                   <strong>{line.quantity}</strong>
                   <button type="button" onClick={() => onCommand({ type: "change_quantity", lineId: line.id, quantity: line.quantity + 1 })}>＋</button>
                 </div>
+                <details className="qc-flavor-details"><summary>調味設定 · {seasoningLabel(line.seasonings)}</summary>
                 {line.quantity > 1 && <button className="qc-split-line" onClick={() => onCommand({ type: "split_line", lineId: line.id })} type="button">分開一份調味</button>}
                 <div className="qc-seasonings" aria-label={`${line.productName}調味`}>
                   {SEASONINGS.map((seasoning) => (
                     <button
                       className={line.seasonings.includes(seasoning.code) ? "selected" : ""}
                       key={seasoning.code}
+                      aria-pressed={line.seasonings.includes(seasoning.code)}
                       onClick={() => onCommand({ type: "toggle_seasoning", lineId: line.id, seasoning: seasoning.code })}
                       type="button"
                     >
-                      {line.seasonings.includes(seasoning.code) ? "✓ " : ""}{seasoning.label}
+                      {seasoning.label}<span>{line.seasonings.includes(seasoning.code) ? "加" : "不加"}</span>
                     </button>
                   ))}
-                </div>
+                </div></details>
               </>
             )}
-            <p>{seasoningLabel(line.seasonings)}</p>
+            {!editable && <p>{seasoningLabel(line.seasonings)}</p>}
           </article>
         ))}
       </div>

@@ -8,7 +8,8 @@ export function createEmployeeMealRepository(client = null) {
         .eq("report_id", reportId)
         .order("created_at");
       if (error) throw error;
-      return data || [];
+      if (!Array.isArray(data)) throw new Error("員餐資料回應不完整");
+      return data;
     },
 
     async replace(reportId, rows = []) {

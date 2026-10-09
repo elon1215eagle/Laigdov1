@@ -1,0 +1,141 @@
+.account-management-page {
+  display: grid;
+  gap: 18px;
+}
+
+.account-management-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.account-management-heading h2,
+.account-management-heading p {
+  margin: 0;
+}
+
+.account-management-heading p {
+  margin-top: 5px;
+  color: #786b61;
+}
+
+.account-management-kpis {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.account-metric {
+  min-height: 82px;
+  padding: 14px;
+  border: 1px solid #ead9ce;
+  border-radius: 8px;
+  background: #fffaf6;
+}
+
+.account-metric span,
+.account-metric strong {
+  display: block;
+}
+
+.account-metric strong {
+  margin-top: 8px;
+  font-size: 23px;
+}
+
+.account-metric.normal strong { color: #177a4d; }
+.account-metric.warning strong { color: #a85d00; }
+.account-metric.danger strong { color: #b52b22; }
+
+.account-management-notice,
+.account-management-error {
+  padding: 14px 16px;
+  border-radius: 8px;
+}
+
+.account-management-notice {
+  display: flex;
+  gap: 12px;
+  border: 1px solid #c9e7d6;
+  background: #eff9f3;
+  color: #245d40;
+}
+
+.account-management-error {
+  border: 1px solid #efb9b5;
+  background: #fff0ee;
+  color: #9e241c;
+}
+
+.account-group {
+  border: 1px solid #ead9ce;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.account-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 54px;
+  padding: 0 16px;
+  cursor: pointer;
+  background: #fff7f1;
+}
+
+.account-table-wrap { overflow-x: auto; }
+.account-table { width: 100%; border-collapse: collapse; }
+.account-table th,
+.account-table td {
+  padding: 13px 14px;
+  border-bottom: 1px solid #f0e2d8;
+  text-align: left;
+  vertical-align: middle;
+}
+.account-table th { background: #fffaf6; color: #705a4b; }
+.account-table tr:last-child td { border-bottom: 0; }
+
+.account-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #eee9e5;
+  white-space: nowrap;
+}
+.account-status.normal { background: #e4f5ea; color: #177a4d; }
+.account-status.pending_configuration { background: #fff1d8; color: #9b5700; }
+.account-status.unclassified,
+.account-status.inactive { background: #fde5e2; color: #a82b23; }
+.account-empty { padding: 22px; color: #786b61; text-align: center; }
+
+@media (max-width: 760px) {
+  .account-management-heading,
+  .account-management-notice { flex-direction: column; }
+  .account-management-heading button { width: 100%; }
+  .account-management-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .account-metric { min-height: 72px; }
+  .account-table thead { display: none; }
+  .account-table,
+  .account-table tbody,
+  .account-table tr,
+  .account-table td { display: block; width: 100%; }
+  .account-table tr { padding: 10px 14px; border-bottom: 1px solid #ead9ce; }
+  .account-table td {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 10px;
+    padding: 7px 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+  .account-table td::before { content: attr(data-label); color: #806f63; font-weight: 700; }
+}
+.hq-short-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 16px 0; max-width: 720px; }
+.hq-short-form h3 { grid-column: 1 / -1; }
+.hq-short-form label { display: grid; gap: 6px; min-width: 0; }
+.hq-short-form input, .hq-short-form select { width: 100%; min-width: 0; box-sizing: border-box; font-size: 16px; min-height: 44px; }
+@media (max-width: 600px) { .hq-short-form { grid-template-columns: minmax(0, 1fr); } }

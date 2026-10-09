@@ -64,6 +64,22 @@ test("跨店班次命令正規化時間並標示支援", () => {
   assert.equal(command.payload.shift_type, "support");
 });
 
+test("五甲後勤班次命令拒絕跨店支援", () => {
+  const command = buildDailyShiftCommand({
+    form: {
+      shift_date: "2026-09-30",
+      staff_id: "back-1",
+      assigned_store_code: "S06",
+      start_time: "10:00",
+      end_time: "18:00",
+    },
+    person: { employeeName: "後勤人員", store_code: "S01", work_category: "後勤" },
+    homeStoreCode: "S01",
+  });
+  assert.equal(command.valid, false);
+  assert.match(command.message, /不能安排至其他門店支援/);
+});
+
 test("同人同日不同班次可同時保留", () => {
   const merged = mergeDailyShift(
     [{ id: "old", shift_date: "2026-07-29", staff_id: "staff-1" }],

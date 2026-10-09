@@ -59,12 +59,24 @@ export function createDailyReportRepository(client = null, { fallbackReports = [
       return query.order("store_id");
     };
 
-    const result = await buildQuery(REPORT_FIELDS);
-    if (!result.error) return (result.data || []).map(normalizeDailyReportRow);
+    async function readPages(fields) {
+      const rows = [];
+      for (let start = 0; ; start += 500) {
+        const result = await buildQuery(fields).range(start, start + 499);
+        if (result.error) throw result.error;
+        if (!Array.isArray(result.data)) throw new Error("營運回報資料不完整，請重新載入。");
+        rows.push(...result.data);
+        if (result.data.length < 500) return rows.map(normalizeDailyReportRow);
+      }
+    }
 
-    const legacyResult = await buildQuery(LEGACY_REPORT_FIELDS);
-    if (legacyResult.error) throw legacyResult.error;
-    return (legacyResult.data || []).map(normalizeDailyReportRow);
+    try {
+      return await readPages(REPORT_FIELDS);
+    } catch (error) {
+      // Compatibility is limited to absent columns, never network or permission failures.
+      if (error?.code !== "42703") throw error;
+      return readPages(LEGACY_REPORT_FIELDS);
+    }
   }
 
   return {

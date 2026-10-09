@@ -38,3 +38,19 @@ export function supportVisibleGroupsForTemporarySupport(allStoreGroups) {
   return allStoreGroups;
 }
 
+export function sortTemporarySupportRows(rows = []) {
+  const statusRank = (row) => {
+    if (Number(row.surplus) < 0) return 0;
+    if (Number(row.surplus) > 0) return 1;
+    return 2;
+  };
+
+  return [...rows].sort((a, b) => (
+    statusRank(a) - statusRank(b)
+    || (statusRank(a) === 0
+      ? Number(a.surplus) - Number(b.surplus)
+      : Number(b.surplus) - Number(a.surplus))
+    || String(a.code || "").localeCompare(String(b.code || ""), "zh-Hant")
+  ));
+}
+

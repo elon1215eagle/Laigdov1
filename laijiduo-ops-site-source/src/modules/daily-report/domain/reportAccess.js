@@ -1,13 +1,13 @@
-export const STORE_MANAGER_REVENUE_LOOKBACK_DAYS = 14;
+export const STORE_MANAGER_REVENUE_ACCESS_LABEL = "本月及上個月";
 
-function addDays(dateText, days) {
+function firstDayOfPreviousMonth(dateText) {
   const date = new Date(`${dateText}T00:00:00Z`);
-  date.setUTCDate(date.getUTCDate() + days);
+  date.setUTCMonth(date.getUTCMonth() - 1, 1);
   return date.toISOString().slice(0, 10);
 }
 
 export function storeManagerRevenueMinDate(referenceDate) {
-  return addDays(referenceDate, 1 - STORE_MANAGER_REVENUE_LOOKBACK_DAYS);
+  return firstDayOfPreviousMonth(referenceDate);
 }
 
 export function isStoreManagerRevenueDateAllowed(dateText, referenceDate) {

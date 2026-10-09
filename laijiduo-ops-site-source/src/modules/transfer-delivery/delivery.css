@@ -1,0 +1,76 @@
+.delivery-sheet { color:#183a35; font-size:18px; min-width:0; }
+.delivery-sheet h3 { font-size:22px; }
+.delivery-sheet h4 { font-size:19px; }
+.delivery-sheet button,.delivery-sheet input,.delivery-sheet select { font-size:18px; min-height:44px; max-width:100%; box-sizing:border-box; }
+.delivery-sheet label { display:grid; gap:6px; min-width:0; }
+.ds-toolbar { display:grid; grid-template-columns:minmax(0,220px) minmax(0,220px) auto; gap:12px; align-items:end; }
+.ds-wave-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin:18px 0 8px; }
+.ds-wave-tabs button { display:grid; justify-items:start; gap:3px; padding:12px 14px; background:#fff; border:1px solid #c4d5d0; color:#183a35; text-align:left; }
+.ds-wave-tabs button span { font-size:14px; color:#49625b; }
+.ds-wave-tabs button[aria-pressed="true"] { border-width:2px; padding:11px 13px; }
+.ds-wave-tabs .ds-wave-primary[aria-pressed="true"] { background:#e9f6ef; border-color:#23714f; }
+.ds-wave-tabs .ds-wave-additional[aria-pressed="true"] { background:#fff3df; border-color:#b76f00; }
+.ds-wave-tabs .ds-wave-late[aria-pressed="true"] { background:#fff0ed; border-color:#b94125; }
+.ds-wave-help { margin:0 0 12px; color:#49625b; font-size:16px; }
+.ds-actions { display:flex; flex-wrap:wrap; gap:10px; margin:12px 0; }
+.ds-unassigned { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:16px 0 12px; padding:14px 16px; border:1px solid #d9aa55; border-left:5px solid #b76f00; background:#fff8e9; }
+.ds-unassigned div { display:grid; gap:4px; }
+.ds-unassigned span { color:#5d5141; font-size:16px; }
+.ds-unassigned button { flex:0 0 auto; background:#b94125; color:#fff; border-color:#b94125; }
+.ds-unassigned-primary { border-color:#83bca2; border-left-color:#23714f; background:#eff9f3; }
+.ds-unassigned-additional { border-color:#d9aa55; border-left-color:#b76f00; background:#fff8e9; }
+.ds-unassigned-late { border-color:#df9b8c; border-left-color:#b94125; background:#fff3f0; }
+.ds-tasks { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; margin-top:16px; }
+.ds-task { --order-accent:#2f74b5; --order-soft:#eef6ff; border:1px solid #c4d5d0; border-left:6px solid var(--order-accent); border-radius:6px; padding:16px; background:#fff; min-width:0; }
+.ds-order-tone-0 { --order-accent:#2f74b5; --order-soft:#eaf4fd; }
+.ds-order-tone-1 { --order-accent:#16806b; --order-soft:#e8f7f3; }
+.ds-order-tone-2 { --order-accent:#9a6700; --order-soft:#fff4d9; }
+.ds-order-tone-3 { --order-accent:#9c5071; --order-soft:#faedf3; }
+.ds-order-tone-4 { --order-accent:#596ca8; --order-soft:#eef0fa; }
+.ds-order-tone-5 { --order-accent:#6b7250; --order-soft:#f1f3e9; }
+.ds-task header { display:flex; flex-wrap:wrap; align-items:center; gap:8px; border-bottom:1px solid #c4d5d0; padding-bottom:12px; }
+.ds-task header>span:last-child { margin-left:auto; }
+.ds-order-number { padding:3px 8px; background:var(--order-soft); color:var(--order-accent); border:1px solid var(--order-accent); font-size:14px; font-weight:700; white-space:nowrap; }
+.ds-wave-badge { border-radius:999px; padding:3px 9px; font-size:14px; font-weight:700; }
+.ds-wave-badge.ds-wave-primary { background:#dff3e8; color:#185b3d; }
+.ds-wave-badge.ds-wave-additional { background:#ffedcf; color:#8a5200; }
+.ds-wave-badge.ds-wave-late { background:#ffe1da; color:#a22e1a; }
+.ds-route { display:grid; grid-template-columns:minmax(0,1fr) auto minmax(0,1fr); align-items:center; gap:10px; margin:16px 0; }
+.ds-route div:first-child { border-left:4px solid #2476b9; padding-left:10px; }
+.ds-route div:last-child { border-left:4px solid #23845d; padding-left:10px; }
+.ds-route b { font-size:20px; overflow-wrap:anywhere; }
+.delivery-sheet small { display:block; font-size:15px; color:#49625b; }
+.ds-task ul { list-style:none; padding:0; margin:12px 0; }
+.ds-task li { display:flex; justify-content:space-between; gap:12px; padding:8px 0; border-bottom:1px solid #e2ebe8; }
+.ds-task li span,.ds-note { overflow-wrap:anywhere; }
+.ds-task li strong { white-space:nowrap; }
+.ds-checks { display:grid; grid-template-columns:1fr 1fr; gap:12px; background:#eef6f3; padding:12px; }
+.ds-checks button { display:grid; place-items:center; align-content:center; gap:2px; min-width:0; padding:10px; border:1px solid #b9cbc5; background:#fff; color:#49625b; }
+.ds-checks button:disabled { opacity:1; cursor:not-allowed; }
+.ds-checks .ds-step-ready { background:#18734f; border-color:#18734f; color:#fff; }
+.ds-checks .ds-step-warning { background:#fff2d8; border-color:#c17a09; color:#7a4900; }
+.ds-checks .ds-step-done { background:#dff3e8; border-color:#82bea3; color:#185b3d; }
+.ds-checks .ds-step-done small { color:#356b56; }
+.ds-step-help { margin:8px 0 0; color:#9b3c25; font-size:15px; }
+.delivery-sheet summary { cursor:pointer; min-height:44px; padding-top:12px; }
+.ds-manage { margin-top:24px; border-top:1px solid #c4d5d0; }
+.ds-candidate { display:flex; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid #d6e3df; }
+.ds-overlay { position:fixed; inset:0; background:#0008; z-index:1100; display:grid; place-items:center; padding:16px; }
+.ds-dialog { background:white; width:100%; max-width:520px; max-height:90dvh; overflow:auto; padding:20px; border-radius:6px; box-sizing:border-box; }
+.ds-dialog fieldset { display:grid; gap:16px; min-width:0; padding:0; margin:0; border:0; }
+.ds-dialog input,.ds-dialog select { width:100%; min-width:0; }
+.ds-dialog .ds-toggle { display:flex; align-items:center; }
+.ds-dialog .ds-toggle input { width:24px; }
+.ds-preview { max-width:900px; }
+.ds-preview img { width:100%; height:auto; margin-top:12px; }
+@media(max-width:640px) {
+ .ds-toolbar { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+ .ds-toolbar>button { grid-column:1/-1; }
+ .ds-wave-tabs { grid-template-columns:minmax(0,1fr); }
+ .ds-wave-tabs button { grid-template-columns:auto 1fr; align-items:center; column-gap:10px; }
+ .ds-tasks { grid-template-columns:minmax(0,1fr); }
+ .ds-task { padding:12px; }
+ .ds-actions>button { flex:1 1 130px; }
+ .ds-unassigned { align-items:stretch; flex-direction:column; }
+ .ds-unassigned button { width:100%; }
+}

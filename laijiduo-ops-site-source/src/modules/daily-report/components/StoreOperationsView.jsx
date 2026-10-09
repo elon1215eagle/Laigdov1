@@ -60,9 +60,7 @@ export function StoreOperationsView({
     () => buildStoreWeeklyComparisonRows(reports, referenceDate),
     [reports, referenceDate],
   );
-  const weeklySummary = weeklyRows[0]?.comparisonPeriod === "latest"
-    ? "最近有資料週與前一週"
-    : "本週與上週同日";
+  const weeklySummary = "本週與上週同日對比，點擊可看明細";
 
   if (loading) return <div className="empty-text">門店營運資料讀取中...</div>;
 
@@ -106,7 +104,12 @@ export function StoreOperationsView({
             <details className="store-comparison-row" key={`${row.storeCode}-${row.currentDate}`}>
               <summary>
                 <span><strong>{row.weekday}</strong><small>{row.currentDate}</small></span>
-                <span><strong>{money(row.currentTotal)}</strong><small className={row.delta < 0 ? "negative" : row.delta > 0 ? "positive" : ""}>{row.delta > 0 ? "+" : ""}{pct(row.growth)}</small></span>
+                <span>
+                  <strong>{money(row.currentTotal)}</strong>
+                  <small className={`weekly-change ${row.delta > 0 ? "up" : row.delta < 0 ? "down" : "flat"}`}>
+                    {row.delta > 0 ? "+" : ""}{pct(row.growth)}
+                  </small>
+                </span>
               </summary>
               <div className="store-period-grid">
                 <span>時段</span><span>本週</span><span>上週</span>

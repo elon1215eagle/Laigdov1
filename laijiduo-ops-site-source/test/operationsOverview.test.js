@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  buildDailyOverviewReports,
   buildOperationsOverview,
   buildOperationsPriorities,
 } from "../src/modules/dashboard/index.js";
@@ -59,7 +60,7 @@ test("operations overview centralizes revenue, reporting and exception metrics",
   assert.deepEqual(overview.overdueReports.map((row) => row.name), ["中山店"]);
   assert.equal(overview.reportRate, 50);
   assert.deepEqual(overview.cashIssues.map((row) => row.store_code), ["S02"]);
-  assert.deepEqual(overview.lowRevenue.map((row) => row.store_code), ["S02"]);
+  assert.deepEqual(overview.lowRevenue.map((row) => row.store_code), []);
   assert.deepEqual(overview.shortageRows.map((row) => row.storeCode), ["S02"]);
   assert.deepEqual(overview.overdueTasks.map((row) => row.title), ["逾期"]);
   assert.deepEqual(overview.pendingHr.map((row) => row.title), ["人資"]);
@@ -77,7 +78,7 @@ test("active Nanhua store is included in manager coverage checks", () => {
   assert.equal(overview.managerGaps.length, 1);
 });
 
-test("dashboard priorities keep unreported stores ahead of staffing and revenue warnings", () => {
+test("dashboard priorities keep only actionable missing reports and staffing gaps", () => {
   const overview = buildOperationsOverview({
     reports,
     overdueReports: [{ store_id: "s3", name: "中山店", report_date: "2026-07-31" }],
@@ -85,7 +86,35 @@ test("dashboard priorities keep unreported stores ahead of staffing and revenue 
   });
   const priorities = buildOperationsPriorities(overview);
 
-  assert.deepEqual(priorities.map((row) => row.type), ["逾期未回報", "尚未回報", "排班缺口", "營收未達標"]);
+  assert.deepEqual(priorities.map((row) => row.type), ["逾期未回報", "尚未回報", "排班缺口"]);
   assert.equal(priorities[2].message, "缺 1 人");
-  assert.equal(priorities[3].attainment, 60);
+});
+
+test("daily overview uses the selected completed date and leaves missing stores blank", () => {
+  const rows = buildDailyOverviewReports({
+    stores: [
+      { id: "s1", store_code: "S01", name: "五甲店", target: 50000 },
+      { id: "s2", store_code: "S02", name: "凱旋店", target: 40000 },
+    ],
+    periodReports: [
+      { id: "r1", store_id: "s1", store_code: "S01", report_date: "2026-10-05", total_revenue: 52000 },
+      { id: "r2", store_id: "s2", store_code: "S02", report_date: "2026-10-04", total_revenue: 39000 },
+    ],
+    date: "2026-10-05",
+  });
+
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].total_revenue, 52000);
+  assert.equal(rows[0].updated_at_label, "已回報");
+  assert.equal(rows[1].id, null);
+  assert.equal(rows[1].updated_at_label, "尚未回報");
+});
+
+test("overdue and unreported entries for the same store appear only once", () => {
+  const overview = buildOperationsOverview({ reports });
+  overview.referenceDate = "2026-10-05";
+  overview.overdueReports = [{ store_id: "s2", store_code: "S02", name: "凱旋店", report_date: "2026-10-05" }];
+  const priorities = buildOperationsPriorities(overview);
+
+  assert.equal(priorities.filter((row) => row.store_id === "s2" && ["逾期未回報", "尚未回報"].includes(row.type)).length, 1);
 });

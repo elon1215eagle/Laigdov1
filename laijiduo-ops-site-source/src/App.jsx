@@ -1,211 +1,39 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  defaultSecuritySettings,
-  deleteDailyReport,
-  deleteDailyReports,
-  fetchDailyReports,
-  fetchDailyReportChangeRequests,
-  fetchDailyReportsRange,
-  fetchHandovers,
-  fetchHqDashboardData,
-  fetchHqTasks,
-  fetchInventoryCounts,
-  fetchPreviousInventoryCounts,
-  fetchProducts,
-  fetchSecuritySettings,
-  fetchStaffPerformance,
-  fetchStaffPositionSkills,
-  fetchStaffStoreAssignments,
-  fetchInactiveStoreStaff,
-  fetchStoreRelationGroups,
-  fetchStoreStaff,
-  fetchStores,
-  getSessionProfile,
-  hasSalaryAccess,
-  hasSupabaseConfig,
-  reviewReport,
-  reviewDailyReportChangeRequest,
-  recordStaffStoreTransfer,
-  saveDailyOperations,
-  saveStaffPositionSkills,
-  signIn,
-  signOut,
-  requestCooSalaryAccess,
-  statusLabel,
-  updateStoreMonthlyTarget,
-  upsertHandover,
-  upsertHqTask,
-  upsertSecuritySettings,
-  upsertStaffPerformance,
-  upsertStoreStaffMember,
-  deleteStoreStaffMember,
-} from "./lib/api";
-import {
-  STORE_MANAGER_REVENUE_LOOKBACK_DAYS,
-  buildDailyReportPayload,
-  buildWeeklySameDayRows as buildWeeklyComparisonRows,
-  deriveRevenueBreakdown,
-  isStoreManagerRevenueDateAllowed,
-  totalRevenue,
-} from "./modules/daily-report";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { readReportInputs, reportInputsReady } from "./modules/daily-report/data/reportReadSnapshot.js";
+import { RevenueInput } from "./modules/daily-report/components/StoreReportPage.jsx";
+import { defaultSecuritySettings, deleteDailyReport, deleteDailyReports, fetchDailyReports, fetchDailyReportChangeRequests, fetchHandovers, fetchHqDashboardData, fetchHqTasks, fetchInventoryCounts, fetchPreviousInventoryCounts, fetchProducts, fetchSecuritySettings, fetchStaffPerformance, fetchStoreRelationGroups, fetchStoreStaff, fetchStores, getSessionProfile, hasSalaryAccess, hasSupabaseConfig, reviewReport, reviewDailyReportChangeRequest, recordStaffStoreTransfer, saveDailyOperations, signIn, signOut, requestCooSalaryAccess, statusLabel, updateStoreMonthlyTarget, upsertHandover, upsertHqTask, upsertSecuritySettings, upsertStaffPerformance, upsertStoreStaffMember, deleteStoreStaffMember } from "./lib/api";
+import { STORE_MANAGER_REVENUE_ACCESS_LABEL, buildDailyReportPayload, buildWeeklySameDayRows as buildWeeklyComparisonRows, buildWeeklyStoreGroups, isStoreManagerRevenueDateAllowed, totalRevenue } from "./modules/daily-report";
 import { StoreReportPage } from "./modules/daily-report/components";
-import {
-  getTaipeiReportClock,
-  overdueReportBusinessDate,
-} from "./modules/daily-report/domain/businessDate.js";
-import {
-  buildOperationsOverview,
-  buildOperationsPriorities,
-  hasSubmittedOperationsReport as hasSubmittedReport,
-} from "./modules/dashboard";
-import {
-  PRODUCT_ORDER,
-  blankInventoryProduct,
-  buildInventorySaveRows,
-  defaultUnitForProduct,
-  displayUnitForProduct,
-  mergeInventoryRows,
-  productKind,
-  toManagementQuantity,
-  usageCount,
-} from "./modules/inventory";
-import {
-  IncomingEditor,
-  InventoryEditor,
-  formatInventoryAmount,
-} from "./modules/inventory/components";
-import {
-  MODULE_GROUPS,
-  ROLE_LABELS,
-  appViewForRole,
-  canAccessModule,
-  canEditMonthlyTargets,
-  canExportRole,
-  canManageDailyReportData,
-  canConfirmDailyReports,
-  canManageSecurity,
-  defaultModuleForRole,
-  modulesForRole,
-  profileRole,
-  visibleViewModesForRole,
-} from "./modules/access";
-import {
-  EMPLOYMENT_STATUS_OPTIONS,
-  EMPLOYMENT_TYPE_OPTIONS,
-  STAFF_ROLE_OPTIONS,
-  STAFF_POSITION_OPTIONS,
-  WORK_CATEGORY_OPTIONS,
-  buildStaffProfile,
-  createStaffForm,
-  isStoreLeadershipRole,
-  staffRoleRank,
-  staffMemberToForm,
-} from "./modules/hr";
-import {
-  handoverSeed,
-  hrChangeSeed,
-  hqTaskSeed,
-  hqSystemSeed,
-  performanceSeed,
-  productsSeed,
-  salaryStructureSeed,
-  scheduleSeed,
-  staffRosterSeed,
-  storeHoursSeed,
-  storesSeed,
-} from "./lib/mockData";
-import {
-  STORE_RELATION_GROUPS,
-  STORE_OPERATING_STATUS,
-  createStoreDirectory,
-  mergeStoreRelationGroups,
-  normalizeStoreName,
-  operatingStatusOf,
-} from "./lib/storeScope";
-import {
-  buildHalfHourStaffingMatrix,
-  buildPersonalScheduleSnapshot,
-  buildScheduleExcelXml,
-  buildScheduleExportModel,
-  buildDailyShiftCommand,
-  buildScheduleChangeRequest,
-  buildStaffingSegments,
-  calculateProjectedLaborCost,
-  calculateDailyStaffing,
-  deriveScheduleAccess,
-  findOverlappingShift,
-  isEffectiveScheduleStaff,
-  isScheduleExcludedRole,
-  mergeDailyShift,
-  normalizeStoreScopedScheduleCode,
-  projectDailyStaffShifts,
-  personalScheduleExpiry,
-  resolveStaffingDemand,
-  renderScheduleCanvas,
-  removeDailyShiftById,
-  scheduleApprovalAllows,
-  scheduleGroupForStore,
-  scheduleLockStatusText,
-  supportVisibleGroupsForTemporarySupport,
-  validateTimeWindow,
-} from "./modules/scheduling";
-import {
-  STORE_SETTING_TABS,
-  createStoreSettingsDraft,
-  fetchStoreOperatingConfigurations,
-  mergeStoreHours,
-  normalizeSalarySetting,
-  saveStaffRoleSalarySetting,
-  saveStoreOperatingConfiguration,
-  saveStoreWorkforceView,
-  settingsPayload,
-  validateSalarySetting,
-  validateStoreSettingsDraft,
-} from "./modules/store-settings";
+import { overdueReportBusinessDate } from "./modules/daily-report/domain/businessDate.js";
+import { buildDailyOverviewReports, buildOperationsOverview, buildOperationsPriorities, hasSubmittedOperationsReport as hasSubmittedReport } from "./modules/dashboard";
+import { PRODUCT_ORDER, blankInventoryProduct, buildInventorySaveRows, displayUnitForProduct, mergeInventoryRows, toManagementQuantity, usageCount } from "./modules/inventory";
+import { IncomingEditor, InventoryEditor, formatInventoryAmount } from "./modules/inventory/components";
+import { MODULE_GROUPS, ROLE_LABELS, appViewForRole, canAccessModule, canEditMonthlyTargets, canExportRole, canManageDailyReportData, canConfirmDailyReports, canManageSecurity, defaultModuleForRole, modulesForRole, profileRole, visibleViewModesForRole } from "./modules/access";
+import { STAFF_ROLE_OPTIONS, isOperationalStoreStaff, isStoreLeadershipRole } from "./modules/hr";
+import { handoverSeed, hrChangeSeed, hqTaskSeed, hqSystemSeed, performanceSeed, productsSeed, salaryStructureSeed, scheduleSeed, staffRosterSeed, storeHoursSeed, storesSeed } from "./lib/mockData";
+import { STORE_RELATION_GROUPS, STORE_OPERATING_STATUS, mergeStoreRelationGroups, operatingStatusOf } from "./lib/storeScope";
+import { fetchStoreOperatingConfigurations, mergeStoreHours, normalizeSalarySetting } from "./modules/store-settings";
 import { QuickCheckoutManagementPage } from "./modules/quick-checkout-management";
-import {
-  confirmMonthlySchedule,
-  deleteDailyStaffShift,
-  fetchDailyStaffShifts,
-  fetchMonthlyLeavePlans,
-  fetchMonthlyScheduleControl,
-  fetchPersonalScheduleByToken,
-  fetchPersonalScheduleLinks,
-  fetchStaffingDemandRules,
-  fetchTemporarySupportSummary,
-  reviewMonthlyScheduleChangeRequest,
-  reviewSupportShiftRequest,
-  issuePersonalScheduleLink,
-  revokePersonalScheduleLink,
-  setWorkforceRolloutMode,
-  submitMonthlyScheduleChangeRequest,
-  submitSupportShiftRequest,
-  unlockMonthlySchedule,
-  upsertDailyStaffShift,
-  upsertMonthlyLeavePlan,
-  upsertMonthlyLeavePlans,
-  fetchStandardShiftTemplates,
-  upsertStandardShiftTemplate,
-  archiveStandardShiftTemplate,
-  fetchLeavePlanAudit,
-  fetchStaffingDemandChangeRequests,
-  submitStaffingDemandChangeRequest,
-  reviewStaffingDemandChangeRequest,
-} from "./modules/scheduling/supabase";
+import { AccountManagementPage } from "./modules/account-management";
+import ApprovalCenter from "./modules/approvals/ApprovalCenter.jsx";
+import ApprovalNavLabel from "./modules/approvals/ApprovalNavLabel.jsx";
+import { fetchPersonalScheduleByToken } from "./modules/scheduling/supabase";
 import { InspectionApp } from "./InspectionApp";
+import { daysInMonth, today, findStoreScopedRecord, canonicalStoreCode, reportClock, Metric, money, displayStoreName, leaveDraftKey, getSuggestedRestDays, isLeaveDay, countLeaveDays, getLeaveStatus, taskTone } from "./components/operationalPageSupport.jsx";
+import { HrMasterModule } from "./modules/hr/components/HrMasterModule.jsx";
+import { StoreSettingsModule } from "./modules/store-settings/components/StoreSettingsModule.jsx";
+import { ScheduleModule } from "./modules/scheduling/components/ScheduleModule.jsx";
+import { buildReportRecordsCsv, completeReportRecordsForExport, reportRecordsFilename, sortReportRecordsForExport, sortStoresForReportExport } from "./modules/daily-report/application/reportRecordsExport.js";
+import { selectLockableReports } from "./modules/daily-report/application/reportRecordsActions.js";
 
-const reportClock = getTaipeiReportClock();
-const today = reportClock.businessDate;
-const money = (value) => `NT$${Number(value || 0).toLocaleString("zh-TW")}`;
+const OnlineOrderingPage = lazy(() => import("./modules/online-ordering/OnlineOrderingPage.jsx"));
+const TransferCenter = lazy(() => import("./modules/transfers/TransferCenter.jsx"));
+const RepairModule = lazy(() => import("./modules/repairs/RepairModule.jsx"));
+const StaffingOverviewPage = lazy(() => import("./modules/staffing-overview/StaffingOverviewPage.jsx"));
+
 const numberText = (value, digits = 2) => Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: digits });
+
 const pct = (value) => `${Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 })}%`;
-const storeDirectory = createStoreDirectory(storesSeed);
-const {
-  canonicalStoreCode,
-  displayStoreName,
-  findStoreScopedRecord,
-  resolveStoreCodeFromRef,
-} = storeDirectory;
 
 function addDays(dateText, days) {
   const date = new Date(`${dateText}T00:00:00Z`);
@@ -227,16 +55,15 @@ function getMonthRange(dateText) {
   return { start, end };
 }
 
-function daysInMonth(dateText) {
-  const date = new Date(`${dateText}T00:00:00Z`);
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-}
-
-function getFourWeekRanges(dateText) {
+function getPreviousWeekRanges(dateText) {
   const current = getWeekRange(dateText);
-  return [3, 2, 1, 0].map((offset) => {
+  return [2, 1].map((offset) => {
     const start = addDays(current.start, -7 * offset);
-    return { start, end: addDays(start, 6), label: `${start} 至 ${addDays(start, 6)}` };
+    return {
+      start,
+      end: addDays(start, 6),
+      label: offset === 1 ? "上週" : "上上週",
+    };
   });
 }
 
@@ -269,7 +96,7 @@ function normalizeReport(store, report) {
     opened_to_1400_revenue: report?.opened_to_1400_revenue ?? store.opened_to_1400_revenue ?? 0,
     revenue_1400_to_1900: report?.revenue_1400_to_1900 ?? store.revenue_1400_to_1900 ?? 0,
     revenue_1900_to_close: report?.revenue_1900_to_close ?? store.revenue_1900_to_close ?? 0,
-    status: report?.status || store.status || "draft",
+    status: report?.status || "draft",
     cash_difference: report?.cash_difference ?? store.cash_difference ?? null,
     target: dailyTarget,
     target_monthly_revenue: monthlyTarget,
@@ -387,6 +214,7 @@ function AuthenticatedApp() {
           loadDemoWorkspace();
         }
       } catch (error) {
+        if (error.code === "OPERATIONS_ACCESS_DENIED") await signOut();
         setMessage(error.message);
       } finally {
         setLoading(false);
@@ -396,6 +224,12 @@ function AuthenticatedApp() {
   }, []);
 
   const currentRole = profileRole(profile);
+  const operationalStaffRoster = useMemo(() => staffRoster.filter(isOperationalStoreStaff), [staffRoster]);
+  useEffect(() => {
+    if (!loading && profile && new URLSearchParams(window.location.search).has('transfer') && canAccessModule(currentRole, 'transfers')) {
+      setActiveModule('transfers');
+    }
+  }, [loading, profile, currentRole]);
   const canViewSalary = ["ceo", "cfo"].includes(currentRole)
     || (currentRole === "coo" && new Date(salaryAccessExpiresAt).getTime() > Date.now());
   const effectiveSalaryRows = useMemo(() => {
@@ -525,6 +359,7 @@ function AuthenticatedApp() {
       }
       await loadWorkspace(nextProfile);
     } catch (error) {
+      if (error.code === "OPERATIONS_ACCESS_DENIED") await signOut();
       setMessage(error.message);
     } finally {
       setLoading(false);
@@ -566,7 +401,7 @@ function AuthenticatedApp() {
     const lateReportDate = overdueReportBusinessDate(reportClock);
     const isLateReportDate = Boolean(lateReportDate && nextDate === lateReportDate);
     if (currentRole === "store_manager" && !isStoreManagerRevenueDateAllowed(nextDate, today)) {
-      show(`店長帳號僅可查閱最近 ${STORE_MANAGER_REVENUE_LOOKBACK_DAYS} 天營收資料`);
+      show(`店長帳號僅可回報或修改${STORE_MANAGER_REVENUE_ACCESS_LABEL}的資料`);
       return false;
     }
     if (nextDate < today && !isLateReportDate && authCode !== "8599") {
@@ -889,7 +724,7 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="app">
+    <div className={`app ${currentRole === "store_manager" ? "store-manager-app" : "hq-app"}`}>
       <Sidebar
         role={role}
         profile={profile}
@@ -912,11 +747,12 @@ function AuthenticatedApp() {
         {activeModuleAllowed && activeModule === "ops" && role === "hq" && (
           <HqDashboard
             currentRole={currentRole}
+            stores={stores}
             reports={reports}
             products={products}
             handovers={handovers}
             performanceRows={performanceRows}
-            staffRoster={staffRoster}
+            staffRoster={operationalStaffRoster}
             scheduleRows={effectiveScheduleRows}
             hqTasks={hqTasks}
             securitySettings={securitySettings}
@@ -938,7 +774,7 @@ function AuthenticatedApp() {
             reportDate={reportDate}
             products={products}
             currentRole={currentRole}
-            staffRoster={staffRoster}
+            staffRoster={operationalStaffRoster}
             today={today}
             reportClock={reportClock}
             onDateChange={changeReportDate}
@@ -952,7 +788,7 @@ function AuthenticatedApp() {
               reports={reports}
               handovers={handovers}
               performanceRows={performanceRows}
-              staffRoster={staffRoster}
+              staffRoster={operationalStaffRoster}
               scheduleRows={effectiveScheduleRows}
               hqTasks={hqTasks}
               onOpenModule={openModule}
@@ -999,6 +835,20 @@ function AuthenticatedApp() {
             onTransferStaffMember={transferStaffMember}
           />
         )}
+        {activeModuleAllowed && activeModule === "onlineOrdering" && <Suspense fallback={<p>正在載入線上點餐…</p>}><OnlineOrderingPage profile={profile} stores={stores} /></Suspense>}
+        {activeModuleAllowed && activeModule === "staffingOverview" && (
+          <Suspense fallback={<p role="status">正在載入人力掌握…</p>}>
+            <StaffingOverviewPage
+              stores={stores}
+              staffRoster={operationalStaffRoster}
+              selectedStoreId={selectedStoreId}
+              profile={profile}
+              currentRole={currentRole}
+              onSelectStore={setSelectedStoreId}
+              onRefresh={() => loadWorkspace(profile, selectedStoreId, reportDate)}
+            />
+          </Suspense>
+        )}
         {activeModuleAllowed && activeModule === "system" && (
           <ManagementSystemModule systems={hqSystemSeed} />
         )}
@@ -1023,11 +873,19 @@ function AuthenticatedApp() {
         {activeModuleAllowed && activeModule === "checkoutManagement" && (
           <QuickCheckoutManagementPage onNotify={show} />
         )}
+        {activeModuleAllowed && activeModule === "accountManagement" && (
+          <AccountManagementPage profile={profile} />
+        )}
+        {activeModuleAllowed && activeModule === "transfers" && <Suspense fallback={<p role="status">正在載入調貨中心…</p>}><TransferCenter /></Suspense>}
+        {activeModuleAllowed && activeModule === "repairs" && <Suspense fallback={<p role="status">正在載入門店報修…</p>}><RepairModule profile={profile} /></Suspense>}
+        {activeModuleAllowed && activeModule === "approvals" && (
+          <ApprovalCenter profile={profile} stores={stores} />
+        )}
         {activeModuleAllowed && activeModule === "schedule" && (
           <ScheduleModule
             scheduleRows={effectiveScheduleRows}
             storeHours={effectiveStoreHours}
-            staffRoster={staffRoster}
+            staffRoster={operationalStaffRoster}
             salaryRows={effectiveSalaryRows}
             stores={stores}
             profile={profile}
@@ -1051,7 +909,7 @@ function AuthenticatedApp() {
             reports={reports}
             handovers={handovers}
             performanceRows={performanceRows}
-            staffRoster={staffRoster}
+            staffRoster={operationalStaffRoster}
             scheduleRows={effectiveScheduleRows}
             hqTasks={hqTasks}
             onSelect={setSelectedStoreId}
@@ -1260,7 +1118,7 @@ function LoginScreen({ onLogin, message, demoMode = false, stores = [] }) {
     <main className="login-screen">
       <section className="login-card">
         <div className="brand-mark">萊</div>
-        <h1>萊吉多營運回報</h1>
+        <h1>萊吉多營運管理中心</h1>
         <p>{demoMode ? "本機驗收模式，登入後依帳號限制可查看的門店。" : "請使用 Supabase Auth 建立的帳號登入。"}</p>
         {demoMode && (
           <label>
@@ -1300,7 +1158,7 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
     <main className="entry-screen">
       <section className="entry-copy">
         <div className="brand-mark">萊</div>
-        <h1>萊吉多營運回報入口</h1>
+        <h1>萊吉多營運管理中心</h1>
         <p>門店回報營收、庫存與差異，總部可即時查看每日營運狀況。</p>
         <label>
           選擇門店
@@ -1324,7 +1182,7 @@ function EntryScreen({ stores, onSelectStore, onRole }) {
   );
 }
 
-function Sidebar({
+export function Sidebar({
   role,
   profile,
   profileRole: currentRole,
@@ -1345,8 +1203,8 @@ function Sidebar({
       <div className="brand">
         <div className="brand-mark">萊</div>
         <div>
-          <strong>萊吉多營運回報</strong>
-          <span>門店營運管理</span>
+          <strong><span className="brand-full">萊吉多營運管理中心</span><span className="brand-short">萊吉多營運</span></strong>
+          <span>門店作業與總部管理</span>
         </div>
       </div>
       {!isStoreManager && allowedViewModes.length > 1 && (
@@ -1376,9 +1234,17 @@ function Sidebar({
       )}
       {isStoreManager ? (
         <div className="store-scope-card">
-          <span>目前門店</span>
-          <strong>{selectedStore?.name || profile?.store_code || "已綁定門店"}</strong>
-          <p>僅可查看與操作本店資料</p>
+          <div className="store-scope-heading">
+            <span>目前門店</span>
+            <strong>{selectedStore?.name || profile?.store_code || "已綁定門店"}</strong>
+          </div>
+          <div className="store-account-row">
+            <span>{profile?.full_name || `${profile?.store_code || "門店"} 分帳號`}</span>
+            <div className="store-account-actions">
+              <strong>{ROLE_LABELS[currentRole] || "門店店長"}</strong>
+              <button className="store-account-signout" type="button" onClick={onSignOut}>登出</button>
+            </div>
+          </div>
         </div>
       ) : (
         <>
@@ -1397,6 +1263,7 @@ function Sidebar({
         {MODULE_GROUPS.map((group) => (
           <NavGroup
             key={group.title}
+            profile={profile}
             title={group.title}
             items={group.items}
             activeModule={activeModule}
@@ -1405,53 +1272,75 @@ function Sidebar({
           />
         ))}
       </nav>
-      <div className="sidebar-note">
-        <span>{profile?.full_name || "示範使用者"}</span>
-        <strong>{ROLE_LABELS[currentRole] || currentRole}</strong>
-        <p>正式部署後，角色與可查看門店會由 Supabase Auth 與 profiles 資料表控制。</p>
-      </div>
-      <button onClick={onSignOut}>登出 / 回登入頁</button>
+      {!isStoreManager && (
+        <div className="sidebar-note hq-account-row">
+          <div>
+            <span>{profile?.full_name || "示範使用者"}</span>
+            <strong>{ROLE_LABELS[currentRole] || currentRole}</strong>
+          </div>
+          <button type="button" onClick={onSignOut}>登出 / 回登入頁</button>
+        </div>
+      )}
     </aside>
   );
 }
 
-function NavGroup({ title, items, activeModule, allowedModules, onSelect }) {
+function NavGroup({ title, items, activeModule, allowedModules, onSelect, profile }) {
   const visibleItems = items.filter(([key]) => allowedModules.includes(key));
+  const storeMobileLabels = {
+    onlineOrdering: "接單",
+    ops: "回報",
+    schedule: "排班",
+    staffingOverview: "人力",
+    transfers: "調貨",
+    repairs: "報修",
+  };
   if (!visibleItems.length) return null;
   return (
     <div className="nav-group">
       <span>{title}</span>
       {visibleItems.map(([key, label]) => (
-        <button key={key} className={activeModule === key ? "active" : ""} onClick={() => onSelect(key)}>
-          {label}
+        <button key={key} aria-label={label} className={activeModule === key ? "active" : ""} onClick={() => onSelect(key)}>
+          {key === "approvals" ? <ApprovalNavLabel profile={profile} /> : (
+            <>
+              <span className="nav-label-full">{label}</span>
+              <span className="nav-label-short">{storeMobileLabels[key] || label}</span>
+            </>
+          )}
         </button>
       ))}
     </div>
   );
 }
 
-function TopBar({ activeModule, reportDate, role, profileRole: currentRole, report, onSync, onExport }) {
+export function TopBar({ activeModule, reportDate, role, profileRole: currentRole, report, onSync, onExport }) {
   const titleMap = {
+    onlineOrdering: "線上點餐管理",
+    approvals: "簽核中心",
     handover: "門市交接管理",
     performance: "人員績效管理",
     hr: "人資主檔管理",
+    staffingOverview: "門店人力掌握",
     system: "總部制度中心",
     schedule: "排班管理",
+    transfers: "調貨中心",
+    repairs: "門店報修",
     tasks: "總部任務派遣",
     hrFlow: "人資異動流程",
     anomaly: "總部異常中心",
     checkoutManagement: "總部點單管理",
   };
-  const title = titleMap[activeModule] || (role === "hq" ? "總部營運總覽" : role === "store" ? "門店每日回報" : "門店回報審核台");
+  const isStoreManager = currentRole === "store_manager";
+  const title = titleMap[activeModule] || (role === "hq" ? "總部營運總覽" : role === "store" ? "每日回報" : "門店回報審核台");
   return (
-    <header className="topbar">
+    <header className={`topbar ${isStoreManager ? "store-topbar" : ""}`}>
       <div>
         <p>營業日 {reportDate || today} · {report?.area || "全區"} · {report?.name || "尚未選擇門店"}</p>
         <h1>{title}</h1>
       </div>
       <div className="top-actions">
-        {canExportRole(currentRole) && <button onClick={onExport}>匯出 CSV</button>}
-        <button className="primary" onClick={onSync}>同步資料</button>
+        {!["approvals", "repairs", "staffingOverview", "onlineOrdering"].includes(activeModule) && canExportRole(currentRole) && <button onClick={onExport}>匯出 CSV</button>}
+        {!["approvals", "repairs", "staffingOverview", "onlineOrdering"].includes(activeModule) && <button className="primary" onClick={onSync}>{isStoreManager ? "同步" : "同步資料"}</button>}
       </div>
     </header>
   );
@@ -1470,7 +1359,7 @@ function AccessDeniedModule({ roleName }) {
   );
 }
 
-function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettings, onSelect, onOpenModule }) {
+export function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettings, onSelect, onOpenModule }) {
   const roleMeta = {
     ceo: {
       title: "執行長今日總覽",
@@ -1485,7 +1374,7 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
     },
     coo: {
       title: "管理層營運指揮中心",
-      subtitle: "優先處理逾期異常、巡檢缺失、任務追蹤與排班缺口。",
+      subtitle: "先看昨日營收與回報完整度，再處理今日異常與排班缺口。",
       metrics: [
         ["逾期回報", `${summary.overdueReports.length} 店`, summary.overdueReports[0]?.name || "無逾期", summary.overdueReports.length ? "bad" : "good"],
         ["排班缺口", `${summary.shortageRows.length} 筆`, summary.shortageRows[0]?.storeName || "目前足夠", summary.shortageRows.length ? "bad" : "good"],
@@ -1541,21 +1430,25 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
   };
   const meta = roleMeta[roleName] || roleMeta.coo;
   const visibleActions = meta.actions.filter(([, moduleName]) => canAccessModule(roleName, moduleName));
-  const displayMetrics = [
-    ["今日營收", money(summary.total), `目標 ${money(summary.target)}`, "hot"],
-    ["回報完成率", pct(summary.reportRate), `${summary.reportedRows.length}/${reports.length} 門店`, summary.reportRate >= 90 ? "good" : "warn"],
-    ["排班缺口", `${summary.shortageRows.length} 筆`, summary.shortageRows[0]?.storeName || "目前足夠", summary.shortageRows.length ? "bad" : "good"],
-    ["人員主檔", `${summary.activeStaff.length} 人`, "支援排班與門店管理", "good"],
-  ];
   const priorityRows = buildOperationsPriorities(summary).map((row) => ({
     ...row,
     message: row.message || `目前達成率 ${pct(row.attainment)}`,
   }));
+  const summaryReady = summary.dataReady !== false;
+  const summaryDate = summary.referenceDate || "前一營業日";
+  const periodLabel = summary.periodLabel || "目前日期";
+  const displayMetrics = [
+    [`${periodLabel}營收`, summaryReady ? money(summary.total) : "待同步", `${summaryDate} · 目標 ${money(summary.target)}`, "hot"],
+    [`${periodLabel}達成率`, summaryReady ? pct(summary.attainmentRate) : "待同步", `${summaryDate} 營收目標`, summary.attainmentRate >= 100 ? "good" : "warn"],
+    [`${periodLabel}回報完成率`, summaryReady ? pct(summary.reportRate) : "待同步", `${summary.reportedRows.length}/${reports.length} 門店`, summary.reportRate >= 90 ? "good" : "warn"],
+    ["今日待處理", `${priorityRows.length} 件`, priorityRows[0]?.type || "目前無異常", priorityRows.length ? "bad" : "good"],
+  ];
 
   return (
-    <section className="panel wide role-home">
-      <div className="panel-head">
+    <section className="panel wide role-home role-command-center">
+      <div className="panel-head role-home-head">
         <div>
+          <span className="dashboard-kicker">營運決策</span>
           <h2>{meta.title}</h2>
           <p>{meta.subtitle}</p>
         </div>
@@ -1571,8 +1464,14 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
         ))}
       </div>
       <div className="role-home-grid">
-        <div>
-          <h3>今日優先處理</h3>
+        <section className="role-focus-panel">
+          <div className="dashboard-section-title">
+            <div>
+              <span>待辦焦點</span>
+              <h3>今日優先處理</h3>
+            </div>
+            <strong>{priorityRows.length} 件</strong>
+          </div>
           <div className="priority-list">
             {priorityRows.slice(0, 5).map((row) => (
               <button key={row.id} type="button" className="priority-item" onClick={() => onSelect?.(row.store_id || reportForStoreCode(reports, row.store_code)?.store_id)}>
@@ -1584,9 +1483,15 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
             ))}
             {!priorityRows.length && <div className="empty-state">目前核心回報、排班與營收狀況正常。</div>}
           </div>
-        </div>
-        <div>
-          <h3>門店達成率排名</h3>
+        </section>
+        <section className="role-ranking-panel">
+          <div className="dashboard-section-title">
+            <div>
+              <span>營運表現</span>
+              <h3>門店達成率</h3>
+            </div>
+            <strong>前 6 店</strong>
+          </div>
           <div className="rank-list">
             {summary.ranking.slice(0, 6).map((row, index) => (
               <button key={row.store_id || row.id} type="button" className="rank-row" onClick={() => onSelect?.(row.store_id)}>
@@ -1596,7 +1501,51 @@ function RoleHomePanel({ roleName, summary, reports, anomalyRows, securitySettin
               </button>
             ))}
           </div>
+        </section>
+      </div>
+    </section>
+  );
+}
+
+export function HqRevenueUsageSummary({ revenueSummary, usageSummary, weekRange, monthRange }) {
+  return (
+    <section className="panel wide hq-summary-panel hq-summary-band">
+      <div className="panel-head hq-summary-head">
+        <div>
+          <span className="dashboard-kicker">關鍵數字</span>
+          <h2>營收與使用量彙總</h2>
+          <p>週統計為週一至週日；月統計為本月。</p>
         </div>
+      </div>
+      <div className="hq-summary-layout">
+        <section className="hq-summary-group revenue">
+          <div className="hq-summary-group-head">
+            <span>NT$</span>
+            <div>
+              <h3>營收</h3>
+              <p>掌握各期間累計營業額</p>
+            </div>
+          </div>
+          <div className="summary-grid">
+            <Metric label="今日" value={money(revenueSummary.daily)} detail={`營業日 ${today}`} tone="hot" />
+            <Metric label="本週" value={money(revenueSummary.week)} detail={`${weekRange.start} 至 ${weekRange.end}`} />
+            <Metric label="本月" value={money(revenueSummary.month)} detail={`${monthRange.start} 至 ${monthRange.end}`} />
+          </div>
+        </section>
+        <section className="hq-summary-group usage">
+          <div className="hq-summary-group-head">
+            <span>件</span>
+            <div>
+              <h3>產品使用量</h3>
+              <p>依每日庫存差額彙整</p>
+            </div>
+          </div>
+          <div className="summary-grid">
+            <Metric label="今日" value={`${usageSummary.daily} 件`} detail="昨日庫存 - 今日庫存" tone="warn" />
+            <Metric label="本週" value={`${usageSummary.week} 件`} detail="週一至週日" />
+            <Metric label="本月" value={`${usageSummary.month} 件`} detail="本月累計" />
+          </div>
+        </section>
       </div>
     </section>
   );
@@ -1608,15 +1557,19 @@ function SupervisorOpsHome({ currentRole, reports, handovers, performanceRows, s
     [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks],
   );
   const summary = useMemo(
-    () => buildOperationsOverview({
-      reports,
-      handovers,
-      staffRoster,
-      scheduleRows,
-      hqTasks,
-      anomalyRows,
-      today,
-      resolveStoreCode: canonicalStoreCode,
+    () => ({
+      ...buildOperationsOverview({
+        reports,
+        handovers,
+        staffRoster,
+        scheduleRows,
+        hqTasks,
+        anomalyRows,
+        today,
+        resolveStoreCode: canonicalStoreCode,
+      }),
+      periodLabel: "目前日期",
+      referenceDate: reports[0]?.report_date || today,
     }),
     [reports, handovers, staffRoster, scheduleRows, hqTasks, anomalyRows],
   );
@@ -1638,6 +1591,7 @@ function SupervisorOpsHome({ currentRole, reports, handovers, performanceRows, s
 
 function HqDashboard({
   currentRole,
+  stores,
   reports,
   products,
   handovers,
@@ -1665,8 +1619,8 @@ function HqDashboard({
   const [refreshToken, setRefreshToken] = useState(0);
   const weekRange = useMemo(() => getWeekRange(today), []);
   const monthRange = useMemo(() => getMonthRange(today), []);
-  const fourWeekRanges = useMemo(() => getFourWeekRanges(today), []);
-  const periodStart = [monthRange.start, fourWeekRanges[0].start].sort()[0];
+  const comparisonWeekRanges = useMemo(() => getPreviousWeekRanges(today), []);
+  const periodStart = [monthRange.start, comparisonWeekRanges[0].start].sort()[0];
 
   useEffect(() => {
     let active = true;
@@ -1706,7 +1660,7 @@ function HqDashboard({
   const revenueSummary = useMemo(() => buildRevenueSummary(periodRows.length ? periodRows : reports), [periodRows, reports]);
   const usageSummary = useMemo(() => buildUsageSummary(reports, products, periodRows, usageRows), [reports, products, periodRows, usageRows]);
   const dailyRevenueRows = useMemo(() => buildDailyRevenueRows(periodRows.length ? periodRows : reports), [periodRows, reports]);
-  const weeklyRevenueRows = useMemo(() => buildWeeklyRevenueRows(periodRows.length ? periodRows : reports, fourWeekRanges), [periodRows, reports, fourWeekRanges]);
+  const weeklyRevenueRows = useMemo(() => buildWeeklyRevenueRows(periodRows.length ? periodRows : reports, comparisonWeekRanges), [periodRows, reports, comparisonWeekRanges]);
   const weeklyComparisonRows = useMemo(() => buildWeeklySameDayRows(periodRows.length ? periodRows : reports, today), [periodRows, reports]);
   const usageMatrix = useMemo(() => buildUsageMatrix(usageSummary.rows), [usageSummary.rows]);
   const dataQuality = useMemo(() => buildDataQualitySummary(reports, handovers, performanceRows), [reports, handovers, performanceRows]);
@@ -1727,19 +1681,34 @@ function HqDashboard({
     () => buildAnomalyRows({ reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks }),
     [reports, handovers, performanceRows, staffRoster, scheduleRows, hqTasks],
   );
-  const opsSummary = useMemo(
-    () => buildOperationsOverview({
-      reports,
-      overdueReports,
-      handovers,
-      staffRoster,
-      scheduleRows,
-      hqTasks,
-      anomalyRows,
-      today,
+  const decisionDate = addDays(today, -1);
+  const decisionReports = useMemo(
+    () => buildDailyOverviewReports({
+      stores: reports,
+      periodReports: periodRows,
+      date: decisionDate,
       resolveStoreCode: canonicalStoreCode,
     }),
-    [reports, overdueReports, handovers, staffRoster, scheduleRows, hqTasks, anomalyRows],
+    [decisionDate, periodRows, reports],
+  );
+  const opsSummary = useMemo(
+    () => ({
+      ...buildOperationsOverview({
+        reports: decisionReports,
+        overdueReports,
+        handovers,
+        staffRoster,
+        scheduleRows,
+        hqTasks,
+        anomalyRows,
+        today,
+        resolveStoreCode: canonicalStoreCode,
+      }),
+      referenceDate: decisionDate,
+      periodLabel: "昨日",
+      dataReady: periodDataReady,
+    }),
+    [decisionDate, decisionReports, overdueReports, handovers, staffRoster, scheduleRows, hqTasks, anomalyRows, periodDataReady],
   );
 
   async function saveMonthlyTarget(report) {
@@ -1766,57 +1735,71 @@ function HqDashboard({
       <RoleHomePanel
         roleName={currentRole}
         summary={opsSummary}
-        reports={reports}
+        reports={decisionReports}
         anomalyRows={anomalyRows}
         securitySettings={securitySettings}
         onSelect={onSelect}
         onOpenModule={onOpenModule}
       />
-      <section className="kpi-strip">
-        <Metric label="目前營業日營收" value={money(opsSummary.total)} detail={`營業日 ${today}`} tone="hot" />
-        <Metric label="整體達成率" value={pct(opsSummary.attainmentRate)} detail="依目前營業日目標計算" />
-        <Metric label="已送出" value={`${opsSummary.reportedRows.length} 間`} detail="目前營業日已有回報" tone="good" />
-        <Metric label="尚未完成" value={`${opsSummary.unreported.length} 間`} detail="目前營業日回報進度" tone="warn" />
-        <Metric label="已達標" value={`${opsSummary.achievedRows.length} 間`} detail="營收高於目標" tone="good" />
-      </section>
-      <HqOperationsView rows={weeklyComparisonRows} />
-      <section className="panel wide">
-        <div className="panel-head">
-          <div>
-            <h2>營收與使用量彙總</h2>
-            <p>週統計為週一至週日；月統計為本月。</p>
-          </div>
-        </div>
-        <div className="summary-grid">
-          <Metric label="每日營收" value={money(revenueSummary.daily)} detail={`營業日 ${today}`} tone="hot" />
-          <Metric label="一週營收" value={money(revenueSummary.week)} detail={`${weekRange.start} 至 ${weekRange.end}`} />
-          <Metric label="當月營收" value={money(revenueSummary.month)} detail={`${monthRange.start} 至 ${monthRange.end}`} />
-          <Metric label="每日使用量" value={`${usageSummary.daily} 件`} detail="昨日庫存 - 今日庫存" tone="warn" />
-          <Metric label="一週使用量" value={`${usageSummary.week} 件`} detail="週一至週日" />
-          <Metric label="當月使用量" value={`${usageSummary.month} 件`} detail="本月累計" />
-        </div>
-      </section>
-      <HqReportRecords
-        reports={periodRows.length ? periodRows : reports}
-        products={products}
-        canManageReports={canManageReports}
-        canConfirmReports={canConfirmReports}
-        onSelect={onSelect}
-        onSaveReport={onSaveReport}
-        onDeleteReport={onDeleteReport}
-        onBulkDeleteReports={onBulkDeleteReports}
-        onNotify={onNotify}
-        onRefresh={() => setRefreshToken((value) => value + 1)}
+      <HqRevenueUsageSummary
+        revenueSummary={revenueSummary}
+        usageSummary={usageSummary}
+        weekRange={weekRange}
+        monthRange={monthRange}
       />
-      <section className="panel wide">
-        <div className="panel-head">
+      <details className="panel wide dashboard-disclosure hq-compact-store-table hq-daily-revenue-table">
+        <summary className="dashboard-disclosure-summary">
+          <div>
+            <h2>每日營收情況</h2>
+            <p>各店每日營收、達成率、庫存與回報狀態。</p>
+          </div>
+          <span className="dashboard-disclosure-hint">查看明細</span>
+        </summary>
+        <div className="dashboard-disclosure-body table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>門店</th>
+                <th>日期</th>
+                <th>14:00</th>
+                <th>19:00</th>
+                <th>打烊</th>
+                <th>總營收</th>
+                <th>達成率</th>
+                <th>庫存</th>
+                <th>現金差異</th>
+                <th>狀態</th>
+              </tr>
+            </thead>
+            <tbody>
+              {dailyRevenueRows.map((report) => (
+                <tr key={`${report.store_id}-${report.report_date}`} onClick={() => onSelect(report.store_id)}>
+                  <td><strong>{report.name}</strong></td>
+                  <td>{report.report_date}</td>
+                  <td>{money(report.opened_to_1400_revenue)}</td>
+                  <td>{money(report.revenue_1400_to_1900)}</td>
+                  <td>{money(report.revenue_1900_to_close)}</td>
+                  <td><strong>{money(totalRevenue(report))}</strong></td>
+                  <td><Progress value={(totalRevenue(report) / report.target) * 100} attainmentStatus /></td>
+                  <td>{report.inventory_status}</td>
+                  <td className={report.cash_difference < 0 ? "negative" : ""}>{report.cash_difference ?? "未填"}</td>
+                  <td><span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+      <HqOperationsView rows={weeklyComparisonRows} />
+      <details className="panel wide dashboard-disclosure hq-compact-store-table hq-target-table">
+        <summary className="dashboard-disclosure-summary">
           <div>
             <h2>本月營業額目標設定</h2>
             <p>{canEditTargets ? "輸入各店本月目標，系統自動換算每日目標，供達成率與週會檢討使用。" : "此角色可查看目標與達成率，但不可調整營業目標。"}</p>
           </div>
-          {targetMessage && <span className="chip warn">{targetMessage}</span>}
-        </div>
-        <div className="table-wrap compact">
+          <span className="dashboard-disclosure-hint">{targetMessage || "查看設定"}</span>
+        </summary>
+        <div className="dashboard-disclosure-body table-wrap compact">
           <table>
             <thead>
               <tr>
@@ -1854,57 +1837,29 @@ function HqDashboard({
             </tbody>
           </table>
         </div>
-      </section>
-      <section className="panel wide">
-        <div className="panel-head">
+      </details>
+      <HqReportRecords
+        stores={stores}
+        reports={periodRows.length ? periodRows : reports}
+        products={products}
+        canManageReports={canManageReports}
+        canConfirmReports={canConfirmReports}
+        onSelect={onSelect}
+        onSaveReport={onSaveReport}
+        onDeleteReport={onDeleteReport}
+        onBulkDeleteReports={onBulkDeleteReports}
+        onNotify={onNotify}
+        onRefresh={() => setRefreshToken((value) => value + 1)}
+      />
+      <details className="panel wide dashboard-disclosure hq-compact-store-table hq-weekly-revenue-table">
+        <summary className="dashboard-disclosure-summary">
           <div>
-            <h2>每日營收情況</h2>
-            <p>依日期列出各店 14:00、19:00、打烊與全日總營收，點選門店可進入明細。</p>
+            <h2>上週與上上週營收對比</h2>
+            <p>以上週完整七天對比上上週，查看各店營收增減。</p>
           </div>
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>門店</th>
-                <th>日期</th>
-                <th>14:00</th>
-                <th>19:00</th>
-                <th>打烊</th>
-                <th>總營收</th>
-                <th>達成率</th>
-                <th>庫存</th>
-                <th>現金差異</th>
-                <th>狀態</th>
-              </tr>
-            </thead>
-            <tbody>
-              {dailyRevenueRows.map((report) => (
-                <tr key={`${report.store_id}-${report.report_date}`} onClick={() => onSelect(report.store_id)}>
-                  <td><strong>{report.name}</strong><span>{report.manager_name || report.store_code}</span></td>
-                  <td>{report.report_date}</td>
-                  <td>{money(report.opened_to_1400_revenue)}</td>
-                  <td>{money(report.revenue_1400_to_1900)}</td>
-                  <td>{money(report.revenue_1900_to_close)}</td>
-                  <td><strong>{money(totalRevenue(report))}</strong></td>
-                  <td><Progress value={(totalRevenue(report) / report.target) * 100} attainmentStatus /></td>
-                  <td>{report.inventory_status}</td>
-                  <td className={report.cash_difference < 0 ? "negative" : ""}>{report.cash_difference ?? "未填"}</td>
-                  <td><span className={`chip ${tone(report.status)}`}>{statusLabel(report.status)}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <section className="panel wide">
-        <div className="panel-head">
-          <div>
-            <h2>近四週週營收對比</h2>
-            <p>週一至週日彙總，含 14:00、19:00、打烊、全日營收與較前週增減。</p>
-          </div>
-        </div>
-        <div className="table-wrap">
+          <span className="dashboard-disclosure-hint">查看趨勢</span>
+        </summary>
+        <div className="dashboard-disclosure-body table-wrap">
           <table>
             <thead>
               <tr>
@@ -1932,15 +1887,16 @@ function HqDashboard({
             </tbody>
           </table>
         </div>
-      </section>
-      <section className="panel wide">
-        <div className="panel-head">
+      </details>
+      <details className="panel wide dashboard-disclosure">
+        <summary className="dashboard-disclosure-summary">
           <div>
             <h2>各門市產品使用量</h2>
             <p>以品項為主比較各店使用量；高於同品項平均 20% 標示強，低於平均 20% 標示弱。</p>
           </div>
-        </div>
-        <div className="table-wrap compact">
+          <span className="dashboard-disclosure-hint">查看品項</span>
+        </summary>
+        <div className="dashboard-disclosure-body table-wrap compact">
           <table>
             <thead>
               <tr>
@@ -1968,69 +1924,146 @@ function HqDashboard({
             </tbody>
           </table>
         </div>
-      </section>
+      </details>
     </div>
   );
 }
 
-function HqOperationsView({ rows }) {
-  const visibleRows = rows.filter((row) => row.currentTotal || row.previousTotal).slice(0, 80);
+export function HqOperationsView({ rows }) {
+  const storeOptions = Array.from(
+    new Map(rows.map((row) => [row.storeCode || row.storeName, row.storeName])).entries(),
+  );
+  const [selectedStoreCode, setSelectedStoreCode] = useState("all");
+  const visibleRows = rows
+    .filter((row) => row.currentTotal || row.previousTotal)
+    .filter((row) => selectedStoreCode === "all" || (row.storeCode || row.storeName) === selectedStoreCode)
+    .slice(0, 80);
+  const storeGroups = buildWeeklyStoreGroups(visibleRows);
+  const shortDate = (value) => String(value || "").slice(5).replace("-", "/");
+  const periodAmount = (report, value) => report ? money(value) : "未回報";
+  const comparisonState = (row) => {
+    if (!row.current) return { label: "本週未回報", tone: "missing" };
+    if (!row.previous) return { label: "無上週資料", tone: "neutral" };
+    if (row.delta > 0) return { label: `+${pct(row.growth)}`, tone: "up" };
+    if (row.delta < 0) return { label: pct(row.growth), tone: "down" };
+    return { label: "持平", tone: "flat" };
+  };
   return (
-    <section className="panel wide">
-      <div className="panel-head">
+    <details className="panel wide dashboard-disclosure">
+      <summary className="dashboard-disclosure-summary">
         <div>
           <h2>營運視圖</h2>
           <p>各店本週同星期對比上週同星期，快速看出哪一天成長、哪一天下滑。</p>
         </div>
-      </div>
-      <div className="table-wrap compact">
-        <table>
-          <thead>
-            <tr>
-              <th>門店</th>
-              <th>星期</th>
-              <th>本週日期</th>
-              <th>本週 14:00</th>
-              <th>本週 19:00</th>
-              <th>本週打烊</th>
-              <th>本週總額</th>
-              <th>上週日期</th>
-              <th>上週 14:00</th>
-              <th>上週 19:00</th>
-              <th>上週打烊</th>
-              <th>上週總額</th>
-              <th>總額差</th>
-              <th>成長率</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRows.map((row) => (
-              <tr key={`${row.storeCode}-${row.currentDate}`}>
-                <td><strong>{row.storeName}</strong><span>{row.storeCode}</span></td>
-                <td>{row.weekday}</td>
-                <td>{row.currentDate}</td>
-                <td>{money(row.current?.opened_to_1400_revenue)}</td>
-                <td>{money(row.current?.revenue_1400_to_1900)}</td>
-                <td>{money(row.current?.revenue_1900_to_close)}</td>
-                <td>{money(row.currentTotal)}</td>
-                <td>{row.previousDate}</td>
-                <td>{money(row.previous?.opened_to_1400_revenue)}</td>
-                <td>{money(row.previous?.revenue_1400_to_1900)}</td>
-                <td>{money(row.previous?.revenue_1900_to_close)}</td>
-                <td>{money(row.previousTotal)}</td>
-                <td className={row.delta < 0 ? "negative" : row.delta > 0 ? "positive" : ""}>{money(row.delta)}</td>
-                <td><span className={`chip ${revenueDeltaTone(row.delta)}`}>{pct(row.growth)}</span></td>
-              </tr>
+        <span className="dashboard-disclosure-hint">查看比較</span>
+      </summary>
+      <div className="dashboard-disclosure-body hq-operations-groups">
+        <div className="hq-operations-toolbar">
+          <label htmlFor="hq-operations-store">查看門店</label>
+          <select id="hq-operations-store" value={selectedStoreCode} onChange={(event) => setSelectedStoreCode(event.target.value)}>
+            <option value="all">全部門店</option>
+            {storeOptions.map(([storeCode, storeName]) => (
+              <option key={storeCode} value={storeCode}>{storeCode} {storeName}</option>
             ))}
-            {!visibleRows.length && <tr><td colSpan="14">目前尚無足夠資料可做週對週同日比較。</td></tr>}
-          </tbody>
-        </table>
+          </select>
+        </div>
+        {storeGroups.map((group, groupIndex) => (
+          <section className="hq-store-comparison" style={{ "--store-order": groupIndex }} key={group.storeCode || group.storeName}>
+            <header className="hq-store-comparison-head">
+              <div className="hq-store-identity">
+                <span>{group.storeCode}</span>
+                <h3>{group.storeName}</h3>
+              </div>
+              <div className="hq-store-week-summary">
+                <div className="current"><span>本週累計</span><strong>{money(group.currentTotal)}</strong><small>已回報 {group.currentCount}/7 天</small></div>
+                <div className="previous"><span>上週同期</span><strong>{money(group.previousTotal)}</strong><small>已有 {group.previousCount}/7 天資料</small></div>
+                <div className={`change ${group.delta < 0 ? "down" : group.delta > 0 ? "up" : "flat"}`}>
+                  <span>同期增減</span>
+                  <strong>{group.comparisonReady ? `${group.delta > 0 ? "+" : ""}${money(group.delta)}` : "資料不足"}</strong>
+                  <small>{group.comparisonReady ? `${group.growth > 0 ? "+" : ""}${pct(group.growth)}` : "需兩週皆有回報"}</small>
+                </div>
+              </div>
+            </header>
+
+            <div className="hq-week-desktop table-wrap">
+              <table className="hq-week-table">
+                <caption className="sr-only">{group.storeName}本週與上週同星期營收比較</caption>
+                <thead>
+                  <tr className="period-head">
+                    <th rowSpan="2">星期</th>
+                    <th className="current" colSpan="5">本週</th>
+                    <th className="previous" colSpan="5">上週</th>
+                    <th className="comparison" colSpan="2">同期比較</th>
+                  </tr>
+                  <tr>
+                    <th className="current">日期</th><th className="current">14:00</th><th className="current">19:00</th><th className="current">打烊</th><th className="current total">全日</th>
+                    <th className="previous">日期</th><th className="previous">14:00</th><th className="previous">19:00</th><th className="previous">打烊</th><th className="previous total">全日</th>
+                    <th className="comparison">差額</th><th className="comparison">成長率</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.rows.map((row) => {
+                    const state = comparisonState(row);
+                    return (
+                      <tr className={!row.current ? "is-missing" : ""} key={`${row.storeCode}-${row.currentDate}`}>
+                        <th scope="row"><strong>{row.weekday}</strong></th>
+                        <td className="current date">{shortDate(row.currentDate)}</td>
+                        <td className="current">{periodAmount(row.current, row.current?.opened_to_1400_revenue)}</td>
+                        <td className="current">{periodAmount(row.current, row.current?.revenue_1400_to_1900)}</td>
+                        <td className="current">{periodAmount(row.current, row.current?.revenue_1900_to_close)}</td>
+                        <td className="current total">{periodAmount(row.current, row.currentTotal)}</td>
+                        <td className="previous date">{shortDate(row.previousDate)}</td>
+                        <td className="previous">{periodAmount(row.previous, row.previous?.opened_to_1400_revenue)}</td>
+                        <td className="previous">{periodAmount(row.previous, row.previous?.revenue_1400_to_1900)}</td>
+                        <td className="previous">{periodAmount(row.previous, row.previous?.revenue_1900_to_close)}</td>
+                        <td className="previous total">{periodAmount(row.previous, row.previousTotal)}</td>
+                        <td className={`comparison ${state.tone}`}>{row.current && row.previous ? `${row.delta > 0 ? "+" : ""}${money(row.delta)}` : "—"}</td>
+                        <td className="comparison"><span className={`hq-trend ${state.tone}`}>{state.label}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="hq-week-mobile-list">
+              {group.rows.map((row) => {
+                const state = comparisonState(row);
+                return (
+                  <article className={`hq-week-day-card ${!row.current ? "is-missing" : ""}`} key={`mobile-${row.storeCode}-${row.currentDate}`}>
+                    <div className="hq-week-day-head">
+                      <span><strong>{row.weekday}</strong><small>{shortDate(row.currentDate)} 對比 {shortDate(row.previousDate)}</small></span>
+                      <span className={`hq-trend ${state.tone}`}>{state.label}</span>
+                    </div>
+                    <div className="hq-week-periods">
+                      <div className="current">
+                        <span>本週</span><strong>{periodAmount(row.current, row.currentTotal)}</strong>
+                        <small>14時 {periodAmount(row.current, row.current?.opened_to_1400_revenue)}</small>
+                        <small>19時 {periodAmount(row.current, row.current?.revenue_1400_to_1900)}</small>
+                        <small>打烊 {periodAmount(row.current, row.current?.revenue_1900_to_close)}</small>
+                      </div>
+                      <div className="previous">
+                        <span>上週</span><strong>{periodAmount(row.previous, row.previousTotal)}</strong>
+                        <small>14時 {periodAmount(row.previous, row.previous?.opened_to_1400_revenue)}</small>
+                        <small>19時 {periodAmount(row.previous, row.previous?.revenue_1400_to_1900)}</small>
+                        <small>打烊 {periodAmount(row.previous, row.previous?.revenue_1900_to_close)}</small>
+                      </div>
+                    </div>
+                    {row.current && row.previous && <p>同期差額 <strong className={row.delta < 0 ? "negative" : row.delta > 0 ? "positive" : ""}>{row.delta > 0 ? "+" : ""}{money(row.delta)}</strong></p>}
+                  </article>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        {!storeGroups.length && <div className="empty-text">目前尚無足夠資料可做週對週同日比較。</div>}
       </div>
-    </section>
+    </details>
   );
 }
 
-function HqReportRecords({
+export function HqReportRecords({
+  stores = [],
   reports,
   products,
   canManageReports,
@@ -2046,6 +2079,7 @@ function HqReportRecords({
   const [dateFrom, setDateFrom] = useState(defaultMonth.start);
   const [dateTo, setDateTo] = useState(today);
   const [storeFilter, setStoreFilter] = useState("all");
+  const [exportSort, setExportSort] = useState("store_date_asc");
   const [records, setRecords] = useState(reports);
   const [selected, setSelected] = useState(null);
   const [form, setForm] = useState(null);
@@ -2055,6 +2089,30 @@ function HqReportRecords({
   const [saving, setSaving] = useState(false);
   const [changeRequests, setChangeRequests] = useState([]);
   const [workflowBusyId, setWorkflowBusyId] = useState("");
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [inventoryReadState, setInventoryReadState] = useState({ phase: "idle" });
+  const [inventoryReadAttempt, setInventoryReadAttempt] = useState(0);
+  const inventoryReadKey = `${selected?.id}:${selected?.report_date}:${inventoryReadAttempt}`;
+  const inventoryReady = reportInputsReady(inventoryReadState, inventoryReadKey);
+
+  useEffect(() => {
+    if (!selected) return;
+    let active = true;
+    setInventoryReadState({ key: inventoryReadKey, phase: "loading" });
+    readReportInputs({
+      saved: { label: "當日庫存", read: () => fetchInventoryCounts(selected.id) },
+      previous: { label: "昨日庫存", read: () => fetchPreviousInventoryCounts(selected.store_id, selected.report_date) },
+    }).then(({ saved, previous }) => {
+      if (!active) return;
+      setInventory(mergeInventoryRows(products, saved, previous, {
+        storeCode: canonicalStoreCode(selected), reportDate: selected.report_date,
+      }));
+      setInventoryReadState({ key: inventoryReadKey, phase: "ready" });
+    }).catch(error => {
+      if (active) setInventoryReadState({ key: inventoryReadKey, phase: "error", message: error.message });
+    });
+    return () => { active = false; };
+  }, [selected, products, inventoryReadKey]);
 
   useEffect(() => {
     setRecords(reports);
@@ -2135,6 +2193,7 @@ function HqReportRecords({
       onNotify?.("此門店尚無回報資料可修改");
       return;
     }
+    setInventoryReadState({ phase: "loading" });
     setSelected(report);
     setTab("sales");
     setForm({
@@ -2157,19 +2216,10 @@ function HqReportRecords({
       reportDate: report.report_date,
     };
     setInventory(products.map((product) => blankInventoryProduct(product, inventoryOptions)));
-    try {
-      const [savedRows, previousRows] = await Promise.all([
-        fetchInventoryCounts(report.id),
-        fetchPreviousInventoryCounts(report.store_id, report.report_date),
-      ]);
-      setInventory(mergeInventoryRows(products, savedRows, previousRows, inventoryOptions));
-    } catch (error) {
-      onNotify?.(`庫存資料讀取失敗：${error.message}`);
-    }
   }
 
   async function saveSelected() {
-    if (!selected || !form) return;
+    if (!selected || !form || !inventoryReady || saving) return;
     setSaving(true);
     try {
       const ok = await onSaveReport(selected, form, inventory);
@@ -2214,7 +2264,68 @@ function HqReportRecords({
     }
   }
 
-  const storeOptions = Array.from(new Map(records.map((row) => [row.store_id, row.name])).entries());
+  function exportVisibleRecords() {
+    const selectedStoreName = storeFilter === "all"
+      ? "全部門店"
+      : storeOptions.find(([storeId]) => storeId === storeFilter)?.[1] || "指定門店";
+    const exportStores = exportableStores
+      .filter((store) => storeFilter === "all" || String(store.id) === String(storeFilter))
+    if (!exportStores.length) {
+      onNotify?.("目前沒有可匯出的門店");
+      return;
+    }
+    const completedRows = completeReportRecordsForExport({
+      rows: visibleRows,
+      stores: exportStores,
+      dateFrom,
+      dateTo,
+    });
+    downloadTextFile(
+      buildReportRecordsCsv(sortReportRecordsForExport(completedRows, exportSort)),
+      reportRecordsFilename({ dateFrom, dateTo, storeName: selectedStoreName }),
+    );
+    onNotify?.(`已匯出 ${completedRows.length} 列，未回報日期已保留空白`);
+  }
+
+  async function confirmVisibleReports() {
+    if (!canConfirmReports || bulkConfirming) return;
+    const targets = selectLockableReports(visibleRows);
+    if (!targets.length) {
+      onNotify?.("目前查詢結果沒有可鎖定的已送出紀錄");
+      return;
+    }
+    if (!window.confirm(`確定要將目前查詢結果中的 ${targets.length} 筆已送出紀錄全部確認鎖定嗎？`)) return;
+
+    setBulkConfirming(true);
+    const confirmedIds = new Set();
+    const failedRows = [];
+    try {
+      for (const report of targets) {
+        try {
+          await reviewReport(report.id, "approve", "總部一鍵確認並鎖定", "approved");
+          confirmedIds.add(report.id);
+        } catch (error) {
+          failedRows.push({ report, error });
+        }
+      }
+      setRecords((rows) => rows.map((row) => (
+        confirmedIds.has(row.id) ? { ...row, status: "approved" } : row
+      )));
+      if (failedRows.length) {
+        onNotify?.(`一鍵鎖定完成：成功 ${confirmedIds.size} 筆，失敗 ${failedRows.length} 筆，請重新查詢後確認`);
+      } else {
+        onNotify?.(`已完成 ${confirmedIds.size} 筆回報紀錄確認鎖定`);
+      }
+      onRefresh?.();
+    } finally {
+      setBulkConfirming(false);
+    }
+  }
+
+  const exportableStores = sortStoresForReportExport(
+    stores.filter((store) => /^S\d{2}$/i.test(store.store_code || "") && store.is_active !== false),
+  );
+  const storeOptions = exportableStores.map((store) => [store.id, store.name]);
   const pendingChangeRequests = changeRequests.filter((request) => request.status === "pending");
   const visibleRows = buildDailyRevenueRows(records)
     .filter((row) => storeFilter === "all" || row.store_id === storeFilter);
@@ -2226,32 +2337,58 @@ function HqReportRecords({
     : false;
 
   return (
-    <section className="panel wide hq-report-records">
-      <div className="panel-head">
+    <details className="panel wide hq-report-records dashboard-disclosure hq-compact-store-table">
+      <summary className="dashboard-disclosure-summary">
         <div>
           <h2>各門店回報紀錄</h2>
           <p>總部可查詢各門店每日營收、庫存、調貨紀錄，並依權限修改或清除單日資料。</p>
         </div>
-        <span className="chip neutral">使用量 = 昨日庫存 - 今日庫存</span>
-      </div>
+        <span className="dashboard-disclosure-hint">查詢紀錄</span>
+      </summary>
+      <div className="dashboard-disclosure-body">
+      <p className="dashboard-disclosure-note">使用量 = 昨日庫存 - 今日庫存</p>
       <div className="record-toolbar">
-        <label>
-          起日
-          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-        </label>
-        <label>
-          迄日
-          <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
-        </label>
-        <label>
-          門店
-          <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
-            <option value="all">全部門店</option>
-            {storeOptions.map(([storeId, storeName]) => <option key={storeId} value={storeId}>{storeName}</option>)}
-          </select>
-        </label>
-        <button className="primary" onClick={loadRecords} disabled={loading}>{loading ? "讀取中..." : "查詢紀錄"}</button>
-        <button className="danger" onClick={clearVisibleRecords} disabled={!canManageReports || !visibleRows.some((row) => row.id)}>一鍵清除</button>
+        <div className="record-toolbar-pair">
+          <label>
+            起日
+            <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          </label>
+          <label>
+            迄日
+            <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          </label>
+        </div>
+        <div className="record-toolbar-pair">
+          <label>
+            門店
+            <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
+              <option value="all">全部門店</option>
+              {storeOptions.map(([storeId, storeName]) => <option key={storeId} value={storeId}>{storeName}</option>)}
+            </select>
+          </label>
+          <label>
+            匯出排序
+            <select value={exportSort} onChange={(event) => setExportSort(event.target.value)}>
+              <option value="store_date_asc">依門店分組・日期小到大</option>
+              <option value="date_asc">依日期小到大・同日按門店</option>
+            </select>
+          </label>
+        </div>
+        <div className="record-toolbar-pair record-toolbar-actions">
+          <button className="primary" onClick={loadRecords} disabled={loading}>{loading ? "讀取中..." : "查詢紀錄"}</button>
+          <button type="button" onClick={exportVisibleRecords} disabled={loading || !exportableStores.length}>匯出查詢結果</button>
+        </div>
+        <div className="record-toolbar-pair record-toolbar-actions">
+          <button
+            type="button"
+            className="primary"
+            onClick={confirmVisibleReports}
+            disabled={!canConfirmReports || loading || bulkConfirming || !selectLockableReports(visibleRows).length}
+          >
+            {bulkConfirming ? "鎖定中..." : `一鍵鎖定（${selectLockableReports(visibleRows).length}）`}
+          </button>
+          <button className="danger" onClick={clearVisibleRecords} disabled={!canManageReports || !visibleRows.some((row) => row.id)}>一鍵清除</button>
+        </div>
       </div>
       {pendingChangeRequests.length > 0 && (
         <div className="daily-change-request-list">
@@ -2355,7 +2492,7 @@ function HqReportRecords({
                 </td>
               </tr>
             ))}
-            {!visibleRows.length && <tr><td colSpan="13">目前查無回報紀錄</td></tr>}
+            {!visibleRows.length && <tr><td colSpan="14">目前查無回報紀錄</td></tr>}
           </tbody>
         </table>
       </div>
@@ -2369,6 +2506,11 @@ function HqReportRecords({
               </div>
               <button type="button" onClick={() => setSelected(null)}>關閉</button>
             </div>
+            {!inventoryReady && <div className="alert-line report-read-alert" role={inventoryReadState.phase === "error" ? "alert" : "status"}>
+              <span>{inventoryReadState.phase === "error" ? inventoryReadState.message : "正在讀取庫存，暫時無法編輯或儲存。"}</span>
+              {inventoryReadState.phase === "error" && <button type="button" onClick={() => setInventoryReadAttempt(value => value + 1)}>重新讀取</button>}
+            </div>}
+            <fieldset className="report-read-guard" disabled={!inventoryReady || saving}>
             <div className="segments">
               <button className={tab === "sales" ? "active" : ""} onClick={() => setTab("sales")}>營收</button>
               <button className={tab === "inventory" ? "active" : ""} onClick={() => setTab("inventory")}>庫存</button>
@@ -2395,14 +2537,16 @@ function HqReportRecords({
             ) : (
               <IncomingEditor rows={inventory} onChange={setInventory} />
             )}
+            </fieldset>
             <div className="dialog-actions">
               <button type="button" onClick={() => setSelected(null)}>取消</button>
-              <button type="button" className="primary" disabled={saving || revenueInvalid} onClick={saveSelected}>{saving ? "儲存中..." : "儲存修改"}</button>
+              <button type="button" className="primary" disabled={!inventoryReady || saving || revenueInvalid} onClick={saveSelected}>{saving ? "儲存中..." : "儲存修改"}</button>
             </div>
           </section>
         </div>
       )}
-    </section>
+      </div>
+    </details>
   );
 }
 
@@ -2478,7 +2622,7 @@ function buildWeeklyRevenueRows(rows, weekRanges) {
       return {
         ...row,
         growth,
-        growthLabel: growth === null ? "首週" : `${growth >= 0 ? "+" : ""}${pct(growth)}`,
+        growthLabel: growth === null ? "基準週" : `${growth >= 0 ? "+" : ""}${pct(growth)}`,
       };
     })
     .sort((a, b) => (
@@ -2624,14 +2768,6 @@ function isNamedProductName(name) {
 function downloadTextFile(text, filename) {
   const link = document.createElement("a");
   link.href = URL.createObjectURL(new Blob([`\uFEFF${text}`], { type: "text/csv;charset=utf-8" }));
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(link.href);
-}
-
-function downloadExcelFile(xml, filename) {
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(new Blob([xml], { type: "application/vnd.ms-excel;charset=utf-8" }));
   link.download = filename;
   link.click();
   URL.revokeObjectURL(link.href);
@@ -2938,707 +3074,8 @@ function applyPerformanceCalculation(form, patch = {}) {
   };
 }
 
-function StoreSettingsModule({ stores, storeHours, relationGroups, configurationData, salaryRows, canViewSalary, onUnlockSalary, onSaved }) {
-  const [storeCode, setStoreCode] = useState(stores[0]?.store_code || "");
-  const [tab, setTab] = useState("basic");
-  const [draft, setDraft] = useState(null);
-  const [reason, setReason] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const [salaryDrafts, setSalaryDrafts] = useState([]);
-  const [salarySavingRole, setSalarySavingRole] = useState("");
-
-  const selectedStore = stores.find((store) => store.store_code === storeCode) || stores[0];
-  const selectedSetting = configurationData.settings.find((row) => row.store_code === selectedStore?.store_code);
-  const selectedDemand = configurationData.demands.find((row) => row.store_code === selectedStore?.store_code && row.rule_type === "baseline" && row.is_active !== false);
-  const selectedRelation = relationGroups.find((group) => group.sourceCodes.includes(selectedStore?.store_code));
-  const selectedFallback = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizeStoreName(selectedStore?.name));
-  const selectedAudits = configurationData.audits.filter((row) => row.store_code === selectedStore?.store_code);
-  const selectedWorkforceView = configurationData.workforceViews?.find((row) => row.store_code === selectedStore?.store_code && row.view_type === "backoffice");
-
-  useEffect(() => {
-    if (!selectedStore) return;
-    setDraft(createStoreSettingsDraft({
-      store: selectedStore,
-      setting: selectedSetting,
-      demand: selectedDemand,
-      relation: selectedRelation,
-      fallback: selectedFallback,
-      workforceView: selectedWorkforceView,
-    }));
-    setReason("");
-    setError("");
-  }, [selectedStore?.store_code, selectedSetting?.updated_at, selectedDemand?.required_count, selectedRelation?.demand, selectedWorkforceView?.is_enabled]);
-
-  useEffect(() => {
-    setSalaryDrafts((salaryRows || []).map(normalizeSalarySetting));
-  }, [salaryRows]);
-
-  if (!selectedStore || !draft) return <section className="panel"><p>目前沒有可設定的門店。</p></section>;
-
-  function update(key, value) {
-    setDraft((current) => ({ ...current, [key]: value }));
-  }
-
-  async function submit(event) {
-    event.preventDefault();
-    const validationError = validateStoreSettingsDraft(draft, reason);
-    if (validationError) return setError(validationError);
-    setSaving(true);
-    setError("");
-    try {
-      await saveStoreOperatingConfiguration(selectedStore.store_code, settingsPayload(draft), reason.trim());
-      if (selectedStore.store_code === "S01") {
-        await saveStoreWorkforceView("S01", "backoffice", draft.backoffice_matrix_enabled, reason.trim());
-      }
-      await onSaved?.();
-      setReason("");
-    } catch (saveError) {
-      setError(`儲存失敗：${saveError.message}`);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function updateSalary(roleName, key, value) {
-    setSalaryDrafts((rows) => rows.map((row) => row.role_name === roleName ? { ...row, [key]: value } : row));
-  }
-
-  async function saveSalary(row) {
-    const validationError = validateSalarySetting(row);
-    if (validationError) return setError(validationError);
-    if (String(reason || "").trim().length < 3) return setError("薪資修改原因至少需要三個字");
-    setSalarySavingRole(row.role_name);
-    setError("");
-    try {
-      await saveStaffRoleSalarySetting(normalizeSalarySetting(row), reason.trim());
-      await onSaved?.();
-      setReason("");
-    } catch (saveError) {
-      setError(`薪資設定儲存失敗：${saveError.message}`);
-    } finally {
-      setSalarySavingRole("");
-    }
-  }
-
-  return (
-    <div className="workspace module-grid store-settings-center">
-      <section className="panel wide">
-        <div className="panel-head">
-          <div>
-            <h2>門店營運設定中心</h2>
-            <p>統一維護門店狀態、營業時間、人力需求、營收目標與管理關係；儲存後保留異動紀錄。</p>
-          </div>
-          <span className={`chip ${draft.operating_status === "active" ? "good" : "warn"}`}>{draft.operating_status === "active" ? "營運中" : draft.operating_status === "suspended" ? "暫停營業" : "結束營業"}</span>
-        </div>
-        <div className="settings-store-picker">
-          <label>設定門店
-            <select value={selectedStore.store_code} onChange={(event) => setStoreCode(event.target.value)}>
-              {stores.map((store) => <option key={store.store_code} value={store.store_code}>{store.store_code} {store.name}</option>)}
-            </select>
-          </label>
-          <div className="settings-summary">
-            <span>基準需求 <strong>{draft.baseline_demand} 人</strong></span>
-            <span>月目標 <strong>{money(draft.target_monthly_revenue)}</strong></span>
-            <span>生效日 <strong>{draft.effective_from}</strong></span>
-          </div>
-        </div>
-        <div className="settings-tabs" role="tablist" aria-label="門店營運設定分類">
-          {STORE_SETTING_TABS.map(([key, label]) => (
-            <button type="button" className={tab === key ? "active" : ""} onClick={() => setTab(key)} key={key}>{label}</button>
-          ))}
-        </div>
-
-        <form onSubmit={submit}>
-          {tab === "basic" && <div className="settings-form-grid">
-            <label>店碼<input value={selectedStore.store_code} disabled /></label>
-            <label>門店名稱<input value={selectedStore.name} disabled /></label>
-            <label>負責人<input value={draft.manager_name} onChange={(event) => update("manager_name", event.target.value)} /></label>
-            <label>營運狀態<select value={draft.operating_status} onChange={(event) => update("operating_status", event.target.value)}><option value="active">營運中</option><option value="suspended">暫停營業</option><option value="closed">結束營業</option></select></label>
-            <label>設定生效日<input type="date" value={draft.effective_from} onChange={(event) => update("effective_from", event.target.value)} /></label>
-          </div>}
-
-          {tab === "hours" && <div className="settings-form-grid">
-            <label>平日開店<input type="time" value={draft.weekday_open_time} onChange={(event) => update("weekday_open_time", event.target.value)} /></label>
-            <label>平日打烊<input type="time" value={draft.weekday_close_time} onChange={(event) => update("weekday_close_time", event.target.value)} /></label>
-            <label>假日開店<input type="time" value={draft.holiday_open_time} onChange={(event) => update("holiday_open_time", event.target.value)} /></label>
-            <label>假日打烊<input type="time" value={draft.holiday_close_time} onChange={(event) => update("holiday_close_time", event.target.value)} /></label>
-            <label>14:00 回報時間<input type="time" value={draft.lunch_report_time} onChange={(event) => update("lunch_report_time", event.target.value)} /></label>
-            <label>19:00 回報時間<input type="time" value={draft.dinner_report_time} onChange={(event) => update("dinner_report_time", event.target.value)} /></label>
-            <label>打烊回報時間<input type="time" value={draft.close_report_time} onChange={(event) => update("close_report_time", event.target.value)} /></label>
-          </div>}
-
-          {tab === "staffing" && <div className="settings-form-grid">
-            <label>每日基準需求人數<input type="number" min="0" step="1" value={draft.baseline_demand} onChange={(event) => update("baseline_demand", event.target.value)} /></label>
-            <label>午峰開始<input type="time" step="1800" value={draft.lunch_peak_start} onChange={(event) => update("lunch_peak_start", event.target.value)} /></label>
-            <label>午峰結束<input type="time" step="1800" value={draft.lunch_peak_end} onChange={(event) => update("lunch_peak_end", event.target.value)} /></label>
-            <label>午峰需求人數<input type="number" min="0" step="1" value={draft.lunch_peak_demand} onChange={(event) => update("lunch_peak_demand", event.target.value)} /></label>
-            <label>晚峰開始<input type="time" step="1800" value={draft.dinner_peak_start} onChange={(event) => update("dinner_peak_start", event.target.value)} /></label>
-            <label>晚峰結束<input type="time" step="1800" value={draft.dinner_peak_end} onChange={(event) => update("dinner_peak_end", event.target.value)} /></label>
-            <label>晚峰需求人數<input type="number" min="0" step="1" value={draft.dinner_peak_demand} onChange={(event) => update("dinner_peak_demand", event.target.value)} /></label>
-            {selectedStore.store_code === "S01" && <label className="settings-toggle-field"><input type="checkbox" checked={draft.backoffice_matrix_enabled} onChange={(event) => update("backoffice_matrix_enabled", event.target.checked)} />啟用五甲後勤人力矩陣</label>}
-            <div className="settings-inline-note">星期別及特殊日期需求仍由排班管理的「人力需求調整」建立，優先於本基準。</div>
-          </div>}
-
-          {tab === "target" && <div className="settings-form-grid">
-            <label>本月營業額目標<input type="number" min="0" step="1000" value={draft.target_monthly_revenue} onChange={(event) => update("target_monthly_revenue", event.target.value)} /></label>
-            <label>自動換算每日目標<input value={money(settingsPayload(draft).target_daily_revenue)} disabled /></label>
-            <div className="settings-inline-note">儲存時寫入門店月目標與每日目標，營運看板及達成率同步使用。</div>
-          </div>}
-
-          {tab === "relation" && <div className="settings-form-grid">
-            <label>管理群組<input value={selectedRelation?.name || "未加入群組"} disabled /></label>
-            <label>統籌門店<input value={selectedRelation?.coordinatingStoreCode || selectedStore.store_code} disabled /></label>
-            <label>群組需求人數<input type="number" min="0" step="1" disabled={!selectedRelation} value={draft.group_demand} onChange={(event) => update("group_demand", event.target.value)} /></label>
-            <label className="wide-field">管理規則<textarea disabled={!selectedRelation} value={draft.relation_rule_note} onChange={(event) => update("relation_rule_note", event.target.value)} /></label>
-            <div className="settings-inline-note">新增、移除門店關係涉及跨店資料權限，第一版只允許維護既有群組需求與規則，避免誤改可見範圍。</div>
-          </div>}
-
-          {tab === "salary" && (
-            canViewSalary ? <div className="salary-settings-editor">
-              <div className="settings-inline-note">薪資設定為全公司職級共用，不隨門店切換；每次修改均須填寫原因並留下稽核紀錄。</div>
-              <div className="table-wrap"><table><thead><tr><th>職級</th><th>薪資類型</th><th>底薪</th><th>時薪</th><th>績效獎金</th><th>月休</th><th>總工時</th><th>休息</th><th>實際工時</th><th>操作</th></tr></thead><tbody>
-                {salaryDrafts.map((row) => <tr key={row.role_name}>
-                  <td><strong>{row.role_name}</strong></td>
-                  <td><select value={row.salary_type} onChange={(event) => updateSalary(row.role_name, "salary_type", event.target.value)}><option value="monthly">月薪</option><option value="hourly">時薪</option><option value="negotiable">待設定</option></select></td>
-                  <td><input type="number" min="0" value={row.base_salary ?? ""} onChange={(event) => updateSalary(row.role_name, "base_salary", event.target.value)} /></td>
-                  <td><input type="number" min="0" value={row.hourly_rate ?? ""} onChange={(event) => updateSalary(row.role_name, "hourly_rate", event.target.value)} /></td>
-                  <td><input type="number" min="0" value={row.performance_bonus ?? ""} onChange={(event) => updateSalary(row.role_name, "performance_bonus", event.target.value)} /></td>
-                  <td><input type="number" min="0" step="0.5" value={row.monthly_rest_days ?? ""} onChange={(event) => updateSalary(row.role_name, "monthly_rest_days", event.target.value)} /></td>
-                  <td><input type="number" min="0" step="0.5" value={row.work_hours ?? ""} onChange={(event) => updateSalary(row.role_name, "work_hours", event.target.value)} /></td>
-                  <td><input type="number" min="0" step="0.5" value={row.break_hours ?? ""} onChange={(event) => updateSalary(row.role_name, "break_hours", event.target.value)} /></td>
-                  <td>{row.work_hours === null ? "-" : Math.max(0, Number(row.work_hours || 0) - Number(row.break_hours || 0))}</td>
-                  <td><button type="button" onClick={() => saveSalary(row)} disabled={salarySavingRole === row.role_name}>{salarySavingRole === row.role_name ? "儲存中" : "儲存"}</button></td>
-                </tr>)}
-              </tbody></table></div>
-            </div> : <div className="salary-locked-state"><strong>薪資資料已遮蔽</strong><p>僅 CEO、CFO 或限時解鎖後的 COO 可查看與修改。</p>{onUnlockSalary && <button type="button" onClick={onUnlockSalary}>限時解鎖</button>}</div>
-          )}
-
-          {tab === "audit" && <div className="table-wrap compact settings-audit-table"><table><thead><tr><th>時間</th><th>修改原因</th><th>狀態</th><th>需求</th></tr></thead><tbody>
-            {selectedAudits.map((row) => <tr key={row.id}><td>{new Date(row.changed_at).toLocaleString("zh-TW", { hour12: false })}</td><td>{row.change_reason}</td><td>{row.after_data?.store?.operating_status || "-"}</td><td>{row.after_data?.baseline_demand ?? "-"}</td></tr>)}
-            {!selectedAudits.length && <tr><td colSpan="4">目前尚無異動紀錄</td></tr>}
-          </tbody></table></div>}
-
-          {tab !== "audit" && <div className="settings-save-bar">
-            <label>修改原因<input value={reason} onChange={(event) => setReason(event.target.value)} placeholder="必填，例如：調整八月門店人力基準" /></label>
-            {tab !== "salary" && <button className="primary" type="submit" disabled={saving}>{saving ? "儲存中" : "確認儲存並同步"}</button>}
-          </div>}
-          {error && <p className="form-error">{error}</p>}
-        </form>
-      </section>
-    </div>
-  );
-}
-
-function HrMasterModule({ stores, selectedStoreId, salaryRows, storeHours, staffRoster, currentRole, canViewSalary, onUnlockSalary, onSaveStaffMember, onDeleteStaffMember, onTransferStaffMember }) {
-  const selectedStore = stores.find((store) => store.store_id === selectedStoreId || store.id === selectedStoreId);
-  const normalizedSelectedName = normalizeStoreName(selectedStore?.name);
-  const selectedStoreName = storeHours.find((row) => normalizeStoreName(row.storeName) === normalizedSelectedName)?.storeName || storeHours[0]?.storeName || "";
-  const rosterByStore = staffRoster.filter((row) => normalizeStoreName(row.storeName) === normalizeStoreName(selectedStoreName));
-  const managers = staffRoster.filter((row) => isStoreLeadershipRole(row.role));
-  const activeStoreNames = storeHours
-    .filter((row) => {
-      const store = stores.find((item) => normalizeStoreName(item.name) === normalizeStoreName(row.storeName));
-      return !store || operatingStatusOf(store) === STORE_OPERATING_STATUS.ACTIVE;
-    })
-    .map((row) => row.storeName);
-  const uncoveredStores = activeStoreNames.filter((storeName) => !managers.some((row) => normalizeStoreName(row.storeName) === normalizeStoreName(storeName)));
-  const byRole = salaryRows.map((salary) => ({
-    ...salary,
-    base_salary: canViewSalary ? salary.base_salary : "已遮蔽",
-    performance_bonus: canViewSalary ? salary.performance_bonus : "已遮蔽",
-    count: staffRoster.filter((row) => row.role === salary.role).length,
-  }));
-
-  const editableStaffRoles = ["ceo", "coo", "cfo", "admin", "hq", "cso", "general_affairs"];
-  const canEditStaff = editableStaffRoles.includes(currentRole);
-  const storeOptions = useMemo(() => {
-    const fromStores = stores.map((store) => ({ store_code: canonicalStoreCode(store), name: store.name }));
-    const fromHours = storeHours.map((store) => ({ store_code: canonicalStoreCode(store), name: store.storeName }));
-    return [...fromStores, ...fromHours]
-      .filter((store) => store.store_code && store.name)
-      .filter((store, index, rows) => rows.findIndex((item) => item.store_code === store.store_code) === index)
-      .sort((a, b) => a.store_code.localeCompare(b.store_code));
-  }, [stores, storeHours]);
-  const roleOptions = useMemo(() => {
-    return STAFF_ROLE_OPTIONS;
-  }, []);
-  const defaultStoreCode = canonicalStoreCode(selectedStore) || canonicalStoreCode({ storeName: selectedStoreName }) || storeOptions[0]?.store_code || "";
-  const defaultStoreName = storeOptions.find((store) => store.store_code === defaultStoreCode)?.name || selectedStoreName || storeOptions[0]?.name || "";
-  const [staffForm, setStaffForm] = useState(() => createStaffForm({
-    storeCode: defaultStoreCode,
-    storeName: defaultStoreName,
-    roleName: roleOptions[0] || "",
-  }));
-  const [staffAssignments, setStaffAssignments] = useState([]);
-  const [staffSkills, setStaffSkills] = useState([]);
-  const [inactiveStaff, setInactiveStaff] = useState([]);
-  const [skillForm, setSkillForm] = useState({ staff_id: "", positions: [], primary_position: "" });
-  const [transferForm, setTransferForm] = useState({ staff_id: "", store_code: "", effective_from: "", reason: "" });
-
-  useEffect(() => {
-    let active = true;
-    fetchStaffStoreAssignments()
-      .then((rows) => { if (active) setStaffAssignments(rows); })
-      .catch(() => { if (active) setStaffAssignments([]); });
-    fetchStaffPositionSkills()
-      .then((rows) => { if (active) setStaffSkills(rows); })
-      .catch(() => { if (active) setStaffSkills([]); });
-    if (canEditStaff) {
-      fetchInactiveStoreStaff()
-        .then((rows) => { if (active) setInactiveStaff(rows); })
-        .catch(() => { if (active) setInactiveStaff([]); });
-    }
-    return () => { active = false; };
-  }, [canEditStaff]);
-
-  useEffect(() => {
-    if (staffForm.store_code || !defaultStoreCode) return;
-    setStaffForm((current) => ({ ...current, store_code: defaultStoreCode, store_name: defaultStoreName }));
-  }, [defaultStoreCode, defaultStoreName, staffForm.store_code]);
-
-  const selectedFormStore = storeOptions.find((store) => store.store_code === staffForm.store_code);
-
-  function resetStaffForm() {
-    setStaffForm(createStaffForm({
-      storeCode: defaultStoreCode,
-      storeName: defaultStoreName,
-      roleName: roleOptions[0] || "",
-    }));
-  }
-
-  function editStaff(row) {
-    const code = canonicalStoreCode(row);
-    const store = storeOptions.find((item) => item.store_code === code);
-    setStaffForm(staffMemberToForm(row, {
-      storeCode: code,
-      storeName: store?.name || displayStoreName(row),
-    }));
-  }
-
-  async function submitStaffForm(event) {
-    event.preventDefault();
-    const profile = buildStaffProfile(staffForm, {
-      storeName: selectedFormStore?.name || staffForm.store_name,
-    });
-    if (!profile.valid) return window.alert(profile.message);
-    const saved = await onSaveStaffMember?.(profile.payload);
-    if (saved) resetStaffForm();
-  }
-
-  async function deleteStaff(row) {
-    if (!window.confirm("確定停用 " + row.employeeName + "？停用後排假表不會再列入此人員。")) return;
-    await onDeleteStaffMember?.(row);
-    if (staffForm.id === row.id) resetStaffForm();
-  }
-
-  async function reactivateStaff(row) {
-    if (!window.confirm(`確定重新啟用 ${row.employeeName}？啟用後會重新列入人資與排假名單。`)) return;
-    const saved = await onSaveStaffMember?.({
-      ...staffMemberToForm(row, {
-        storeCode: canonicalStoreCode(row),
-        storeName: displayStoreName(row),
-      }),
-      employment_status: "在職",
-      is_active: true,
-    });
-    if (saved) setInactiveStaff((current) => current.filter((person) => person.id !== row.id));
-  }
-
-  async function submitStaffTransfer(event) {
-    event.preventDefault();
-    const saved = await onTransferStaffMember?.(transferForm);
-    if (!saved) return;
-    setStaffAssignments(await fetchStaffStoreAssignments());
-    setTransferForm({ staff_id: "", store_code: "", effective_from: "", reason: "" });
-  }
-
-  async function submitStaffSkills(event) {
-    event.preventDefault();
-    try {
-      await saveStaffPositionSkills(skillForm);
-      setStaffSkills(await fetchStaffPositionSkills());
-    } catch (error) {
-      window.alert(error.message);
-    }
-  }
-
-  return (
-    <div className="workspace module-grid">
-      <section className="kpi-strip">
-        <Metric label="人員主檔" value={`${staffRoster.length} 人`} detail="來自 00AI人資.xlsx" />
-        <Metric label="營運門店" value={`${activeStoreNames.length} 間`} detail="依門店營運狀態即時統計" />
-        <Metric label="有主管門店" value={`${new Set(managers.map((row) => row.storeName)).size} 間`} detail="店長或副店長" tone="good" />
-        <Metric label="主管缺口" value={`${uncoveredStores.length} 間`} detail={uncoveredStores[0] || "目前無缺口"} tone={uncoveredStores.length ? "bad" : "good"} />
-        <Metric label="高峰需人力" value={`${storeHours.reduce((sum, row) => sum + Number(row.duty_staff || 0), 0)} 人`} detail="各店值班人員合計" />
-      </section>
-
-            <section className="panel wide">
-        <div className="panel-head">
-          <div>
-            <h2>總部人員主檔維護</h2>
-            <p>總部可直接編輯各店人員姓名與職稱；儲存後會同步成為排假表的人員來源。</p>
-          </div>
-          <div className="panel-actions">
-            <button type="button" onClick={resetStaffForm}>新增人員</button>
-          </div>
-        </div>
-        {canEditStaff ? (
-          <form className="staff-admin-grid" onSubmit={submitStaffForm}>
-            <label>
-              門店
-              <select
-                value={staffForm.store_code}
-                onChange={(event) => {
-                  const store = storeOptions.find((item) => item.store_code === event.target.value);
-                  setStaffForm({ ...staffForm, store_code: event.target.value, store_name: store?.name || "" });
-                }}
-              >
-                {storeOptions.map((store) => (
-                  <option key={store.store_code} value={store.store_code}>{store.store_code} {store.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              人員姓名
-              <input value={staffForm.employee_name} onChange={(event) => setStaffForm({ ...staffForm, employee_name: event.target.value })} placeholder="輸入姓名" />
-            </label>
-            <label>
-              僱用型態
-              <select
-                value={staffForm.employment_type}
-                onChange={(event) => {
-                  const employmentType = event.target.value;
-                  setStaffForm({
-                    ...staffForm,
-                    employment_type: employmentType,
-                    holiday_start_time: employmentType === "兼職" ? staffForm.holiday_start_time : staffForm.weekday_start_time,
-                    holiday_end_time: employmentType === "兼職" ? staffForm.holiday_end_time : staffForm.weekday_end_time,
-                  });
-                }}
-              >
-                {EMPLOYMENT_TYPE_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
-            </label>
-            <label>
-              職稱
-              <select value={staffForm.role_name} onChange={(event) => setStaffForm({ ...staffForm, role_name: event.target.value })}>
-                {roleOptions.map((roleName) => <option key={roleName} value={roleName}>{roleName}</option>)}
-              </select>
-            </label>
-            <label>
-              工作類別
-              <select value={staffForm.work_category} onChange={(event) => setStaffForm({ ...staffForm, work_category: event.target.value })}>
-                {WORK_CATEGORY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
-            </label>
-            <label>
-              人員狀態
-              <select value={staffForm.employment_status} onChange={(event) => setStaffForm({ ...staffForm, employment_status: event.target.value })}>
-                {EMPLOYMENT_STATUS_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
-              </select>
-            </label>
-            <label>
-              {staffForm.employment_type === "兼職" ? "平日上班（選填）" : "預設上班（選填）"}
-              <input type="time" lang="en-GB" step="900" value={staffForm.weekday_start_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_start_time: formatTime24(event.target.value) })} />
-            </label>
-            <label>
-              {staffForm.employment_type === "兼職" ? "平日下班（選填）" : "預設下班（選填）"}
-              <input type="time" lang="en-GB" step="900" value={staffForm.weekday_end_time} onChange={(event) => setStaffForm({ ...staffForm, weekday_end_time: formatTime24(event.target.value) })} />
-            </label>
-            {staffForm.employment_type === "正職" && (
-              <p className="form-help">未另排單日班次時，系統使用此預設上、下班時間；兩個欄位可同時留空。</p>
-            )}
-            {staffForm.employment_type === "兼職" && (
-              <>
-                <label>
-                  假日上班（選填）
-                  <input type="time" lang="en-GB" step="900" value={staffForm.holiday_start_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_start_time: formatTime24(event.target.value) })} />
-                </label>
-                <label>
-                  假日下班（選填）
-                  <input type="time" lang="en-GB" step="900" value={staffForm.holiday_end_time} onChange={(event) => setStaffForm({ ...staffForm, holiday_end_time: formatTime24(event.target.value) })} />
-                </label>
-                <p className="form-help">未設定單日班次時，系統依平日／假日預設時間計算；四個欄位皆可留空。</p>
-              </>
-            )}
-            <label>
-              預估時薪成本（選填）
-              {canViewSalary
-                ? <input type="number" min="0" step="1" value={staffForm.estimated_hourly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_hourly_cost: event.target.value })} />
-                : currentRole === "coo" ? <button type="button" onClick={onUnlockSalary}>限時解鎖</button> : <span>已遮蔽</span>}
-            </label>
-            <label>
-              預估月薪成本（選填）
-              {canViewSalary ? <input type="number" min="0" step="1" value={staffForm.estimated_monthly_cost} onChange={(event) => setStaffForm({ ...staffForm, estimated_monthly_cost: event.target.value })} /> : <span>已遮蔽</span>}
-            </label>
-            <label>
-              排序
-              <input type="number" min="1" value={staffForm.sort_order} onChange={(event) => setStaffForm({ ...staffForm, sort_order: event.target.value })} />
-            </label>
-            <div className="staff-admin-actions">
-              <button className="primary" type="submit">{staffForm.id ? "儲存修改" : "新增到門店"}</button>
-              {staffForm.id && <button type="button" onClick={resetStaffForm}>取消編輯</button>}
-            </div>
-          </form>
-        ) : (
-          <p className="empty-text">此帳號可查看人員主檔；新增、修改與停用需由總部授權角色操作。</p>
-        )}
-        <div className="table-wrap compact">
-          <table>
-            <thead>
-              <tr><th>門店</th><th>人員姓名</th><th>僱用型態</th><th>職稱</th><th>工作類別</th><th>人員狀態</th><th>預設工時</th><th>排序</th><th>操作</th></tr>
-            </thead>
-            <tbody>
-              {staffRoster
-                .slice()
-                .sort((a, b) => canonicalStoreCode(a).localeCompare(canonicalStoreCode(b))
-                  || staffRoleRank(a.role) - staffRoleRank(b.role)
-                  || Number(a.sort_order || 999) - Number(b.sort_order || 999)
-                  || a.employeeName.localeCompare(b.employeeName, "zh-Hant"))
-                .map((row) => (
-                  <tr key={row.id}>
-                    <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
-                    <td>{row.employeeName}</td>
-                    <td>{row.employment_type}</td>
-                    <td>{row.role}</td>
-                    <td>{row.work_category}</td>
-                    <td>{row.employment_status}</td>
-                    <td>
-                      {row.employment_type === "兼職" ? (
-                        <>
-                          <span>平日 {formatTime24(row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.weekday_end_time || row.work_end_time) || "未填"}</span>
-                          <span>假日 {formatTime24(row.holiday_start_time || row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.holiday_end_time || row.weekday_end_time || row.work_end_time) || "未填"}</span>
-                        </>
-                      ) : (
-                        <span>{formatTime24(row.weekday_start_time || row.work_start_time) || "未填"}–{formatTime24(row.weekday_end_time || row.work_end_time) || "未填"}</span>
-                      )}
-                    </td>
-                    <td>{row.sort_order || "-"}</td>
-                    <td>
-                      {canEditStaff ? (
-                        <div className="inline-actions">
-                          <button type="button" onClick={() => editStaff(row)}>編輯</button>
-                          <button type="button" onClick={() => deleteStaff(row)}>停用</button>
-                        </div>
-                      ) : "-"}
-                    </td>
-                  </tr>
-                ))}
-              {!staffRoster.length && <tr><td colSpan="9">尚無人員資料，請由總部新增。</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        {canEditStaff && (
-          <details className="settings-collapsible">
-            <summary>停用人員（{inactiveStaff.length}）</summary>
-            <div className="table-wrap compact">
-              <table>
-                <thead><tr><th>門店</th><th>人員姓名</th><th>職稱</th><th>工作類別</th><th>狀態</th><th>操作</th></tr></thead>
-                <tbody>
-                  {inactiveStaff.map((row) => (
-                    <tr key={row.id}>
-                      <td><strong>{canonicalStoreCode(row)}</strong><span>{displayStoreName(row)}</span></td>
-                      <td>{row.employeeName}</td>
-                      <td>{row.role}</td>
-                      <td>{row.work_category}</td>
-                      <td>停用</td>
-                      <td><button type="button" onClick={() => reactivateStaff(row)}>重新啟用</button></td>
-                    </tr>
-                  ))}
-                  {!inactiveStaff.length && <tr><td colSpan="6">目前沒有停用人員。</td></tr>}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        )}
-      </section>
-      <details className="panel wide collapsible-form">
-        <summary className="collapsible-form-summary">
-          <div>
-            <h2>人員調店與歸屬歷程</h2>
-            <p>調店依生效日建立新版本；舊門店與歷史班表不會被覆蓋。</p>
-          </div>
-          <span className="collapsible-form-action">展開</span>
-        </summary>
-        {canEditStaff && (
-          <form className="staff-admin-grid" onSubmit={submitStaffTransfer}>
-            <label>
-              人員
-              <select value={transferForm.staff_id} onChange={(event) => setTransferForm({ ...transferForm, staff_id: event.target.value })} required>
-                <option value="">請選擇</option>
-                {staffRoster.map((row) => <option key={row.id} value={row.id}>{canonicalStoreCode(row)} {row.employeeName}</option>)}
-              </select>
-            </label>
-            <label>
-              新歸屬門店
-              <select value={transferForm.store_code} onChange={(event) => setTransferForm({ ...transferForm, store_code: event.target.value })} required>
-                <option value="">請選擇</option>
-                {storeOptions.map((store) => <option key={store.store_code} value={store.store_code}>{store.store_code} {store.name}</option>)}
-              </select>
-            </label>
-            <label>
-              生效日
-              <input type="date" value={transferForm.effective_from} onChange={(event) => setTransferForm({ ...transferForm, effective_from: event.target.value })} required />
-            </label>
-            <label>
-              調店原因
-              <input value={transferForm.reason} onChange={(event) => setTransferForm({ ...transferForm, reason: event.target.value })} placeholder="例如：營運人力調整" required />
-            </label>
-            <div className="staff-admin-actions"><button className="primary" type="submit">確認調店</button></div>
-          </form>
-        )}
-        <div className="table-wrap compact">
-          <table>
-            <thead><tr><th>人員</th><th>歸屬門店</th><th>生效日</th><th>結束日</th><th>原因</th></tr></thead>
-            <tbody>
-              {staffAssignments.map((assignment) => {
-                const person = staffRoster.find((row) => String(row.id) === String(assignment.staff_id));
-                return <tr key={assignment.id}><td>{person?.employeeName || assignment.staff_id}</td><td>{assignment.store_code}</td><td>{assignment.effective_from}</td><td>{assignment.effective_to || "目前"}</td><td>{assignment.reason}</td></tr>;
-              })}
-              {!staffAssignments.length && <tr><td colSpan="5">尚無歸屬歷程；資料庫套用後會自動建立既有人員基準。</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </details>
-      <details className="panel wide collapsible-form">
-        <summary className="collapsible-form-summary">
-          <div><h2>工作崗位與員工技能</h2><p>每人可具備多項技能，主要崗位用於排班缺口判斷。</p></div>
-          <span className="collapsible-form-action">展開</span>
-        </summary>
-        {canEditStaff && (
-          <form className="staff-admin-grid" onSubmit={submitStaffSkills}>
-            <label>
-              人員
-              <select value={skillForm.staff_id} onChange={(event) => {
-                const staffId = event.target.value;
-                const current = staffSkills.filter((row) => row.staff_id === staffId);
-                setSkillForm({ staff_id: staffId, positions: current.map((row) => row.position_code), primary_position: current.find((row) => row.is_primary)?.position_code || "" });
-              }} required>
-                <option value="">請選擇</option>
-                {staffRoster.map((row) => <option key={row.id} value={row.id}>{canonicalStoreCode(row)} {row.employeeName}</option>)}
-              </select>
-            </label>
-            <div className="wide-field staff-chip-list">
-              {STAFF_POSITION_OPTIONS.map((position) => (
-                <label key={position} className="check-row"><input type="checkbox" checked={skillForm.positions.includes(position)} onChange={(event) => {
-                  const positions = event.target.checked ? [...skillForm.positions, position] : skillForm.positions.filter((item) => item !== position);
-                  setSkillForm({ ...skillForm, positions, primary_position: positions.includes(skillForm.primary_position) ? skillForm.primary_position : positions[0] || "" });
-                }} /> {position}</label>
-              ))}
-            </div>
-            <label>
-              主要崗位
-              <select value={skillForm.primary_position} onChange={(event) => setSkillForm({ ...skillForm, primary_position: event.target.value })} required>
-                <option value="">請選擇</option>
-                {skillForm.positions.map((position) => <option key={position} value={position}>{position}</option>)}
-              </select>
-            </label>
-            <div className="staff-admin-actions"><button className="primary" type="submit">儲存技能</button></div>
-          </form>
-        )}
-        <div className="table-wrap compact"><table><thead><tr><th>人員</th><th>主要崗位</th><th>其他技能</th></tr></thead><tbody>
-          {staffRoster.filter((person) => staffSkills.some((skill) => skill.staff_id === person.id)).map((person) => {
-            const skills = staffSkills.filter((skill) => skill.staff_id === person.id);
-            return <tr key={person.id}><td>{person.employeeName}</td><td>{skills.find((skill) => skill.is_primary)?.position_code || "-"}</td><td>{skills.filter((skill) => !skill.is_primary).map((skill) => skill.position_code).join("、") || "-"}</td></tr>;
-          })}
-          {!staffSkills.length && <tr><td colSpan="3">尚未設定員工技能。</td></tr>}
-        </tbody></table></div>
-      </details>
-<section className="panel wide">
-        <div className="panel-head">
-          <div>
-            <h2>各店營業與尖峰時間</h2>
-            <p>用於排班、交接、營收回報時間與督導巡店節奏。</p>
-          </div>
-        </div>
-        <div className="table-wrap compact">
-          <table>
-            <thead>
-              <tr><th>門店</th><th>營業時間</th><th>中午尖峰</th><th>晚上尖峰</th><th>值班人員</th><th>回報節點</th><th>管理狀態</th></tr>
-            </thead>
-            <tbody>
-              {storeHours.map((row) => (
-                <tr key={row.storeName}>
-                  <td><strong>{row.storeName}</strong></td>
-                  <td>{row.open_time} - {row.close_time}</td>
-                  <td>{row.lunch_peak}</td>
-                  <td>{row.dinner_peak}</td>
-                  <td>{row.duty_staff} 人</td>
-                  <td>{row.lunch_report_time} / {row.dinner_report_time} / {row.close_report_time}</td>
-                  <td><span className={`chip ${activeStoreNames.includes(row.storeName) ? "good" : "warn"}`}>{activeStoreNames.includes(row.storeName) ? "營運中" : "暫停營業"}</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <details className="panel collapsible-form">
-        <summary className="collapsible-form-summary">
-          <div>
-            <h2>薪資職級設定</h2>
-            <p>作為招募、升遷、績效獎金與人事成本控管基準。</p>
-          </div>
-          <span className="collapsible-form-action">展開</span>
-        </summary>
-        <div className="table-wrap compact">
-          <table>
-            <thead>
-              <tr><th>職位</th><th>底薪</th><th>用工型態</th><th>保險</th><th>績效獎金</th><th>月休</th><th>實際工時</th><th>現有人數</th></tr>
-            </thead>
-            <tbody>
-              {byRole.map((row) => (
-                <tr key={row.role}>
-                  <td><strong>{row.role}</strong></td>
-                  <td>{row.base_salary}</td>
-                  <td>{row.employment_type}</td>
-                  <td>{row.insurance_note || "-"}</td>
-                  <td>{row.performance_bonus || "-"}</td>
-                  <td>{row.monthly_rest_days || "-"}</td>
-                  <td>{row.actual_work_hours ? `${row.actual_work_hours} 小時` : "-"}</td>
-                  <td>{row.count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </details>
-
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <h2>{selectedStoreName} 人員配置</h2>
-            <p>選擇左側門店後，可檢查該店店長、副店長與各職級配置。</p>
-          </div>
-        </div>
-        <div className="staff-chip-list">
-          {rosterByStore.slice().sort((a, b) => staffRoleRank(a.role) - staffRoleRank(b.role) || a.employeeName.localeCompare(b.employeeName, "zh-Hant")).map((row) => (
-            <div className="staff-chip" key={row.id}>
-              <strong>{row.employeeName}</strong>
-              <span>{row.role}</span>
-            </div>
-          ))}
-          {!rosterByStore.length && <p className="empty-text">此門店目前無人員資料，需由總部補齊。</p>}
-        </div>
-      </section>
-    </div>
-  );
-}
-
 function reportForStoreCode(reports, storeCode) {
   return reports.find((report) => canonicalStoreCode(report) === storeCode);
-}
-
-function secureRandomToken() {
-  const bytes = new Uint8Array(32);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (value) => value.toString(16).padStart(2, "0")).join("");
-}
-
-async function sha256Hex(value) {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 const weekdayLabels = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
@@ -3718,157 +3155,14 @@ function ManagementSystemModule({ systems }) {
   );
 }
 
-function taskTone(value = "") {
-  if (["已完成", "足夠", "正常", "已納入制度", "已填", "低"].includes(value)) return "good";
-  if (["高", "人力不足", "需輔導", "重大", "超休", "連勤過長"].includes(value)) return "bad";
-  if (["中", "待處理", "進行中", "待覆核", "試用觀察", "待總部覆核", "改善中", "待招募", "暫停", "暫停營業", "未填", "不足"].includes(value)) return "warn";
-  return "neutral";
-}
-
 function isOverdue(dateText) {
   return Boolean(dateText && dateText < today);
 }
-
-const leavePlannerStorageKey = "laijiduo-monthly-leave-planner";
-
-function countLeaveDays(value = "") {
-  return parseLeaveDays(value).length;
-}
-
-function leaveDraftKey(month, staffId) {
-  return `${month}:${staffId}`;
-}
-
-function parseLeaveDays(value = "") {
-  return Array.from(
-    new Set(
-      String(value)
-        .split(/[、,，\s]+/)
-        .map((item) => {
-          const match = item.match(/(\d{1,2})(?!.*\d)/);
-          return match ? Number(match[1]) : null;
-        })
-        .filter((day) => Number.isInteger(day) && day >= 1 && day <= 31),
-    ),
-  ).sort((a, b) => a - b);
-}
-
-function formatLeaveDays(month, days) {
-  const monthNumber = Number(month.slice(5, 7));
-  return days.map((day) => `${monthNumber}/${day}`).join("、");
-}
-
-function isLeaveDay(value, day) {
-  return parseLeaveDays(value).includes(day);
-}
-
-function leaveDaySource(draft, day) {
-  if (isLeaveDay(draft.autoDays, day)) return "auto";
-  if (isLeaveDay(draft.manualDays, day)) return "manual";
-  if (isLeaveDay(draft.dates, day)) return "manual";
-  return "";
-}
-
-const scheduleDayStatusOptions = ["休", "例", "國", "事假", "休出", "國出", "特"];
-const nonWorkingDayStatuses = new Set(["休", "例", "國", "事假", "特"]);
-
-function scheduleDayStatus(draft = {}, day) {
-  const status = draft.dayStatuses?.[day] || draft.dayStatuses?.[String(day)];
-  if (scheduleDayStatusOptions.includes(status)) return status;
-  return isLeaveDay(draft.dates, day) ? "休" : "";
-}
-
-const leaveTypeOptions = ["排休", "特休", "事假", "病假", "其他"];
 
 function timeToMinutes(value, fallback = 0) {
   const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
   if (!match) return fallback;
   return Number(match[1]) * 60 + Number(match[2]);
-}
-
-function formatTime24(value) {
-  const match = String(value || "").match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return "";
-  return `${String(Number(match[1])).padStart(2, "0")}:${match[2]}`;
-}
-
-function staffingCountText(value) {
-  return Number(value || 0).toLocaleString("zh-TW", { maximumFractionDigits: 1 });
-}
-
-function calculateStoreStaffingForDay(store, drafts, leaveMonth, day, dailyShifts = [], allStaff = store.staff) {
-  const dateValue = `${leaveMonth}-${String(day).padStart(2, "0")}`;
-  const leaveStaffIds = allStaff
-    .filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, day))
-    .map((person) => person.id);
-  const result = calculateDailyStaffing({
-    dateValue,
-    store,
-    people: allStaff,
-    overrides: dailyShifts,
-    leaveStaffIds,
-    storeCodes: store.sourceCodes,
-    demand: store.demand,
-  });
-  return {
-    ...result,
-    offCount: Math.max(store.staff.length - result.workingPeopleCount, 0),
-  };
-}
-
-function hasSixDayWorkViolation(leaveDays, monthDays) {
-  return Boolean(firstSixDayWorkViolationWindow(leaveDays, monthDays));
-}
-
-function firstSixDayWorkViolationWindow(leaveDays, monthDays) {
-  const leaveSet = new Set(leaveDays);
-  for (let start = 1; start <= Math.max(1, monthDays.length - 6); start += 1) {
-    const hasRest = Array.from({ length: 7 }, (_, index) => start + index).some((day) => leaveSet.has(day));
-    if (!hasRest) return [start, start + 6];
-  }
-  return null;
-}
-
-function buildLeavePlanPayload({ month, person, dates, manualDates, autoDates, dayStatuses = {}, leaveType = "排休", note = "" }) {
-  const parsedDates = parseLeaveDays(dates);
-  const parsedManualDays = manualDates === undefined ? parsedDates : parseLeaveDays(manualDates);
-  const parsedAutoDays = autoDates === undefined ? [] : parseLeaveDays(autoDates);
-  return {
-    period_month: month,
-    store_code: canonicalStoreCode(person),
-    store_name: displayStoreName(person),
-    staff_id: person.id,
-    employee_name: person.employeeName,
-    role_name: person.role,
-    leave_days: parsedDates,
-    manual_leave_days: parsedManualDays.filter((day) => parsedDates.includes(day)),
-    auto_leave_days: parsedAutoDays.filter((day) => parsedDates.includes(day)),
-    day_statuses: dayStatuses,
-    leave_type: leaveType,
-    note,
-  };
-}
-
-function getMonthlyRestDays(role, salaryRows) {
-  const salaryRow = salaryRows.find((row) => row.role === role);
-  const restDays = Number(salaryRow?.monthly_rest_days || 0);
-  return Number.isFinite(restDays) && restDays > 0 ? restDays : null;
-}
-
-function getSuggestedRestDays(role, salaryRows) {
-  const restDays = getMonthlyRestDays(role, salaryRows);
-  if (restDays) return restDays;
-  if (isStoreLeadershipRole(role)) return 7;
-  return null;
-}
-
-function getLeaveStatus(dateText, restDays, monthDays = []) {
-  const dayCount = countLeaveDays(dateText);
-  if (!dayCount) return "未填";
-  if (monthDays.length && hasSixDayWorkViolation(parseLeaveDays(dateText), monthDays)) return "連勤過長";
-  if (restDays && dayCount > restDays) return "超休";
-  if (restDays && dayCount < restDays) return "不足";
-  return "已填";
 }
 
 function buildLeavePlannerCsv({ month, rows, drafts, salaryRows }) {
@@ -3894,1925 +3188,6 @@ function buildLeavePlannerCsv({ month, rows, drafts, salaryRows }) {
     ];
   });
   return [headers, ...csvRows].map((row) => row.map(csvEscape).join(",")).join("\n");
-}
-
-function MonthlyLeavePlanner({
-  allowedStoreCode = "",
-  allowedStoreName = "",
-  isStoreScoped = false,
-  staffRoster,
-  salaryRows,
-  canViewSalary = false,
-  storeHours,
-  storeRelationGroups = STORE_RELATION_GROUPS,
-  workforceViews = [],
-  onNotify,
-}) {
-  const [leaveMonth, setLeaveMonth] = useState(today.slice(0, 7));
-  const [storeFilter, setStoreFilter] = useState(allowedStoreCode || "all");
-  const [matrixGroupCode, setMatrixGroupCode] = useState("");
-  const [matrixMode, setMatrixMode] = useState("storefront");
-  const [supportDate, setSupportDate] = useState(today.slice(0, 7) === today.slice(0, 7) ? today : `${today.slice(0, 7)}-01`);
-  const [syncState, setSyncState] = useState(hasSupabaseConfig ? "同步中" : "本機模式");
-  const [uploadingCode, setUploadingCode] = useState("");
-  const [scheduleControl, setScheduleControl] = useState({ lock: null, requests: [], supportRequests: [], missingTable: false });
-  const [controlLoading, setControlLoading] = useState(false);
-  const [requestReason, setRequestReason] = useState("");
-  const [requestScope, setRequestScope] = useState({ type: "date", date: today, staffId: "", shiftId: "" });
-  const [reviewNote, setReviewNote] = useState("");
-  const [remoteSupportRows, setRemoteSupportRows] = useState(null);
-  const [dailyShifts, setDailyShifts] = useState([]);
-  const [staffingDemandRules, setStaffingDemandRules] = useState([]);
-  const [personalLinks, setPersonalLinks] = useState([]);
-  const [personalLinkStaffId, setPersonalLinkStaffId] = useState("");
-  const [issuedPersonalLink, setIssuedPersonalLink] = useState("");
-  const [personalLinkSaving, setPersonalLinkSaving] = useState(false);
-  const [shiftSaving, setShiftSaving] = useState(false);
-  const [shiftTemplates, setShiftTemplates] = useState([]);
-  const [templateForm, setTemplateForm] = useState({ id: "", name: "", start_time: "", end_time: "" });
-  const [templateSaving, setTemplateSaving] = useState(false);
-  const [leaveAuditRows, setLeaveAuditRows] = useState([]);
-  const [demandRequests, setDemandRequests] = useState([]);
-  const [demandRequestForm, setDemandRequestForm] = useState({
-    start_time: "11:00", end_time: "14:00", required_count: 1, reason: "",
-  });
-  const [shiftForm, setShiftForm] = useState({
-    id: "",
-    shift_date: today,
-    staff_id: "",
-    assigned_store_code: "",
-    start_time: "",
-    end_time: "",
-    note: "",
-  });
-  const [drafts, setDrafts] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(leavePlannerStorageKey) || "{}");
-    } catch {
-      return {};
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem(leavePlannerStorageKey, JSON.stringify(drafts));
-  }, [drafts]);
-
-  useEffect(() => {
-    let active = true;
-    async function loadLeavePlans() {
-      if (!hasSupabaseConfig) return;
-      setSyncState("同步中");
-      try {
-        const rows = await fetchMonthlyLeavePlans(leaveMonth);
-        if (!active) return;
-        setDrafts((current) => {
-          const next = Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${leaveMonth}:`)));
-          rows.forEach((row) => {
-            next[leaveDraftKey(row.period_month, row.staff_id)] = {
-              dates: formatLeaveDays(row.period_month, row.leave_days || []),
-              manualDays: formatLeaveDays(row.period_month, row.manual_leave_days || row.leave_days || []),
-              autoDays: formatLeaveDays(row.period_month, row.auto_leave_days || []),
-              dayStatuses: row.day_statuses || {},
-              leaveType: row.leave_type || "排休",
-              note: row.note || "",
-            };
-          });
-          return next;
-        });
-        setSyncState(rows.length ? "已同步" : "尚無資料");
-      } catch (error) {
-        if (!active) return;
-        setSyncState("同步失敗");
-        onNotify?.(`排假同步失敗：${error.message}`);
-      }
-    }
-    loadLeavePlans();
-    return () => {
-      active = false;
-    };
-  }, [leaveMonth]);
-
-  async function loadScheduleControl() {
-    if (!hasSupabaseConfig) return;
-    setControlLoading(true);
-    try {
-      const data = await fetchMonthlyScheduleControl(leaveMonth);
-      setScheduleControl(data);
-    } catch (error) {
-      onNotify?.(`排班確認狀態讀取失敗：${error.message}`);
-    } finally {
-      setControlLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadScheduleControl();
-  }, [leaveMonth]);
-
-  async function refreshPersonalLinks() {
-    if (!hasSupabaseConfig) return setPersonalLinks([]);
-    try {
-      setPersonalLinks(await fetchPersonalScheduleLinks(leaveMonth));
-    } catch (error) {
-      onNotify?.(`個人班表連結讀取失敗：${error.message}`);
-    }
-  }
-
-  useEffect(() => {
-    refreshPersonalLinks();
-    setIssuedPersonalLink("");
-  }, [leaveMonth]);
-
-  async function refreshDailyShifts() {
-    if (!hasSupabaseConfig) {
-      try {
-        setDailyShifts(JSON.parse(localStorage.getItem(`daily-staff-shifts:${leaveMonth}`) || "[]"));
-      } catch {
-        setDailyShifts([]);
-      }
-      return;
-    }
-    try {
-      setDailyShifts(await fetchDailyStaffShifts(leaveMonth));
-    } catch (error) {
-      onNotify?.(`單日班次讀取失敗：${error.message}`);
-    }
-  }
-
-  useEffect(() => {
-    refreshDailyShifts();
-  }, [leaveMonth]);
-
-  async function refreshShiftTemplates() {
-    try {
-      setShiftTemplates(await fetchStandardShiftTemplates());
-    } catch (error) {
-      onNotify?.(`標準班次讀取失敗：${error.message}`);
-    }
-  }
-
-  useEffect(() => {
-    refreshShiftTemplates();
-  }, []);
-
-  async function refreshWorkforceRequests() {
-    try {
-      const [auditRows, requestRows] = await Promise.all([
-        isStoreScoped ? Promise.resolve([]) : fetchLeavePlanAudit(leaveMonth),
-        fetchStaffingDemandChangeRequests(),
-      ]);
-      setLeaveAuditRows(auditRows);
-      setDemandRequests(requestRows);
-    } catch (error) {
-      onNotify?.(`排班稽核資料讀取失敗：${error.message}`);
-    }
-  }
-
-  useEffect(() => {
-    refreshWorkforceRequests();
-  }, [leaveMonth, isStoreScoped]);
-
-  async function submitDemandRequest(event) {
-    event.preventDefault();
-    const storeCode = normalizeStoreScopedScheduleCode(allowedStoreCode);
-    if (!storeCode || demandRequestForm.reason.trim().length < 3) return onNotify?.("請填寫至少 3 個字的調整原因");
-    try {
-      await submitStaffingDemandChangeRequest({
-        store_code: storeCode,
-        reason: demandRequestForm.reason,
-        proposed_rule: {
-          rule_type: "special",
-          special_date: supportDate,
-          start_time: demandRequestForm.start_time,
-          end_time: demandRequestForm.end_time,
-          required_count: Number(demandRequestForm.required_count),
-        },
-      });
-      setDemandRequestForm({ start_time: "11:00", end_time: "14:00", required_count: 1, reason: "" });
-      await refreshWorkforceRequests();
-      onNotify?.("人力需求調整申請已送出");
-    } catch (error) {
-      onNotify?.(`人力需求申請失敗：${error.message}`);
-    }
-  }
-
-  async function reviewDemandRequest(request, status) {
-    try {
-      await reviewStaffingDemandChangeRequest(request.id, status, reviewNote);
-      await Promise.all([refreshWorkforceRequests(), fetchStaffingDemandRules().then(setStaffingDemandRules)]);
-      onNotify?.(status === "approved" ? "人力需求已核准並套用" : "人力需求申請已退回");
-    } catch (error) {
-      onNotify?.(`人力需求審核失敗：${error.message}`);
-    }
-  }
-
-  async function saveShiftTemplate(event) {
-    event.preventDefault();
-    setTemplateSaving(true);
-    try {
-      await upsertStandardShiftTemplate(templateForm);
-      setTemplateForm({ id: "", name: "", start_time: "", end_time: "" });
-      await refreshShiftTemplates();
-      onNotify?.("標準班次已儲存");
-    } catch (error) {
-      onNotify?.(`標準班次儲存失敗：${error.message}`);
-    } finally {
-      setTemplateSaving(false);
-    }
-  }
-
-  async function removeShiftTemplate(template) {
-    if (!window.confirm(`停用標準班次「${template.name}」？`)) return;
-    try {
-      await archiveStandardShiftTemplate(template.id);
-      await refreshShiftTemplates();
-      onNotify?.("標準班次已停用");
-    } catch (error) {
-      onNotify?.(`標準班次停用失敗：${error.message}`);
-    }
-  }
-
-  useEffect(() => {
-    if (!hasSupabaseConfig) return;
-    fetchStaffingDemandRules().then(setStaffingDemandRules).catch((error) => {
-      onNotify?.(`人力需求規則讀取失敗：${error.message}`);
-    });
-  }, []);
-
-  useEffect(() => {
-    if (!supportDate.startsWith(leaveMonth)) setSupportDate(`${leaveMonth}-01`);
-  }, [leaveMonth, supportDate]);
-
-  useEffect(() => {
-    let active = true;
-    async function loadTemporarySupportSummary() {
-      if (!hasSupabaseConfig || !isStoreScoped) {
-        setRemoteSupportRows(null);
-        return;
-      }
-      try {
-        const rows = await fetchTemporarySupportSummary(supportDate);
-        if (active) setRemoteSupportRows(rows);
-      } catch (error) {
-        if (!active) return;
-        setRemoteSupportRows(null);
-        onNotify?.(`臨時支援摘要讀取失敗：${error.message}`);
-      }
-    }
-    loadTemporarySupportSummary();
-    return () => {
-      active = false;
-    };
-  }, [isStoreScoped, supportDate]);
-
-  const monthDays = useMemo(() => Array.from({ length: daysInMonth(`${leaveMonth}-01`) }, (_, index) => index + 1), [leaveMonth]);
-  const scheduleStaff = useMemo(
-    () =>
-      staffRoster
-        .filter(isEffectiveScheduleStaff)
-        .sort((a, b) => `${displayStoreName(a)}-${a.role}-${a.employeeName}`.localeCompare(`${displayStoreName(b)}-${b.role}-${b.employeeName}`, "zh-Hant")),
-    [staffRoster],
-  );
-  const storeOptions = useMemo(() => {
-    const options = scheduleStaff.map((row) => ({
-      code: canonicalStoreCode(row),
-      name: displayStoreName(row),
-    }));
-    return options.filter((row, index, rows) => row.code && rows.findIndex((item) => item.code === row.code) === index);
-  }, [scheduleStaff]);
-  const storeDemandMap = useMemo(
-    () => new Map(storeHours.map((row) => [canonicalStoreCode(row), Number(row.duty_staff || 0)])),
-    [storeHours],
-  );
-  const storeHourMap = useMemo(
-    () => new Map(storeHours.map((row) => [canonicalStoreCode(row), row])),
-    [storeHours],
-  );
-  const allStoreGroups = useMemo(
-    () => {
-      const groups = new Map();
-      storeOptions.forEach((store) => {
-        const ruleGroup = scheduleGroupForStore(
-          { ...store, ...(storeHourMap.get(store.code) || {}), demand: storeDemandMap.get(store.code) || 0 },
-          storeRelationGroups,
-        );
-        if (!groups.has(ruleGroup.code)) {
-          groups.set(ruleGroup.code, {
-            ...ruleGroup,
-            staff: scheduleStaff.filter((person) => ruleGroup.sourceCodes.includes(canonicalStoreCode(person))),
-          });
-        }
-      });
-      return Array.from(groups.values()).filter((store) => store.staff.length);
-    },
-    [scheduleStaff, storeDemandMap, storeHourMap, storeOptions, storeRelationGroups],
-  );
-  const allowedGroupCode = useMemo(() => {
-    if (!allowedStoreCode) return "";
-    const scheduleStoreCode = isStoreScoped ? normalizeStoreScopedScheduleCode(allowedStoreCode) : allowedStoreCode;
-    const selectedOption = storeOptions.find((store) => store.code === scheduleStoreCode);
-    return scheduleGroupForStore(
-      {
-        code: scheduleStoreCode,
-        name: selectedOption?.name || "",
-        ...(storeHourMap.get(scheduleStoreCode) || {}),
-        demand: storeDemandMap.get(scheduleStoreCode) || 0,
-      },
-      storeRelationGroups,
-    ).code;
-  }, [allowedStoreCode, isStoreScoped, storeDemandMap, storeHourMap, storeOptions, storeRelationGroups]);
-
-  useEffect(() => {
-    if (isStoreScoped && allowedGroupCode) setStoreFilter(allowedGroupCode);
-  }, [allowedGroupCode, isStoreScoped]);
-
-  const storeGroups = useMemo(
-    () => allStoreGroups.filter((store) => {
-      if (isStoreScoped) return allowedGroupCode ? store.code === allowedGroupCode : false;
-      return storeFilter === "all" || store.code === storeFilter;
-    }),
-    [allStoreGroups, allowedGroupCode, isStoreScoped, storeFilter],
-  );
-  const plannerRows = useMemo(() => storeGroups.flatMap((store) => store.staff), [storeGroups]);
-  const supportDay = Number(supportDate.slice(8, 10));
-  const supportSourceGroups = useMemo(
-    () => (isStoreScoped ? supportVisibleGroupsForTemporarySupport(allStoreGroups) : allStoreGroups),
-    [allStoreGroups, isStoreScoped],
-  );
-  const calculatedSupportRows = supportSourceGroups
-    .map((store) => {
-      const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, supportDay, dailyShifts, scheduleStaff);
-      return {
-        ...store,
-        ...staffing,
-      };
-    })
-    .sort((a, b) => {
-      if (a.surplus < 0 && b.surplus >= 0) return -1;
-      if (a.surplus >= 0 && b.surplus < 0) return 1;
-      return b.surplus - a.surplus || a.code.localeCompare(b.code);
-    });
-  const supportRows = isStoreScoped && remoteSupportRows !== null
-    ? remoteSupportRows
-    : calculatedSupportRows;
-  const currentScheduleRequestCode = storeGroups[0]?.code || allowedGroupCode || normalizeStoreScopedScheduleCode(allowedStoreCode);
-  const {
-    isConfirmed: isScheduleConfirmed,
-    ownRequest: ownScheduleRequest,
-    storeEditApproved,
-    canEdit: canEditSchedule,
-  } = deriveScheduleAccess({
-    isStoreScoped,
-    scheduleControl,
-    requestStoreCode: currentScheduleRequestCode,
-  });
-  const canBulkEditSchedule = !isStoreScoped || !isScheduleConfirmed;
-  const editableScheduleStaff = isStoreScoped ? plannerRows : scheduleStaff;
-  const visibleDailyShifts = dailyShifts.filter((shift) => (
-    !isStoreScoped || plannerRows.some((person) => String(person.id) === String(shift.staff_id))
-  ));
-  const matrixGroups = isStoreScoped ? storeGroups : allStoreGroups;
-  const selectedMatrixGroup = matrixGroups.find((store) => store.code === (
-    isStoreScoped ? allowedGroupCode : (storeFilter !== "all" ? storeFilter : matrixGroupCode)
-  )) || matrixGroups[0];
-  const matrixStoreCode = selectedMatrixGroup?.sourceCodes?.[0] || selectedMatrixGroup?.code || "";
-  const matrixDay = Number(supportDate.slice(8, 10));
-  const matrixLeaveStaffIds = staffRoster
-    .filter((person) => isLeaveDay(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates, matrixDay))
-    .map((person) => person.id);
-  const storefrontMatrixRows = selectedMatrixGroup && supportDate.startsWith(leaveMonth)
-    ? buildHalfHourStaffingMatrix({
-        dateValue: supportDate,
-        store: {
-          ...(storeHourMap.get(matrixStoreCode) || {}),
-          code: matrixStoreCode,
-          store_code: matrixStoreCode,
-          open_time: storeHourMap.get(matrixStoreCode)?.open_time || "10:00",
-          close_time: storeHourMap.get(matrixStoreCode)?.close_time || storeHourMap.get(matrixStoreCode)?.close_report_time || "23:00",
-        },
-        people: staffRoster.map((person) => ({
-          ...person,
-          excludedFromStaffing: isScheduleExcludedRole(person),
-        })),
-        overrides: dailyShifts,
-        leaveStaffIds: matrixLeaveStaffIds,
-        demand: selectedMatrixGroup.demand || storeDemandMap.get(matrixStoreCode) || 0,
-        demandResolver: staffingDemandRules.length
-          ? (time) => resolveStaffingDemand(staffingDemandRules, { storeCode: matrixStoreCode, date: supportDate, time })
-          : null,
-        storeCodes: selectedMatrixGroup.sourceCodes,
-        matrixMode: "storefront",
-      })
-    : [];
-  const backofficeEnabled = Boolean(
-    selectedMatrixGroup?.sourceCodes?.includes("S01")
-    && workforceViews.some((row) => row.store_code === "S01" && row.view_type === "backoffice" && row.is_enabled),
-  );
-  const backofficeStore = storeHourMap.get("S01") || {};
-  const backofficeMatrixRows = backofficeEnabled && supportDate.startsWith(leaveMonth)
-    ? buildHalfHourStaffingMatrix({
-        dateValue: supportDate,
-        store: {
-          ...backofficeStore,
-          code: "S01",
-          store_code: "S01",
-          open_time: backofficeStore.open_time || "10:00",
-          close_time: backofficeStore.close_time || backofficeStore.close_report_time || "23:00",
-        },
-        people: staffRoster,
-        overrides: dailyShifts,
-        leaveStaffIds: matrixLeaveStaffIds,
-        demand: 0,
-        storeCodes: ["S01"],
-        matrixMode: "backoffice",
-      })
-    : [];
-  const matrixRows = matrixMode === "backoffice" && backofficeEnabled ? backofficeMatrixRows : storefrontMatrixRows;
-  const matrixProjectedShifts = selectedMatrixGroup && supportDate.startsWith(leaveMonth)
-    ? projectDailyStaffShifts({
-        dateValue: supportDate,
-        store: {
-          ...(storeHourMap.get(matrixStoreCode) || {}),
-          open_time: storeHourMap.get(matrixStoreCode)?.open_time || "10:00",
-          close_time: storeHourMap.get(matrixStoreCode)?.close_time || storeHourMap.get(matrixStoreCode)?.close_report_time || "23:00",
-        },
-        people: staffRoster,
-        overrides: dailyShifts,
-        leaveStaffIds: matrixLeaveStaffIds,
-      }).filter((shift) => selectedMatrixGroup.sourceCodes.includes(shift.assignedStoreCode))
-    : [];
-  const matrixLaborCost = calculateProjectedLaborCost({
-    projectedShifts: matrixProjectedShifts,
-    people: staffRoster,
-    salaryRows,
-  });
-  const scheduleExportModel = buildScheduleExportModel({
-    periodMonth: leaveMonth,
-    storeGroups,
-    drafts,
-    dailyShifts,
-    version: scheduleControl.lock?.schedule_version || 1,
-    needsReconfirmation: scheduleControl.lock?.needs_reconfirmation,
-  });
-
-  async function createPersonalScheduleLink() {
-    if (!hasSupabaseConfig) return onNotify?.("個人班表連結需在開發 Supabase 驗收環境測試");
-    if (!isScheduleConfirmed || scheduleControl.lock?.needs_reconfirmation) return onNotify?.("請先由總部確認最新班表版本");
-    if (!personalLinkStaffId) return onNotify?.("請選擇要發行個人班表的人員");
-    setPersonalLinkSaving(true);
-    try {
-      const snapshot = buildPersonalScheduleSnapshot(scheduleExportModel, personalLinkStaffId);
-      const token = secureRandomToken();
-      const tokenHash = await sha256Hex(token);
-      await issuePersonalScheduleLink({
-        period_month: leaveMonth,
-        schedule_version: scheduleExportModel.version,
-        staff_id: personalLinkStaffId,
-        employee_name: snapshot.employee_name,
-        home_store_code: snapshot.home_store_code,
-        role_name: snapshot.role_name,
-        token_hash: tokenHash,
-        schedule_payload: snapshot,
-        expires_at: personalScheduleExpiry(leaveMonth),
-      });
-      const url = `${window.location.origin}${window.location.pathname}?schedule=${encodeURIComponent(token)}`;
-      setIssuedPersonalLink(url);
-      await refreshPersonalLinks();
-      try {
-        await navigator.clipboard.writeText(url);
-        onNotify?.("個人班表連結已建立並複製");
-      } catch {
-        onNotify?.("個人班表連結已建立，請由下方欄位複製");
-      }
-    } catch (error) {
-      onNotify?.(`個人班表連結建立失敗：${error.message}`);
-    } finally {
-      setPersonalLinkSaving(false);
-    }
-  }
-
-  async function revokeScheduleLink(link) {
-    if (!window.confirm(`確定撤銷 ${link.employee_name} 的 V${link.schedule_version} 個人班表連結？`)) return;
-    try {
-      await revokePersonalScheduleLink(link.id);
-      await refreshPersonalLinks();
-      onNotify?.("個人班表連結已撤銷");
-    } catch (error) {
-      onNotify?.(`撤銷失敗：${error.message}`);
-    }
-  }
-
-  const matrixGapRows = matrixRows.filter((row) => row.gap > 0);
-  const matrixPeakGapRows = matrixGapRows.filter((row) => row.isPeak);
-  const lockStatusText = scheduleLockStatusText({
-    hasRemoteConfig: hasSupabaseConfig,
-    isConfirmed: isScheduleConfirmed,
-    missingTable: scheduleControl.missingTable,
-  });
-  const filledCount = plannerRows.filter((row) => countLeaveDays(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates)).length;
-  const totalLeaveDays = plannerRows.reduce((sum, row) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates), 0);
-  const overLimitCount = plannerRows.filter((row) => {
-    const restDays = getSuggestedRestDays(row.role, salaryRows);
-    return getLeaveStatus(drafts[leaveDraftKey(leaveMonth, row.id)]?.dates, restDays) === "超休";
-  }).length;
-  const workViolationCount = plannerRows.filter((row) => {
-    const dates = drafts[leaveDraftKey(leaveMonth, row.id)]?.dates;
-    return countLeaveDays(dates) > 0 && hasSixDayWorkViolation(parseLeaveDays(dates), monthDays);
-  }).length;
-  const scopedStoreLabel = isStoreScoped && storeGroups[0]
-    ? (
-        storeGroups[0].code !== allowedStoreCode
-          ? `登入門店 ${allowedStoreCode} ${allowedStoreName || ""}，排假表 ${storeGroups[0].code} ${storeGroups[0].name}`
-          : `${storeGroups[0].code} ${storeGroups[0].name}`
-      )
-    : (isStoreScoped ? allowedStoreCode || "未綁定門店" : "");
-
-  function resetShiftForm(dateValue = shiftForm.shift_date || supportDate) {
-    setShiftForm({
-      id: "",
-      shift_date: dateValue,
-      staff_id: "",
-      assigned_store_code: "",
-      start_time: "",
-      end_time: "",
-      note: "",
-    });
-  }
-
-  async function scheduleImageFile() {
-    const exportStoreCode = isStoreScoped || storeFilter !== "all"
-      ? selectedMatrixGroup?.code || storeGroups[0]?.code || ""
-      : "";
-    const canvas = renderScheduleCanvas(scheduleExportModel, exportStoreCode);
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) throw new Error("班表圖片產生失敗");
-    const scopeName = exportStoreCode || "全部門店";
-    return new File([blob], `萊吉多-${leaveMonth}-${scopeName}-班表-V${scheduleExportModel.version}.png`, { type: "image/png" });
-  }
-
-  async function downloadScheduleImage() {
-    try {
-      const file = await scheduleImageFile();
-      const url = URL.createObjectURL(file);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = file.name;
-      anchor.click();
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      onNotify?.(error.message);
-    }
-  }
-
-  async function shareScheduleImage() {
-    try {
-      const file = await scheduleImageFile();
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ title: `萊吉多 ${leaveMonth} 班表`, text: `班表 V${scheduleExportModel.version}`, files: [file] });
-      } else {
-        await downloadScheduleImage();
-        onNotify?.("此裝置不支援直接分享，已下載圖片，可傳送至 LINE 群組");
-      }
-    } catch (error) {
-      if (error.name !== "AbortError") onNotify?.(`分享失敗：${error.message}`);
-    }
-  }
-
-  async function saveDailyShift(event) {
-    event.preventDefault();
-    const shiftScopeAllowed = !isStoreScoped || !isScheduleConfirmed || scheduleApprovalAllows(ownScheduleRequest, {
-      date: shiftForm.shift_date,
-      staffId: shiftForm.staff_id,
-      shiftId: shiftForm.id || null,
-    });
-    if (!shiftScopeAllowed) {
-      onNotify?.("總部已確認排班，需先取得修改核可");
-      return;
-    }
-    const person = editableScheduleStaff.find((row) => String(row.id) === String(shiftForm.staff_id));
-    const command = buildDailyShiftCommand({
-      form: shiftForm,
-      person,
-      homeStoreCode: person ? canonicalStoreCode(person) : "",
-    });
-    if (!command.valid) {
-      onNotify?.(command.message);
-      return;
-    }
-    const payload = command.payload;
-    const overlap = findOverlappingShift(payload, dailyShifts);
-    if (overlap) {
-      onNotify?.(`班次與 ${formatTime24(overlap.start_time)}–${formatTime24(overlap.end_time)} 重疊，請調整時間`);
-      return;
-    }
-    setShiftSaving(true);
-    try {
-      if (isStoreScoped && payload.shift_type === "support") {
-        await submitSupportShiftRequest(payload);
-        resetShiftForm(payload.shift_date);
-        await loadScheduleControl();
-        onNotify?.("跨店支援申請已送出，總部核准後會自動寫入雙方班表");
-        return;
-      }
-      const saved = await upsertDailyStaffShift(payload);
-      setDailyShifts((current) => {
-        const next = mergeDailyShift(current, saved);
-        if (!hasSupabaseConfig) localStorage.setItem(`daily-staff-shifts:${leaveMonth}`, JSON.stringify(next));
-        return next;
-      });
-      resetShiftForm(saved.shift_date);
-      onNotify?.(payload.shift_type === "support" ? "跨店支援班次已儲存" : "當日班次已儲存");
-    } catch (error) {
-      onNotify?.(`單日班次儲存失敗：${error.message}`);
-    } finally {
-      setShiftSaving(false);
-    }
-  }
-
-  async function removeDailyShift(shift) {
-    const shiftScopeAllowed = !isStoreScoped || !isScheduleConfirmed || scheduleApprovalAllows(ownScheduleRequest, {
-      date: shift.shift_date, staffId: shift.staff_id, shiftId: shift.id,
-    });
-    if (!shiftScopeAllowed) return onNotify?.("此班次不在總部核可的修改範圍內");
-    if (!window.confirm(`刪除 ${shift.employee_name} ${shift.shift_date} ${formatTime24(shift.start_time)}–${formatTime24(shift.end_time)} 班次？`)) return;
-    try {
-      await deleteDailyStaffShift(shift.id);
-      setDailyShifts((current) => {
-        const next = removeDailyShiftById(current, shift.id);
-        if (!hasSupabaseConfig) localStorage.setItem(`daily-staff-shifts:${leaveMonth}`, JSON.stringify(next));
-        return next;
-      });
-      onNotify?.("已恢復使用人資主檔預設時間");
-    } catch (error) {
-      onNotify?.(`恢復預設時間失敗：${error.message}`);
-    }
-  }
-
-  async function confirmSchedule() {
-    try {
-      await confirmMonthlySchedule(leaveMonth, "總部確認排班");
-      await loadScheduleControl();
-      onNotify?.(`${leaveMonth} 排班已由總部確認，門店已鎖定修改`);
-    } catch (error) {
-      onNotify?.(`總部確認失敗：${error.message}`);
-    }
-  }
-
-  async function unlockSchedule() {
-    try {
-      await unlockMonthlySchedule(leaveMonth, "總部解除確認");
-      await loadScheduleControl();
-      onNotify?.(`${leaveMonth} 已解除確認，門店可修改`);
-    } catch (error) {
-      onNotify?.(`解除確認失敗：${error.message}`);
-    }
-  }
-
-  async function submitChangeRequest() {
-    const command = buildScheduleChangeRequest({
-      periodMonth: leaveMonth,
-      reason: requestReason,
-      scopeType: requestScope.type,
-      storeCode: currentScheduleRequestCode,
-      storeName: storeGroups[0]?.name || allowedStoreName || "",
-      targetDate: requestScope.date,
-      targetStaffId: requestScope.staffId,
-      targetShiftId: requestScope.shiftId,
-    });
-    if (!command.valid) {
-      onNotify?.(command.message);
-      return;
-    }
-    try {
-      await submitMonthlyScheduleChangeRequest(command.payload);
-      setRequestReason("");
-      await loadScheduleControl();
-      onNotify?.("修改申請已送出，待總部核可");
-    } catch (error) {
-      onNotify?.(`修改申請送出失敗：${error.message}`);
-    }
-  }
-
-  async function reviewChangeRequest(request, status) {
-    try {
-      await reviewMonthlyScheduleChangeRequest(request.id, status, reviewNote);
-      setReviewNote("");
-      await loadScheduleControl();
-      onNotify?.(status === "approved" ? `${request.store_name} 已開放修改` : `${request.store_name} 申請已處理`);
-    } catch (error) {
-      onNotify?.(`申請處理失敗：${error.message}`);
-    }
-  }
-
-  async function reviewSupportRequest(request, status) {
-    try {
-      await reviewSupportShiftRequest(request.id, status, reviewNote);
-      setReviewNote("");
-      await Promise.all([loadScheduleControl(), refreshDailyShifts()]);
-      onNotify?.(status === "approved" ? `${request.employee_name} 跨店支援已核准並寫入班表` : "跨店支援申請已退回");
-    } catch (error) {
-      onNotify?.(`跨店支援處理失敗：${error.message}`);
-    }
-  }
-
-  async function changeRolloutMode(mode) {
-    if (mode === "new" && !window.confirm(`確認從 ${leaveMonth} 起切換為新版人力排班模組？此動作會留下稽核紀錄。`)) return;
-    try {
-      await setWorkforceRolloutMode(mode, mode === "new" ? leaveMonth : null, mode === "new" ? "總部完成驗收後切換" : "維持平行驗收");
-      await loadScheduleControl();
-      onNotify?.(mode === "new" ? `已設定 ${leaveMonth} 起使用新版人力排班模組` : "已維持平行驗收模式");
-    } catch (error) {
-      onNotify?.(`安全切換失敗：${error.message}`);
-    }
-  }
-
-  const updateDraft = (staffId, field, value) => {
-    if (!canEditStaffSchedule(staffId)) return;
-    const key = leaveDraftKey(leaveMonth, staffId);
-    setDrafts((current) => ({
-      ...current,
-      [key]: {
-        ...current[key],
-        [field]: value,
-      },
-    }));
-  };
-
-  const saveDraft = async (person, draft) => {
-    if (!canEditStaffSchedule(person?.id)) return;
-    if (!person || !hasSupabaseConfig) return;
-    try {
-      setSyncState("儲存中");
-      await upsertMonthlyLeavePlan(buildLeavePlanPayload({
-        month: leaveMonth,
-        person,
-        dates: draft.dates || "",
-        manualDates: draft.manualDays || draft.dates || "",
-        autoDates: draft.autoDays || "",
-        dayStatuses: draft.dayStatuses || {},
-        leaveType: draft.leaveType || "排休",
-        note: draft.note || "",
-      }));
-      setSyncState("已同步");
-    } catch (error) {
-      setSyncState("同步失敗");
-      onNotify?.(`排假儲存失敗：${error.message}`);
-    }
-  };
-
-  function canEditStaffSchedule(staffId) {
-    return !isStoreScoped || !isScheduleConfirmed || scheduleApprovalAllows(ownScheduleRequest, { staffId });
-  }
-
-  const buildStoreUploadPayloads = (store, sourceDrafts = drafts) => store.staff.map((person) => {
-    const draft = sourceDrafts[leaveDraftKey(leaveMonth, person.id)] || {};
-    return buildLeavePlanPayload({
-      month: leaveMonth,
-      person,
-      dates: draft.dates || "",
-      manualDates: draft.manualDays || draft.dates || "",
-      autoDates: draft.autoDays || "",
-      dayStatuses: draft.dayStatuses || {},
-      leaveType: draft.leaveType || "排休",
-      note: draft.note || "",
-    });
-  });
-
-  const uploadStore = async (store, sourceDrafts = drafts, successText = "") => {
-    if (!canEditSchedule) {
-      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
-      return false;
-    }
-    if (!store?.staff?.length) {
-      onNotify?.("此門店目前沒有可上傳的排假人員");
-      return false;
-    }
-    if (!hasSupabaseConfig) {
-      setSyncState("本機模式");
-      onNotify?.(`${store.name} 排假已暫存在本機；正式上傳需連線 Supabase`);
-      return true;
-    }
-    try {
-      setUploadingCode(store.code);
-      setSyncState("上傳中");
-      await upsertMonthlyLeavePlans(buildStoreUploadPayloads(store, sourceDrafts));
-      setSyncState("已同步");
-      onNotify?.(successText || `${store.name} ${leaveMonth} 排假已上傳完成`);
-      return true;
-    } catch (error) {
-      setSyncState("同步失敗");
-      onNotify?.(`${store.name} 排假上傳失敗：${error.message}`);
-      return false;
-    } finally {
-      setUploadingCode("");
-    }
-  };
-
-  const uploadVisibleStores = async () => {
-    if (!canEditSchedule) {
-      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
-      return false;
-    }
-    if (!storeGroups.length) {
-      onNotify?.("目前沒有可上傳的門店排假表");
-      return false;
-    }
-    if (storeGroups.length === 1) {
-      return uploadStore(storeGroups[0], drafts, `${storeGroups[0].name} ${leaveMonth} 排假已上傳完成`);
-    }
-    if (!hasSupabaseConfig) {
-      setSyncState("本機模式");
-      onNotify?.("目前為本機模式，排假已暫存在此瀏覽器");
-      return true;
-    }
-    try {
-      setUploadingCode("all");
-      setSyncState("上傳中");
-      await upsertMonthlyLeavePlans(storeGroups.flatMap((store) => buildStoreUploadPayloads(store)));
-      setSyncState("已同步");
-      onNotify?.(`${leaveMonth} 目前顯示門店排假已全部上傳完成`);
-      return true;
-    } catch (error) {
-      setSyncState("同步失敗");
-      onNotify?.(`排假上傳失敗：${error.message}`);
-      return false;
-    } finally {
-      setUploadingCode("");
-    }
-  };
-
-  const toggleLeaveDay = (staffId, day, status = "休") => {
-    if (!canEditSchedule) {
-      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
-      return;
-    }
-    const key = leaveDraftKey(leaveMonth, staffId);
-    const person = staffRoster.find((row) => row.id === staffId);
-    setDrafts((current) => {
-      const currentDraft = current[key] || {};
-      const leaveDays = parseLeaveDays(currentDraft.dates);
-      const manualDays = parseLeaveDays(currentDraft.manualDays);
-      const autoDays = parseLeaveDays(currentDraft.autoDays);
-      const isNonWorking = nonWorkingDayStatuses.has(status);
-      const nextDays = isNonWorking ? [...leaveDays.filter((item) => item !== day), day].sort((a, b) => a - b) : leaveDays.filter((item) => item !== day);
-      const nextManualDays = isNonWorking ? [...manualDays.filter((item) => item !== day), day].sort((a, b) => a - b) : manualDays.filter((item) => item !== day);
-      const nextAutoDays = autoDays.filter((item) => item !== day);
-      const nextStatuses = { ...(currentDraft.dayStatuses || {}) };
-      if (status) nextStatuses[day] = status;
-      else delete nextStatuses[day];
-      const nextDraft = {
-        ...currentDraft,
-        dates: formatLeaveDays(leaveMonth, nextDays),
-        manualDays: formatLeaveDays(leaveMonth, nextManualDays),
-        autoDays: formatLeaveDays(leaveMonth, nextAutoDays),
-        dayStatuses: nextStatuses,
-      };
-      saveDraft(person, nextDraft);
-      return {
-        ...current,
-        [key]: nextDraft,
-      };
-    });
-  };
-
-  const autoArrangeStore = (store) => {
-    if (!canEditSchedule) {
-      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
-      return;
-    }
-    const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
-    if (!maxOffPerDay) return;
-
-    const assignments = new Map(store.staff.map((person) => [person.id, parseLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates)]));
-    const remaining = new Map(store.staff.map((person) => [person.id, Math.max((getSuggestedRestDays(person.role, salaryRows) || 0) - (assignments.get(person.id)?.length || 0), 0)]));
-    const offByDay = new Map(monthDays.map((day) => [day, 0]));
-    store.staff.forEach((person) => {
-      (assignments.get(person.id) || []).forEach((day) => {
-        if (offByDay.has(day)) offByDay.set(day, (offByDay.get(day) || 0) + 1);
-      });
-    });
-    const totalTargets = Array.from(remaining.values()).reduce((sum, value) => sum + value, 0);
-    const maxAssignable = monthDays.reduce((sum, day) => sum + Math.max(maxOffPerDay - (offByDay.get(day) || 0), 0), 0);
-    const rounds = Math.min(totalTargets, maxAssignable);
-
-    const canAssign = (person, day) => {
-      const assignedDays = assignments.get(person.id) || [];
-      return !assignedDays.includes(day) && (offByDay.get(day) || 0) < maxOffPerDay;
-    };
-
-    store.staff.forEach((person) => {
-      const target = getSuggestedRestDays(person.role, salaryRows) || 0;
-      if (!target) return;
-      const windows = [
-        [1, 7],
-        [8, 14],
-        [15, 21],
-        [22, 28],
-        [29, monthDays.length],
-      ].filter(([start]) => start <= monthDays.length);
-      windows.forEach(([start, end]) => {
-        if ((remaining.get(person.id) || 0) <= 0) return;
-        const assignedDays = assignments.get(person.id) || [];
-        if (assignedDays.some((day) => day >= start && day <= end)) return;
-        const day = monthDays
-          .filter((item) => item >= start && item <= end && canAssign(person, item))
-          .sort((a, b) => (offByDay.get(a) || 0) - (offByDay.get(b) || 0) || a - b)[0];
-        if (!day) return;
-        assignments.set(person.id, [...assignedDays, day].sort((a, b) => a - b));
-        remaining.set(person.id, (remaining.get(person.id) || 0) - 1);
-        offByDay.set(day, (offByDay.get(day) || 0) + 1);
-      });
-    });
-
-    let repaired = true;
-    while (repaired) {
-      repaired = false;
-      for (const person of store.staff) {
-        if ((remaining.get(person.id) || 0) <= 0) continue;
-        const assignedDays = assignments.get(person.id) || [];
-        const violationWindow = firstSixDayWorkViolationWindow(assignedDays, monthDays);
-        if (!violationWindow) continue;
-        const [start, end] = violationWindow;
-        const day = monthDays
-          .filter((item) => item >= start && item <= end && canAssign(person, item))
-          .sort((a, b) => (offByDay.get(a) || 0) - (offByDay.get(b) || 0) || Math.abs(a - (start + 3)) - Math.abs(b - (start + 3)))[0];
-        if (!day) continue;
-        assignments.set(person.id, [...assignedDays, day].sort((a, b) => a - b));
-        remaining.set(person.id, (remaining.get(person.id) || 0) - 1);
-        offByDay.set(day, (offByDay.get(day) || 0) + 1);
-        repaired = true;
-      }
-    }
-
-    for (let index = 0; index < rounds; index += 1) {
-      const candidates = store.staff
-        .filter((person) => (remaining.get(person.id) || 0) > 0)
-        .sort((a, b) => (remaining.get(b.id) || 0) - (remaining.get(a.id) || 0));
-      const dayCandidates = monthDays
-        .filter((day) => (offByDay.get(day) || 0) < maxOffPerDay)
-        .sort((a, b) => (offByDay.get(a) || 0) - (offByDay.get(b) || 0) || a - b);
-      if (!candidates.length || !dayCandidates.length) break;
-
-      const person = candidates.find((candidate) => dayCandidates.some((day) => canAssign(candidate, day))) || candidates[0];
-      const assignedDays = assignments.get(person.id) || [];
-      const day = dayCandidates.find((item) => canAssign(person, item) && !assignedDays.includes(item - 1) && !assignedDays.includes(item + 1))
-        || dayCandidates.find((item) => canAssign(person, item));
-      if (!day) break;
-
-      assignments.set(person.id, [...assignedDays, day].sort((a, b) => a - b));
-      remaining.set(person.id, (remaining.get(person.id) || 0) - 1);
-      offByDay.set(day, (offByDay.get(day) || 0) + 1);
-    }
-
-    setDrafts((current) => {
-      const next = { ...current };
-      store.staff.forEach((person) => {
-        const key = leaveDraftKey(leaveMonth, person.id);
-        const currentDraft = next[key] || {};
-        const finalDays = assignments.get(person.id) || [];
-        const manualDays = parseLeaveDays(currentDraft.manualDays).filter((day) => finalDays.includes(day));
-        const autoDays = finalDays.filter((day) => !manualDays.includes(day));
-        next[key] = {
-          ...currentDraft,
-          dates: formatLeaveDays(leaveMonth, finalDays),
-          manualDays: formatLeaveDays(leaveMonth, manualDays),
-          autoDays: formatLeaveDays(leaveMonth, autoDays),
-        };
-      });
-      return next;
-    });
-    if (hasSupabaseConfig) {
-      setSyncState("儲存中");
-      upsertMonthlyLeavePlans(store.staff.map((person) => buildLeavePlanPayload({
-        month: leaveMonth,
-        person,
-        dates: formatLeaveDays(leaveMonth, assignments.get(person.id) || []),
-        manualDates: drafts[leaveDraftKey(leaveMonth, person.id)]?.manualDays || "",
-        autoDates: formatLeaveDays(leaveMonth, (assignments.get(person.id) || []).filter((day) => !parseLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.manualDays).includes(day))),
-        leaveType: drafts[leaveDraftKey(leaveMonth, person.id)]?.leaveType || "排休",
-        note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
-      })))
-        .then(() => {
-          setSyncState("已同步");
-          onNotify?.(`${store.name} 一鍵排休已儲存`);
-        })
-        .catch((error) => {
-          setSyncState("同步失敗");
-          onNotify?.(`一鍵排休儲存失敗：${error.message}`);
-        });
-    }
-  };
-
-  const clearStore = (store) => {
-    if (!canEditSchedule) {
-      onNotify?.("總部已確認排班，門店需先送修改申請並核可後才能修改");
-      return;
-    }
-    setDrafts((current) => {
-      const next = { ...current };
-      store.staff.forEach((person) => {
-        const key = leaveDraftKey(leaveMonth, person.id);
-        next[key] = {
-          ...next[key],
-          dates: "",
-          manualDays: "",
-          autoDays: "",
-        };
-      });
-      return next;
-    });
-    if (hasSupabaseConfig) {
-      setSyncState("儲存中");
-      upsertMonthlyLeavePlans(store.staff.map((person) => buildLeavePlanPayload({
-        month: leaveMonth,
-        person,
-        dates: "",
-        manualDates: "",
-        autoDates: "",
-        leaveType: drafts[leaveDraftKey(leaveMonth, person.id)]?.leaveType || "排休",
-        note: drafts[leaveDraftKey(leaveMonth, person.id)]?.note || "",
-      })))
-        .then(() => {
-          setSyncState("已同步");
-          onNotify?.(`${store.name} 排假已清空並上傳`);
-        })
-        .catch((error) => {
-          setSyncState("同步失敗");
-          onNotify?.(`清空本店儲存失敗：${error.message}`);
-        });
-    }
-  };
-
-  const clearMonth = () => {
-    if (!canEditSchedule) return;
-    if (!window.confirm(`確定清空 ${leaveMonth} 的排假填寫資料？`)) return;
-    setDrafts((current) =>
-      Object.fromEntries(Object.entries(current).filter(([key]) => !key.startsWith(`${leaveMonth}:`))),
-    );
-    if (hasSupabaseConfig) {
-      setSyncState("儲存中");
-      upsertMonthlyLeavePlans(plannerRows.map((person) => buildLeavePlanPayload({
-        month: leaveMonth,
-        person,
-        dates: "",
-        manualDates: "",
-        autoDates: "",
-        leaveType: "排休",
-        note: "",
-      })))
-        .then(() => {
-          setSyncState("已同步");
-          onNotify?.(`${leaveMonth} 排假已清空並上傳`);
-        })
-        .catch((error) => {
-          setSyncState("同步失敗");
-          onNotify?.(`清空本月儲存失敗：${error.message}`);
-        });
-    }
-  };
-
-  const leaveCalendarView = (
-    <div className="store-leave-stack">
-      {!storeGroups.length && (
-        <section className="panel empty-module">
-          <div className="panel-head">
-            <div>
-              <h2>尚未找到可排假門店</h2>
-              <p>目前帳號未對應到門店代碼，請由總部確認 profiles 的 store_id 或 store_code 是否已連到正確門店。</p>
-            </div>
-          </div>
-        </section>
-      )}
-      {storeGroups.map((store) => (
-        <StoreLeaveCalendar
-          dailyShifts={dailyShifts}
-          drafts={drafts}
-          key={store.code}
-          leaveMonth={leaveMonth}
-          monthDays={monthDays}
-          salaryRows={salaryRows}
-          saveDraft={saveDraft}
-          scheduleStaff={scheduleStaff}
-          store={store}
-          autoArrangeStore={autoArrangeStore}
-          clearStore={clearStore}
-          isUploading={uploadingCode === store.code}
-          toggleLeaveDay={toggleLeaveDay}
-          updateDraft={updateDraft}
-          uploadStore={uploadStore}
-          canEditSchedule={canEditSchedule}
-          canEditStaffSchedule={canEditStaffSchedule}
-          canBulkEditSchedule={canBulkEditSchedule}
-        />
-      ))}
-    </div>
-  );
-
-  return (
-    <>
-      <section className="panel wide support-panel schedule-support-panel">
-        <label>
-          臨時支援日期
-          <input type="date" value={supportDate} min={`${leaveMonth}-01`} max={`${leaveMonth}-${String(monthDays.length).padStart(2, "0")}`} onChange={(event) => setSupportDate(event.target.value)} />
-        </label>
-        <div className="support-list">
-          {supportRows.map((store) => (
-            <div className={`support-card ${store.surplus < 0 ? "bad" : store.surplus > 0 ? "good" : ""}`} key={store.code}>
-              <strong>{store.code} {store.name}</strong>
-              <span>有效 {staffingCountText(store.effectiveCount)} / 需求 {store.demand}</span>
-              <span>{store.segmentRows.map((segment) => `${segment.label} ${staffingCountText(segment.count)}`).join(" · ")}</span>
-              {store.partTimeMissingHours > 0 && <span className="warn-text">兼職 {store.partTimeMissingHours} 人未填工時</span>}
-              <em>{store.surplus > 0 ? `可支援 ${staffingCountText(store.surplus)} 人` : store.surplus < 0 ? `缺 ${staffingCountText(Math.abs(store.surplus))} 人` : "剛好滿編"}</em>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel wide leave-planner">
-      <div className="panel-head">
-        <div>
-          <h2>每月各店排假表</h2>
-          <p>依門店分表排假；最多連續工作 6 天，先點預定休假，再由一鍵排休補足月休與人力需求。</p>
-        </div>
-        <div className="panel-actions">
-          <button className="primary" type="button" onClick={uploadVisibleStores} disabled={!canBulkEditSchedule || !storeGroups.length || uploadingCode === "all"}>
-            {uploadingCode === "all" ? "上傳中..." : "上傳目前排假"}
-          </button>
-          <button type="button" onClick={() => downloadExcelFile(buildScheduleExcelXml(scheduleExportModel), `萊吉多${leaveMonth}排假表.xls`)}>
-            匯出排假
-          </button>
-          <button type="button" onClick={downloadScheduleImage}>下載圖片</button>
-          <button type="button" onClick={shareScheduleImage}>分享班表</button>
-          {!isStoreScoped && <button type="button" onClick={clearMonth} disabled={!canBulkEditSchedule}>清空本月</button>}
-        </div>
-      </div>
-
-      <section className="personal-link-panel">
-        <div>
-          <strong>個人班表連結</strong>
-          <p>依本人月排假顯示上班日與休假日；如有正式班次則一併顯示時段與工作門店。網址僅在建立時顯示一次。</p>
-        </div>
-        <div className="personal-link-actions">
-          <label>
-            人員
-            <select value={personalLinkStaffId} onChange={(event) => setPersonalLinkStaffId(event.target.value)}>
-              <option value="">請選擇人員</option>
-              {plannerRows.map((person) => <option key={person.id} value={person.id}>{canonicalStoreCode(person)} {person.employeeName}</option>)}
-            </select>
-          </label>
-          <button className="primary" type="button" onClick={createPersonalScheduleLink} disabled={personalLinkSaving || !isScheduleConfirmed || scheduleControl.lock?.needs_reconfirmation}>
-            {personalLinkSaving ? "建立中..." : "建立並複製連結"}
-          </button>
-        </div>
-        {issuedPersonalLink && <label className="issued-personal-link">剛建立的網址<input readOnly value={issuedPersonalLink} onFocus={(event) => event.target.select()} /></label>}
-        {personalLinks.length > 0 && (
-          <div className="table-wrap compact">
-            <table>
-              <thead><tr><th>人員</th><th>門店</th><th>版本</th><th>有效期限</th><th>狀態</th><th>操作</th></tr></thead>
-              <tbody>{personalLinks.map((link) => {
-                const expired = new Date(link.expires_at).getTime() <= Date.now();
-                const status = link.revoked_at ? "已撤銷" : expired ? "已失效" : link.schedule_version < scheduleExportModel.version ? "已有新版" : "有效";
-                return <tr key={link.id}>
-                  <td>{link.employee_name}</td><td>{link.home_store_code}</td><td>V{link.schedule_version}</td>
-                  <td>{new Date(link.expires_at).toLocaleString("zh-TW")}</td><td>{status}</td>
-                  <td><button type="button" disabled={Boolean(link.revoked_at)} onClick={() => revokeScheduleLink(link)}>撤銷</button></td>
-                </tr>;
-              })}</tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className={`schedule-control-panel ${isScheduleConfirmed ? "locked" : ""}`}>
-        <div>
-          <span>排班確認狀態</span>
-          <strong>{lockStatusText}</strong>
-          {scheduleControl.lock?.confirmed_at && <p>確認時間：{new Date(scheduleControl.lock.confirmed_at).toLocaleString("zh-TW")}</p>}
-          {scheduleControl.lock?.needs_reconfirmation && <p className="warn-text">班表已有核准異動，請總部重新確認最新版本。</p>}
-          {scheduleControl.missingTable && <p>請先執行 Supabase migration，才會正式啟用跨裝置鎖版。</p>}
-        </div>
-        {!isStoreScoped ? (
-          <div className="schedule-control-actions">
-            <button className="primary" type="button" onClick={confirmSchedule} disabled={controlLoading || scheduleControl.missingTable}>
-              {isScheduleConfirmed ? "再次確認並鎖定" : "總部確認排班"}
-            </button>
-            <button type="button" onClick={unlockSchedule} disabled={controlLoading || scheduleControl.missingTable}>解除確認</button>
-          </div>
-        ) : isScheduleConfirmed && !storeEditApproved ? (
-          <div className="schedule-request-box">
-            <div className="schedule-request-fields">
-              <label>
-                修改範圍
-                <select value={requestScope.type} onChange={(event) => setRequestScope({ type: event.target.value, date: supportDate, staffId: "", shiftId: "" })}>
-                  <option value="date">指定日期</option>
-                  <option value="staff">指定人員</option>
-                  <option value="shift">指定班次</option>
-                </select>
-              </label>
-              {requestScope.type === "date" && (
-                <label>日期<input type="date" value={requestScope.date} onChange={(event) => setRequestScope({ ...requestScope, date: event.target.value })} /></label>
-              )}
-              {requestScope.type === "staff" && (
-                <label>人員<select value={requestScope.staffId} onChange={(event) => setRequestScope({ ...requestScope, staffId: event.target.value })}>
-                  <option value="">請選擇</option>
-                  {plannerRows.map((person) => <option key={person.id} value={person.id}>{person.employeeName}</option>)}
-                </select></label>
-              )}
-              {requestScope.type === "shift" && (
-                <label>班次<select value={requestScope.shiftId} onChange={(event) => setRequestScope({ ...requestScope, shiftId: event.target.value })}>
-                  <option value="">請選擇</option>
-                  {visibleDailyShifts.map((shift) => <option key={shift.id} value={shift.id}>{shift.shift_date} {shift.employee_name} {formatTime24(shift.start_time)}–{formatTime24(shift.end_time)}</option>)}</select></label>
-              )}
-            </div>
-            <textarea
-              value={requestReason}
-              onChange={(event) => setRequestReason(event.target.value)}
-              placeholder="請說明需修改排班的原因，例如：臨時請假、人力異動、總部支援調整。"
-            />
-            <button className="primary" type="button" onClick={submitChangeRequest} disabled={controlLoading || scheduleControl.missingTable}>
-              送出修改申請
-            </button>
-            {ownScheduleRequest && <small>目前申請狀態：{ownScheduleRequest.status === "pending" ? "待總部核可" : ownScheduleRequest.status === "rejected" ? "已退回" : ownScheduleRequest.status}</small>}
-          </div>
-        ) : isScheduleConfirmed && storeEditApproved ? (
-          <div className="schedule-approved-box">
-            <strong>總部已核可本店修改</strong>
-            <p>限核可範圍使用一次，最晚 24 小時內完成；修改後會自動重新鎖定。</p>
-          </div>
-        ) : null}
-      </section>
-
-      {!isStoreScoped && scheduleControl.rollout && (
-        <section className="schedule-control-panel">
-          <div>
-            <span>人力排班模組切換</span>
-            <strong>{scheduleControl.rollout.rollout_mode === "new" ? `新版正式模式（${scheduleControl.rollout.cutover_month} 起）` : scheduleControl.rollout.rollout_mode === "parallel" ? "平行驗收模式" : "舊版模式"}</strong>
-            <p>{scheduleControl.rollout.note || "切換紀錄由 Supabase 留存"}</p>
-          </div>
-          <div className="schedule-control-actions">
-            <button type="button" onClick={() => changeRolloutMode("parallel")}>維持平行驗收</button>
-            <button className="primary" type="button" onClick={() => changeRolloutMode("new")}>驗收完成，切換新版</button>
-          </div>
-        </section>
-      )}
-
-      {!isStoreScoped && scheduleControl.requests.length > 0 && (
-        <section className="schedule-request-review">
-          <div className="panel-head compact-head">
-            <div>
-              <h3>門店修改申請</h3>
-              <p>核可後，該店可在已確認月份中自行修改；總部完成覆核後可再次確認鎖定。</p>
-            </div>
-          </div>
-          <label>
-            總部備註
-            <input value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="可填寫核可或退回原因" />
-          </label>
-          <div className="table-wrap compact">
-            <table>
-              <thead>
-                <tr><th>門店</th><th>狀態</th><th>原因</th><th>時間</th><th>操作</th></tr>
-              </thead>
-              <tbody>
-                {scheduleControl.requests.map((request) => (
-                  <tr key={request.id}>
-                    <td><strong>{request.store_name}</strong><span>{request.store_code}</span></td>
-                    <td><span className={`chip ${request.status === "approved" ? "good" : request.status === "pending" ? "warn" : ""}`}>{request.status}</span></td>
-                    <td>{request.reason || "-"}<small>{request.scope_type === "date" ? `日期 ${request.target_date}` : request.scope_type === "staff" ? `人員 ${request.target_staff_id}` : `班次 ${request.target_shift_id}`}</small></td>
-                    <td>{new Date(request.updated_at || request.created_at).toLocaleString("zh-TW")}</td>
-                    <td>
-                      <div className="inline-actions">
-                        <button
-                          type="button"
-                          onClick={() => reviewChangeRequest(request, "approved")}
-                          disabled={request.status === "approved" || request.status === "closed"}
-                        >
-                          核可
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => reviewChangeRequest(request, "rejected")}
-                          disabled={request.status === "closed"}
-                        >
-                          退回
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => reviewChangeRequest(request, "closed")}
-                          disabled={request.status === "closed"}
-                        >
-                          關閉
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      {scheduleControl.supportRequests?.length > 0 && (
-        <section className="schedule-request-review">
-          <div className="panel-head compact-head">
-            <div>
-              <h3>跨店支援申請</h3>
-              <p>門店只能提出申請；總部核准後，系統才會把班次正式寫入原店與支援店。</p>
-            </div>
-          </div>
-          <div className="table-wrap compact">
-            <table>
-              <thead><tr><th>日期</th><th>人員</th><th>支援流向</th><th>時間</th><th>原因</th><th>狀態</th>{!isStoreScoped && <th>操作</th>}</tr></thead>
-              <tbody>
-                {scheduleControl.supportRequests.map((request) => (
-                  <tr key={request.id}>
-                    <td>{request.shift_date}</td>
-                    <td>{request.employee_name}</td>
-                    <td>{request.home_store_code} → {request.assigned_store_code}</td>
-                    <td>{formatTime24(request.start_time)}–{formatTime24(request.end_time)}</td>
-                    <td>{request.note || "-"}</td>
-                    <td><span className={`chip ${request.status === "approved" ? "good" : request.status === "pending" ? "warn" : ""}`}>{request.status === "pending" ? "待總部核准" : request.status === "approved" ? "已核准" : request.status === "rejected" ? "已退回" : "已取消"}</span></td>
-                    {!isStoreScoped && <td><div className="inline-actions">
-                      <button type="button" disabled={request.status !== "pending"} onClick={() => reviewSupportRequest(request, "approved")}>核准支援</button>
-                      <button type="button" disabled={request.status !== "pending"} onClick={() => reviewSupportRequest(request, "rejected")}>退回</button>
-                    </div></td>}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      )}
-
-      <div className="leave-toolbar">
-        <label>
-          排假月份
-          <input type="month" value={leaveMonth} onChange={(event) => setLeaveMonth(event.target.value)} />
-        </label>
-        {isStoreScoped ? (
-          <label>
-            門店
-            <div className="readonly-field">{scopedStoreLabel}</div>
-          </label>
-        ) : (
-          <label>
-            門店
-            <select value={storeFilter} onChange={(event) => setStoreFilter(event.target.value)}>
-              <option value="all">全部門店</option>
-              {allStoreGroups.map((row) => (
-                <option value={row.code} key={row.code}>{row.code} {row.name}</option>
-              ))}
-            </select>
-          </label>
-        )}
-        <div className="leave-summary">
-          <span><strong>{plannerRows.length}</strong> 人需確認</span>
-          <span><strong>{filledCount}</strong> 人已填</span>
-          <span><strong>{plannerRows.length - filledCount}</strong> 人未填</span>
-          <span><strong>{totalLeaveDays}</strong> 天排休</span>
-          <span className={overLimitCount ? "negative" : ""}><strong>{overLimitCount}</strong> 人超休</span>
-          <span className={workViolationCount ? "negative" : ""}><strong>{workViolationCount}</strong> 連勤提醒</span>
-          <span><strong>{syncState}</strong></span>
-        </div>
-      </div>
-
-      {leaveCalendarView}
-
-      <details className="daily-shift-editor collapsible-form">
-        <summary className="collapsible-form-summary">
-          <div>
-            <h3>人力需求調整</h3>
-            <p>{isStoreScoped ? "門店提出指定日期與時段的人力需求，總部核准後才會正式套用。" : "審核門店提出的人力需求；核准後自動寫入人力矩陣規則。"}</p>
-          </div>
-          <span className="collapsible-form-action">展開</span>
-        </summary>
-        {isStoreScoped ? (
-          <form className="daily-shift-form" onSubmit={submitDemandRequest}>
-            <label>適用日期<input type="date" value={supportDate} onChange={(event) => setSupportDate(event.target.value)} /></label>
-            <label>開始時間<input type="time" step="1800" value={demandRequestForm.start_time} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, start_time: event.target.value })} /></label>
-            <label>結束時間<input type="time" step="1800" value={demandRequestForm.end_time} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, end_time: event.target.value })} /></label>
-            <label>需求人數<input type="number" min="0" step="1" value={demandRequestForm.required_count} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, required_count: event.target.value })} /></label>
-            <label>調整原因<input value={demandRequestForm.reason} onChange={(event) => setDemandRequestForm({ ...demandRequestForm, reason: event.target.value })} placeholder="例如：活動訂單增加" /></label>
-            <div className="staff-admin-actions"><button className="primary" type="submit">送出調整申請</button></div>
-          </form>
-        ) : demandRequests.length > 0 ? (
-          <div className="table-wrap compact"><table>
-            <thead><tr><th>門店</th><th>日期／時段</th><th>需求</th><th>原因</th><th>狀態</th><th>操作</th></tr></thead>
-            <tbody>{demandRequests.map((request) => {
-              const rule = request.proposed_rule || {};
-              return <tr key={request.id}>
-                <td>{request.store_code}</td>
-                <td>{rule.special_date || "-"}<small>{rule.start_time}–{rule.end_time}</small></td>
-                <td>{rule.required_count} 人</td><td>{request.reason}</td><td>{request.status}</td>
-                <td><div className="inline-actions"><button type="button" disabled={request.status !== "pending"} onClick={() => reviewDemandRequest(request, "approved")}>核准</button><button type="button" disabled={request.status !== "pending"} onClick={() => reviewDemandRequest(request, "rejected")}>退回</button></div></td>
-              </tr>;
-            })}</tbody>
-          </table></div>
-        ) : <p className="form-help">目前沒有待處理的人力需求申請。</p>}
-      </details>
-
-      {!isStoreScoped && leaveAuditRows.length > 0 && (
-        <details className="daily-shift-editor collapsible-form">
-          <summary className="collapsible-form-summary">
-            <div>
-              <h3>排假異動紀錄</h3>
-              <p>共 {leaveAuditRows.length} 筆，保留修改前後內容、原因、操作者與時間，供總部追溯。</p>
-            </div>
-            <span className="collapsible-form-action">展開</span>
-          </summary>
-          <div className="table-wrap compact"><table>
-            <thead><tr><th>時間</th><th>門店</th><th>人員</th><th>動作</th><th>原因</th><th>休假日變更</th></tr></thead>
-            <tbody>{leaveAuditRows.map((row) => <tr key={row.id}>
-              <td>{new Date(row.changed_at).toLocaleString("zh-TW")}</td><td>{row.store_code}</td>
-              <td>{row.after_data?.employee_name || row.before_data?.employee_name || row.staff_id}</td>
-              <td>{row.action === "insert" ? "新增" : row.action === "delete" ? "刪除" : "修改"}</td>
-              <td>{row.reason}</td>
-              <td>{(row.before_data?.leave_days || []).join("、") || "-"} → {(row.after_data?.leave_days || []).join("、") || "-"}</td>
-            </tr>)}</tbody>
-          </table></div>
-        </details>
-      )}
-
-      <details className="daily-shift-editor collapsible-form">
-        <summary className="collapsible-form-summary">
-          <div>
-            <h3>單日多段班次調整</h3>
-            <p>同一天可新增多段班次，時間不可重疊；兼職未設定時自動使用人資主檔平日／假日時間。</p>
-          </div>
-          <span className="collapsible-form-action">展開</span>
-        </summary>
-        <form className="daily-shift-form" onSubmit={saveDailyShift}>
-          <label>
-            標準班次
-            <select value="" onChange={(event) => {
-              const template = shiftTemplates.find((row) => row.id === event.target.value);
-              if (template) setShiftForm({ ...shiftForm, start_time: formatTime24(template.start_time), end_time: formatTime24(template.end_time) });
-            }}>
-              <option value="">自訂班次</option>
-              {shiftTemplates.map((template) => <option key={template.id} value={template.id}>{template.name} {formatTime24(template.start_time)}–{formatTime24(template.end_time)}</option>)}
-            </select>
-          </label>
-          <label>
-            日期
-            <input
-              type="date"
-              min={`${leaveMonth}-01`}
-              max={`${leaveMonth}-${String(monthDays.length).padStart(2, "0")}`}
-              value={shiftForm.shift_date}
-              onChange={(event) => setShiftForm({ ...shiftForm, shift_date: event.target.value })}
-            />
-          </label>
-          <label>
-            排班人員
-            <select
-              value={shiftForm.staff_id}
-              onChange={(event) => {
-                const person = editableScheduleStaff.find((row) => String(row.id) === event.target.value);
-                setShiftForm({
-                  ...shiftForm,
-                  staff_id: event.target.value,
-                  assigned_store_code: canonicalStoreCode(person),
-                });
-              }}
-            >
-              <option value="">請選擇</option>
-              {editableScheduleStaff.map((person) => (
-                <option key={person.id} value={person.id}>{canonicalStoreCode(person)} {person.employeeName}</option>
-              ))}
-            </select>
-          </label>
-          <label>
-            實際工作門店
-            <select value={shiftForm.assigned_store_code} onChange={(event) => setShiftForm({ ...shiftForm, assigned_store_code: event.target.value })}>
-              <option value="">依原門店</option>
-              {storeOptions.map((store) => <option value={store.code} key={store.code}>{store.code} {store.name}</option>)}
-            </select>
-          </label>
-          <label>
-            上班
-            <input type="time" lang="en-GB" step="900" value={shiftForm.start_time} onChange={(event) => setShiftForm({ ...shiftForm, start_time: formatTime24(event.target.value) })} />
-          </label>
-          <label>
-            下班
-            <input type="time" lang="en-GB" step="900" value={shiftForm.end_time} onChange={(event) => setShiftForm({ ...shiftForm, end_time: formatTime24(event.target.value) })} />
-          </label>
-          <label>
-            原因／備註
-            <input value={shiftForm.note} onChange={(event) => setShiftForm({ ...shiftForm, note: event.target.value })} placeholder="例：鼎山支援、延長一小時" />
-          </label>
-          <div className="staff-admin-actions">
-            <button className="primary" type="submit" disabled={!canEditSchedule || shiftSaving}>{shiftSaving ? "儲存中" : "儲存當日班次"}</button>
-            <button type="button" onClick={() => resetShiftForm(supportDate)}>清除輸入</button>
-          </div>
-        </form>
-        {visibleDailyShifts.length > 0 && (
-          <div className="table-wrap compact">
-            <table>
-              <thead><tr><th>日期</th><th>人員</th><th>工作門店</th><th>時間</th><th>類型</th><th>備註</th><th>操作</th></tr></thead>
-              <tbody>
-                {visibleDailyShifts.map((shift) => (
-                  <tr key={shift.id}>
-                    <td>{shift.shift_date}</td>
-                    <td>{shift.employee_name}</td>
-                    <td>{shift.assigned_store_code}</td>
-                    <td>{formatTime24(shift.start_time)}–{formatTime24(shift.end_time)}</td>
-                    <td><span className={`chip ${shift.shift_type === "support" ? "warn" : "good"}`}>{shift.shift_type === "support" ? "跨店支援" : "當日調整"}</span></td>
-                    <td>{shift.note || "-"}</td>
-                    <td><button type="button" disabled={!canEditSchedule} onClick={() => removeDailyShift(shift)}>刪除此段</button></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </details>
-
-      {!isStoreScoped && (
-        <details className="daily-shift-editor collapsible-form">
-          <summary className="collapsible-form-summary"><div><h3>標準班次模板</h3><p>總部維護常用班次；門店套用後仍可依當日需要調整為 15 分鐘單位。</p></div><span className="collapsible-form-action">展開</span></summary>
-          <form className="daily-shift-form" onSubmit={saveShiftTemplate}>
-            <label>班次名稱<input value={templateForm.name} onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })} placeholder="例如：早班" /></label>
-            <label>開始時間<input type="time" lang="en-GB" step="900" value={templateForm.start_time} onChange={(event) => setTemplateForm({ ...templateForm, start_time: formatTime24(event.target.value) })} /></label>
-            <label>結束時間<input type="time" lang="en-GB" step="900" value={templateForm.end_time} onChange={(event) => setTemplateForm({ ...templateForm, end_time: formatTime24(event.target.value) })} /></label>
-            <div className="staff-admin-actions"><button className="primary" type="submit" disabled={templateSaving}>{templateSaving ? "儲存中" : "儲存模板"}</button></div>
-          </form>
-          {shiftTemplates.length > 0 && <div className="table-wrap compact"><table><thead><tr><th>名稱</th><th>時間</th><th>操作</th></tr></thead><tbody>{shiftTemplates.map((template) => <tr key={template.id}><td>{template.name}</td><td>{formatTime24(template.start_time)}–{formatTime24(template.end_time)}</td><td><div className="inline-actions"><button type="button" onClick={() => setTemplateForm({ id: template.id, name: template.name, start_time: formatTime24(template.start_time), end_time: formatTime24(template.end_time) })}>編輯</button><button type="button" onClick={() => removeShiftTemplate(template)}>停用</button></div></td></tr>)}</tbody></table></div>}
-        </details>
-      )}
-
-      {selectedMatrixGroup && (
-        <section className="staffing-matrix">
-          <div className="panel-head">
-            <div>
-              <h3>{matrixMode === "backoffice" && backofficeEnabled ? "五甲後勤人力矩陣" : `${selectedMatrixGroup.name}門店人力矩陣`}</h3>
-              <p>{supportDate}，{matrixMode === "backoffice" && backofficeEnabled ? "每 30 分鐘顯示五甲後勤實際在班配置。" : "每 30 分鐘核對門店營運人員、需求與缺口；不含後勤及配送人員。"}</p>
-            </div>
-            <div className="matrix-summary">
-              {backofficeEnabled && <div className="segments compact matrix-mode-switch"><button type="button" className={matrixMode === "storefront" ? "active" : ""} onClick={() => setMatrixMode("storefront")}>門店營運人力</button><button type="button" className={matrixMode === "backoffice" ? "active" : ""} onClick={() => setMatrixMode("backoffice")}>五甲後勤人力</button></div>}
-              {!isStoreScoped && storeFilter === "all" && (
-                <label>
-                  查看門店
-                  <select value={selectedMatrixGroup.code} onChange={(event) => setMatrixGroupCode(event.target.value)}>
-                    {matrixGroups.map((group) => <option key={group.code} value={group.code}>{group.code} {group.name}</option>)}
-                  </select>
-                </label>
-              )}
-              {matrixMode === "storefront" && <span className={matrixPeakGapRows.length ? "negative" : "positive"}><strong>{matrixPeakGapRows.length}</strong> 個尖峰缺口</span>}
-              {matrixMode === "storefront" && <span><strong>{matrixGapRows.length}</strong> 個全日缺口</span>}
-              {matrixMode === "backoffice" && <span><strong>{Math.max(0, ...matrixRows.map((row) => row.actualCount))}</strong> 人最高同時在班</span>}
-              {matrixMode === "storefront" && canViewSalary && <span><strong>{matrixLaborCost.totalHours.toFixed(1)}</strong> 預估工時</span>}
-              {matrixMode === "storefront" && canViewSalary && <span><strong>{money(Math.round(matrixLaborCost.estimatedCost))}</strong> 排班預估</span>}
-              {matrixMode === "storefront" && canViewSalary && matrixLaborCost.missingCostStaffCount > 0 && <span className="warn-text"><strong>{matrixLaborCost.missingCostStaffCount}</strong> 人成本待補</span>}
-            </div>
-          </div>
-          <div className="table-wrap staffing-matrix-wrap">
-            {matrixMode === "backoffice" && backofficeEnabled ? <table className="backoffice-matrix-table">
-              <thead><tr><th>時段</th><th>後勤在班</th><th>後勤在班名單</th></tr></thead>
-              <tbody>
-                {matrixRows.map((row) => <tr key={row.startTime}><td><strong>{row.startTime}–{row.endTime}</strong></td><td>{row.actualCount}</td><td className="matrix-name-list">{row.peopleNames.join("、") || "無人在班"}</td></tr>)}
-                {!matrixRows.length && <tr><td colSpan="3">目前沒有五甲後勤班次，請確認人資主檔與當日班表。</td></tr>}
-              </tbody>
-            </table> : <table>
-              <thead>
-                <tr>
-                  <th>時段</th>
-                  <th>餐期</th>
-                  <th>實際在班</th>
-                  <th>有效人力</th>
-                  <th>需求人力</th>
-                  <th>缺口</th>
-                  <th>在班名單</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matrixRows.map((row) => (
-                  <tr className={`${row.isPeak ? "peak-row" : ""} ${row.gap > 0 ? "gap-row" : ""}`} key={row.startTime}>
-                    <td><strong>{row.startTime}–{row.endTime}</strong></td>
-                    <td>{row.peakLabel || "離峰"}</td>
-                    <td>{row.actualCount}</td>
-                    <td>{row.effectiveCount}</td>
-                    <td>{row.demand}</td>
-                    <td className={row.gap > 0 ? "negative" : "positive"}>{row.gap > 0 ? `缺 ${row.gap}` : row.surplus > 0 ? `多 ${row.surplus}` : "足額"}</td>
-                    <td className="matrix-name-list">{row.peopleNames.join("、") || "無人在班"}</td>
-                  </tr>
-                ))}
-                {!matrixRows.length && <tr><td colSpan="7">目前無法建立時段人力矩陣，請確認營業時間與人員主檔。</td></tr>}
-              </tbody>
-            </table>}
-          </div>
-        </section>
-      )}
-
-      </section>
-    </>
-  );
-}
-
-function StoreLeaveCalendar({ autoArrangeStore, canBulkEditSchedule, canEditSchedule, canEditStaffSchedule, clearStore, dailyShifts, drafts, isUploading, leaveMonth, monthDays, salaryRows, saveDraft, scheduleStaff, store, toggleLeaveDay, updateDraft, uploadStore }) {
-  const [leaveActionTarget, setLeaveActionTarget] = useState(null);
-  const totalLeaveDays = store.staff.reduce((sum, person) => sum + countLeaveDays(drafts[leaveDraftKey(leaveMonth, person.id)]?.dates), 0);
-  const maxOffPerDay = Math.max(store.staff.length - store.demand, 0);
-
-  const applyLeaveAction = (action) => {
-    if (!leaveActionTarget) return;
-    const { person, day } = leaveActionTarget;
-    toggleLeaveDay(person.id, day, action === "clear" ? "" : action);
-    setLeaveActionTarget(null);
-  };
-
-  return (
-    <div className="store-leave-card">
-      <div className="store-leave-head">
-        <div>
-          <h3><span className="code-chip">{store.code}</span> {store.name}</h3>
-          <p>{store.staff.length} 人計入排班，門店每日需求 {store.demand} 人，每日最多可排休 {maxOffPerDay} 人，本月已排休 {totalLeaveDays} 天。{store.ruleNote}</p>
-        </div>
-        <div className="panel-actions">
-          <button className="primary" type="button" onClick={() => uploadStore(store)} disabled={!canBulkEditSchedule || isUploading}>
-            {isUploading ? "上傳中..." : "上傳本店排假"}
-          </button>
-          <button type="button" onClick={() => autoArrangeStore(store)} disabled={!canBulkEditSchedule || !maxOffPerDay}>一鍵平均排休</button>
-          <button type="button" onClick={() => clearStore(store)} disabled={!canBulkEditSchedule}>清空本店</button>
-        </div>
-      </div>
-      {!canEditSchedule && (
-        <p className="leave-calendar-lock-note">本月班表已由總部確認。門店如需調整，請先在上方送出修改申請，核可後即可點選休假日期。</p>
-      )}
-      <div className="table-wrap leave-calendar-wrap">
-        <table className="leave-calendar-table">
-          <thead>
-            <tr>
-              <th className="leave-staff-col">人員</th>
-              {monthDays.map((day) => {
-                const date = new Date(`${leaveMonth}-${String(day).padStart(2, "0")}T00:00:00`);
-                const isWeekend = date.getDay() === 0 || date.getDay() === 6;
-                return <th className={isWeekend ? "weekend" : ""} key={day}>{day}</th>;
-              })}
-              <th>計</th>
-              <th>月休</th>
-              <th>假別</th>
-              <th>狀態</th>
-              <th className="leave-note-col">備註</th>
-            </tr>
-          </thead>
-          <tbody>
-            {store.staff.map((person) => {
-              const key = leaveDraftKey(leaveMonth, person.id);
-              const draft = drafts[key] || {};
-              const restDays = getSuggestedRestDays(person.role, salaryRows);
-              const leaveDays = countLeaveDays(draft.dates);
-              const status = getLeaveStatus(draft.dates, restDays, monthDays);
-              const canEditPerson = canEditStaffSchedule(person.id);
-              return (
-                <tr key={person.id}>
-                  <th className="leave-staff-col">
-                    <strong>{person.employeeName}</strong>
-                    <span>{person.role}</span>
-                    {(person.weekday_start_time || person.work_start_time || person.weekday_end_time || person.work_end_time) && (
-                      <span>
-                        {person.employment_type === "兼職" ? "平 " : "預設 "}
-                        {formatTime24(person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.weekday_end_time || person.work_end_time) || "未填"}
-                        {person.employment_type === "兼職" && (
-                          <> / 假 {formatTime24(person.holiday_start_time || person.weekday_start_time || person.work_start_time) || "未填"}–{formatTime24(person.holiday_end_time || person.weekday_end_time || person.work_end_time) || "未填"}</>
-                        )}
-                      </span>
-                    )}
-                  </th>
-                  {monthDays.map((day) => {
-                    const dayStatus = scheduleDayStatus(draft, day);
-                    const checked = Boolean(dayStatus);
-                    const source = nonWorkingDayStatuses.has(dayStatus) ? leaveDaySource(draft, day) : "working";
-                    return (
-                      <td className="leave-day-cell" key={day}>
-                        <button
-                          aria-label={`${person.employeeName} ${day}日${checked ? "取消休假" : "排休"}`}
-                          className={checked ? `leave-dot on ${source}` : "leave-dot"}
-                          type="button"
-                          disabled={!canEditPerson}
-                          onClick={() => setLeaveActionTarget({ person, day, checked })}
-                        >
-                          {dayStatus}
-                        </button>
-                      </td>
-                    );
-                  })}
-                  <td className="leave-total">{leaveDays}</td>
-                  <td>{restDays || "-"}</td>
-                  <td>
-                    <select
-                      className="leave-type-select"
-                      value={draft.leaveType || "排休"}
-                      disabled={!canEditPerson}
-                      onChange={(event) => {
-                        const nextDraft = { ...draft, leaveType: event.target.value };
-                        updateDraft(person.id, "leaveType", event.target.value);
-                        saveDraft(person, nextDraft);
-                      }}
-                    >
-                      {leaveTypeOptions.map((option) => <option value={option} key={option}>{option}</option>)}
-                    </select>
-                  </td>
-                  <td><span className={`chip ${taskTone(status)}`}>{status}</span></td>
-                  <td>
-                    <input
-                      className="table-input leave-note-input"
-                      value={draft.note || ""}
-                      disabled={!canEditPerson}
-                      onChange={(event) => updateDraft(person.id, "note", event.target.value)}
-                      onBlur={(event) => saveDraft(person, { ...draft, note: event.target.value })}
-                      placeholder="代班、禁休"
-                    />
-                  </td>
-                </tr>
-              );
-            })}
-            <StoreLeaveSummaryRows
-              dailyShifts={dailyShifts}
-              drafts={drafts}
-              leaveMonth={leaveMonth}
-              monthDays={monthDays}
-              scheduleStaff={scheduleStaff}
-              store={store}
-            />
-          </tbody>
-        </table>
-      </div>
-      {leaveActionTarget && (
-        <div className="leave-action-backdrop" role="presentation" onClick={() => setLeaveActionTarget(null)}>
-          <section
-            aria-labelledby={`leave-action-title-${store.code}`}
-            aria-modal="true"
-            className="leave-action-sheet"
-            role="dialog"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="leave-action-heading">
-              <div>
-                <small>{store.code} {store.name}</small>
-                <h4 id={`leave-action-title-${store.code}`}>{leaveActionTarget.person.employeeName}｜{Number(leaveMonth.slice(5))}月{leaveActionTarget.day}日</h4>
-              </div>
-              <button aria-label="關閉排休操作" className="leave-action-close" type="button" onClick={() => setLeaveActionTarget(null)}>×</button>
-            </div>
-            <p>紅字為未出勤；藍字為假日出勤並計入有效人力。</p>
-            <div className="leave-action-options">
-              {scheduleDayStatusOptions.map((status) => (
-                <button className={nonWorkingDayStatuses.has(status) ? "leave-action-rest" : "leave-action-work"} type="button" key={status} onClick={() => applyLeaveAction(status)}>{status}</button>
-              ))}
-              <button type="button" onClick={() => applyLeaveAction("clear")}>清除<span>恢復未設定</span></button>
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function StoreLeaveSummaryRows({ dailyShifts, drafts, leaveMonth, monthDays, scheduleStaff, store }) {
-  const dailyRows = monthDays.map((day) => {
-    const staffing = calculateStoreStaffingForDay(store, drafts, leaveMonth, day, dailyShifts, scheduleStaff);
-    return {
-      day,
-      ...staffing,
-    };
-  });
-  const segmentTemplates = buildStaffingSegments(store);
-
-  return (
-    <>
-      <tr className="leave-summary-row staff-count">
-        <th className="leave-staff-col">實際上班</th>
-        {dailyRows.map((row) => <td key={row.day}>{row.workingPeopleCount}</td>)}
-        <td>{dailyRows.reduce((sum, row) => sum + row.offCount, 0)}</td>
-        <td colSpan="4" />
-      </tr>
-      {segmentTemplates.map((segment) => (
-        <tr className="leave-summary-row staff-count" key={segment.key}>
-          <th className="leave-staff-col">{segment.label}人力</th>
-          {dailyRows.map((row) => {
-            const segmentRow = row.segmentRows.find((item) => item.key === segment.key);
-            return <td key={row.day}>{staffingCountText(segmentRow?.count || 0)}</td>;
-          })}
-          <td />
-          <td colSpan="4" />
-        </tr>
-      ))}
-      <tr className="leave-summary-row staff-count">
-        <th className="leave-staff-col">有效人力</th>
-        {dailyRows.map((row) => <td key={row.day}>{staffingCountText(row.effectiveCount)}</td>)}
-        <td />
-        <td colSpan="4" />
-      </tr>
-      <tr className="leave-summary-row demand-count">
-        <th className="leave-staff-col">店面需求</th>
-        {dailyRows.map((row) => <td key={row.day}>{store.demand}</td>)}
-        <td />
-        <td colSpan="4" />
-      </tr>
-      <tr className="leave-summary-row surplus-count">
-        <th className="leave-staff-col">缺口小計</th>
-        {dailyRows.map((row) => (
-          <td className={row.surplus < 0 ? "negative" : row.surplus > 0 ? "positive" : ""} key={row.day}>{staffingCountText(row.surplus)}</td>
-        ))}
-        <td />
-        <td colSpan="4" />
-      </tr>
-    </>
-  );
-}
-
-function ScheduleModule({
-  currentRole,
-  scheduleRows,
-  selectedReport,
-  selectedStoreId,
-  storeHours,
-  staffRoster,
-  salaryRows,
-  stores,
-  profile,
-  storeRelationGroups,
-  workforceViews,
-  onNotify,
-  canViewSalary,
-}) {
-  const isStoreScoped = currentRole === "store_manager";
-  const selectedStoreRecord = isStoreScoped
-    ? (
-        findStoreScopedRecord(stores, profile?.store_id) ||
-        findStoreScopedRecord(stores, profile?.store_code) ||
-        findStoreScopedRecord(stores, selectedStoreId) ||
-        selectedReport
-      )
-    : null;
-  const selectedStoreCode = isStoreScoped
-    ? (
-        normalizeStoreScopedScheduleCode(canonicalStoreCode(selectedStoreRecord)) ||
-        normalizeStoreScopedScheduleCode(canonicalStoreCode(selectedReport))
-      )
-      : "";
-
-  const selectedStoreName = isStoreScoped
-    ? (
-        selectedStoreCode === "S05"
-          ? "前鎮隆興店"
-          : displayStoreName(selectedStoreRecord || selectedReport)
-      )
-    : "";
-  const scopedScheduleRows = isStoreScoped
-    ? (selectedStoreCode ? scheduleRows.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
-    : scheduleRows;
-  const scopedStaffRoster = isStoreScoped
-    ? (selectedStoreCode ? staffRoster.filter((row) => canonicalStoreCode(row) === selectedStoreCode) : [])
-    : staffRoster;
-  const activeRows = scopedScheduleRows.filter((row) => row.status !== "暫停營業");
-  const shortageRows = scopedScheduleRows.filter((row) => row.status === "人力不足");
-  const closedRows = scopedScheduleRows.filter((row) => row.status === "暫停營業");
-  const managerCount = new Set(
-    scopedStaffRoster
-      .filter((row) => isStoreLeadershipRole(row.role))
-      .map((row) => row.storeName),
-  ).size;
-  return (
-    <div className="workspace module-grid">
-      <section className="kpi-strip schedule-kpi-strip">
-        <Metric label="本週營運時段" value={`${scopedScheduleRows.length} 筆`} detail="依營業時段自動產生" />
-        <Metric label="有效營運時段" value={`${activeRows.length} 筆`} detail="不含暫停營業門店" tone="good" />
-        <Metric label="尖峰缺員時段" value={`${shortageRows.length} 筆`} detail={shortageRows[0]?.storeName || "目前無缺員"} tone={shortageRows.length ? "bad" : "good"} />
-        <Metric label="有主管門店" value={`${managerCount} 店`} detail="委任店經理亦列入計算" />
-        <Metric label="暫停營業門店" value={`${closedRows.length} 店`} detail={closedRows[0]?.storeName || "目前無暫停門店"} tone={closedRows.length ? "warn" : "good"} />
-      </section>
-
-      <MonthlyLeavePlanner
-        allowedStoreCode={selectedStoreCode}
-        allowedStoreName={selectedStoreName}
-        isStoreScoped={isStoreScoped}
-        staffRoster={staffRoster}
-        salaryRows={salaryRows}
-        canViewSalary={canViewSalary}
-        storeHours={storeHours}
-        storeRelationGroups={storeRelationGroups}
-        workforceViews={workforceViews}
-        onNotify={onNotify}
-      />
-
-      <section className="panel">
-        <div className="panel-head">
-          <div>
-            <h2>排班規則</h2>
-            <p>用於店長每週排班與總部抽查。</p>
-          </div>
-        </div>
-        <div className="flow-list">
-          <span><strong>尖峰優先</strong>：中午與晚峰須滿足各店值班人數，低峰再安排備料、清潔與補貨。</span>
-          <span><strong>主管在場</strong>：每店每日至少由店長或副店長負責主要時段。</span>
-          <span><strong>缺員升級</strong>：尖峰人力不足需於前一日回報督導長，執行督導協調支援。</span>
-          <span><strong>關聯門店</strong>：五甲與南華合併排假、合併看人力；兩店目前均為營運中。</span>
-        </div>
-      </section>
-
-    </div>
-  );
 }
 
 function HqTaskDispatchModule({ tasks, stores, selectedStoreId, onSave }) {
@@ -6677,21 +4052,12 @@ function ReviewConsole({ reports, report, products, onSelect, onReview }) {
     </div>
   );
 }
+
 function Info({ title, text }) {
   return (
     <div className="info-card">
       <strong>{title}</strong>
       <p>{text}</p>
-    </div>
-  );
-}
-
-function Metric({ label, value, detail, tone: metricTone = "neutral" }) {
-  return (
-    <div className={`metric ${metricTone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <p>{detail}</p>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   calculateDailyStaffing,
   isScheduleExcludedRole,
   scheduleGroupForStore,
+  sortTemporarySupportRows,
 } from "../src/modules/scheduling/index.js";
 import { STORE_RELATION_GROUPS } from "../src/lib/storeScope.js";
 
@@ -59,4 +60,16 @@ test("單日支援會從原店移出並計入支援店", () => {
   const support = calculateDailyStaffing({ ...common, storeCodes: ["S09"], demand: 1 });
   assert.equal(home.workingPeopleCount, 0);
   assert.equal(support.workingPeopleCount, 1);
+});
+
+test("臨時支援門店固定依缺員、冗員、滿編排序", () => {
+  const rows = sortTemporarySupportRows([
+    { code: "S03", surplus: 0 },
+    { code: "S02", surplus: 2 },
+    { code: "S01", surplus: -1 },
+    { code: "S04", surplus: -3 },
+    { code: "S05", surplus: 1 },
+  ]);
+
+  assert.deepEqual(rows.map((row) => row.code), ["S04", "S01", "S02", "S05", "S03"]);
 });

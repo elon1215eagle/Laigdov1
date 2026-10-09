@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   buildStoreWeeklyComparisonRows,
   buildWeeklySameDayRows,
+  buildWeeklyStoreGroups,
 } from "../src/modules/daily-report/index.js";
 
 test("weekly comparison aligns the same weekday across two weeks", () => {
@@ -104,4 +105,30 @@ test("store weekly comparison falls back to the latest reported week", () => {
   assert.deepEqual(rows.map((row) => row.currentDate), ["2026-08-03", "2026-08-09"]);
   assert.equal(rows[0].comparisonPeriod, "latest");
   assert.equal(rows[0].growth, 50);
+});
+
+test("headquarters comparison groups rows by store and summarizes reported days", () => {
+  const groups = buildWeeklyStoreGroups([
+    { storeCode: "S01", storeName: "五甲", current: {}, previous: {}, currentTotal: 120, previousTotal: 100 },
+    { storeCode: "S01", storeName: "五甲", current: null, previous: {}, currentTotal: 0, previousTotal: 80 },
+    { storeCode: "S02", storeName: "凱旋", current: {}, previous: null, currentTotal: 50, previousTotal: 0 },
+  ]);
+
+  assert.equal(groups.length, 2);
+  assert.deepEqual(groups[0], {
+    storeCode: "S01",
+    storeName: "五甲",
+    rows: [
+      { storeCode: "S01", storeName: "五甲", current: {}, previous: {}, currentTotal: 120, previousTotal: 100 },
+      { storeCode: "S01", storeName: "五甲", current: null, previous: {}, currentTotal: 0, previousTotal: 80 },
+    ],
+    currentTotal: 120,
+    previousTotal: 180,
+    currentCount: 1,
+    previousCount: 2,
+    delta: -60,
+    growth: -33.33333333333333,
+    comparisonReady: true,
+  });
+  assert.equal(groups[1].comparisonReady, false);
 });
