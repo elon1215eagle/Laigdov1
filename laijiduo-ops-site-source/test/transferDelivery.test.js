@@ -70,7 +70,10 @@ test('delivery DB authorizes, serializes and audits without updating transfer re
    insert into ops_transfer_private.requests values('${id(100)}',1,'S01','S02','requested',1,'{"lines":[{"name":"排骨","quantity":2,"unit":"包"}]}',now());`);
   const original=await readFile(new URL('../supabase/migrations/20260909124828_transfer_center.sql',import.meta.url),'utf8');
   await db.exec(original.match(/create function ops_transfer_private\.actor\(\)[\s\S]*?end \$\$;/)[0]);
-  await db.exec(await readFile(new URL('../supabase/migrations/20260910152944_transfer_delivery_sheets.sql',import.meta.url),'utf8'));
+  const deliveryMigration=await readFile(new URL('../supabase/migrations/20260910152944_transfer_delivery_sheets.sql',import.meta.url),'utf8');
+  const [baselineGuard,...deliveryStatements]=deliveryMigration.replace(/\r\n?/g,'\n').split('\n');
+  assert.equal(baselineGuard,"do $$ begin if md5(pg_get_functiondef('public.ops_transfer_api(text,jsonb)'::regprocedure)) <> '34b6cd3fbf7315b806e27d6b14470e93' then raise exception 'Unexpected transfer API baseline'; end if; end $$;");
+  await db.exec(deliveryStatements.join('\n'));
   const user=async n=>db.query("select set_config('test.uid',$1,false)",[id(n)]);
   const call=async(a,p={})=>(await db.query('select public.ops_delivery_api($1,$2) result',[a,JSON.stringify(p)])).rows[0].result;
   const write=(a,p)=>call(a,{command_id:id(command++),...p});
