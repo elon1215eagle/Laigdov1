@@ -1,0 +1,12 @@
+{
+  "version": "20261008091308",
+  "name": "disable_blocking_franchise_change_audit",
+  "archive_only": true,
+  "statements": [
+    "-- Restore the original order-first write path. The audit table and its\n-- immutable-record protection remain available, but audit capture must not\n-- participate synchronously in business-critical order transactions.\ndrop trigger if exists capture_franchise_order_audit_trigger\n  on public.franchise_orders",
+    "drop trigger if exists capture_franchise_order_item_audit_trigger\n  on public.franchise_order_items",
+    "drop trigger if exists capture_franchise_order_adjustment_audit_trigger\n  on public.franchise_order_adjustments",
+    "drop trigger if exists capture_franchise_order_product_audit_trigger\n  on public.franchise_order_products",
+    "comment on table public.franchise_change_audits is\n  'Immutable historical audit records. Synchronous capture is disabled so audit failures cannot block franchise ordering.'"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "version": "20261008094345",
+  "name": "add_franchise_notification_summary_queue",
+  "archive_only": true,
+  "statements": [
+    "create table if not exists public.franchise_order_notification_summaries (\n  id uuid primary key default gen_random_uuid(),\n  message text not null check (char_length(message) between 1 and 5000),\n  source_notification_ids uuid[] not null default '{}'::uuid[],\n  status text not null default 'pending'\n    check (status in ('pending', 'processing', 'sent', 'failed')),\n  attempts integer not null default 0 check (attempts >= 0),\n  available_at timestamptz not null default now(),\n  locked_at timestamptz,\n  sent_at timestamptz,\n  last_error text,\n  provider_message_id text,\n  created_at timestamptz not null default now(),\n  updated_at timestamptz not null default now()\n)",
+    "create index if not exists franchise_order_notification_summaries_dispatch_idx\non public.franchise_order_notification_summaries (status, available_at, created_at)",
+    "alter table public.franchise_order_notification_summaries enable row level security",
+    "revoke all on table public.franchise_order_notification_summaries from public",
+    "revoke all on table public.franchise_order_notification_summaries from anon",
+    "revoke all on table public.franchise_order_notification_summaries from authenticated",
+    "grant select on table public.franchise_order_notification_summaries to authenticated",
+    "drop policy if exists \"headquarters read order notification summaries\"\non public.franchise_order_notification_summaries",
+    "create policy \"headquarters read order notification summaries\"\non public.franchise_order_notification_summaries\nfor select\nto authenticated\nusing (\n  public.current_franchise_role()::text in (\n    'franchise_admin', 'franchise_hq', 'franchise_coo', 'franchise_cfo'\n  )\n)",
+    "create or replace function public.claim_franchise_order_notification_summaries(\n  p_limit integer default 1\n)\nreturns setof public.franchise_order_notification_summaries\nlanguage plpgsql\nsecurity definer\nset search_path = ''\nas $$\nbegin\n  return query\n  with candidates as (\n    select summary.id\n    from public.franchise_order_notification_summaries summary\n    where (\n      summary.status in ('pending', 'failed')\n      and summary.available_at <= now()\n    ) or (\n      summary.status = 'processing'\n      and summary.locked_at < now() - interval '5 minutes'\n    )\n    order by summary.created_at\n    for update skip locked\n    limit greatest(1, least(coalesce(p_limit, 1), 10))\n  )\n  update public.franchise_order_notification_summaries summary\n  set status = 'processing',\n      attempts = summary.attempts + 1,\n      locked_at = now(),\n      updated_at = now()\n  from candidates\n  where summary.id = candidates.id\n  returning summary.*;\nend;\n$$",
+    "revoke all on function public.claim_franchise_order_notification_summaries(integer)\nfrom public",
+    "revoke all on function public.claim_franchise_order_notification_summaries(integer)\nfrom anon",
+    "revoke all on function public.claim_franchise_order_notification_summaries(integer)\nfrom authenticated",
+    "grant execute on function public.claim_franchise_order_notification_summaries(integer)\nto service_role",
+    "create or replace function public.complete_franchise_order_notification_summary(\n  p_summary_id uuid,\n  p_provider_message_id text\n)\nreturns void\nlanguage plpgsql\nsecurity definer\nset search_path = ''\nas $$\ndeclare\n  source_ids uuid[];\n  completed_at timestamptz := now();\nbegin\n  select summary.source_notification_ids\n  into source_ids\n  from public.franchise_order_notification_summaries summary\n  where summary.id = p_summary_id\n  for update;\n\n  if not found then\n    raise exception 'Notification summary not found.';\n  end if;\n\n  update public.franchise_order_notification_outbox queue\n  set status = 'sent',\n      sent_at = completed_at,\n      locked_at = null,\n      last_error = null,\n      provider_message_id = 'summary:' || coalesce(p_provider_message_id, p_summary_id::text),\n      updated_at = completed_at\n  where queue.id = any(source_ids);\n\n  update public.franchise_order_notification_summaries summary\n  set status = 'sent',\n      sent_at = completed_at,\n      locked_at = null,\n      last_error = null,\n      provider_message_id = p_provider_message_id,\n      updated_at = completed_at\n  where summary.id = p_summary_id;\nend;\n$$",
+    "revoke all on function public.complete_franchise_order_notification_summary(uuid, text)\nfrom public",
+    "revoke all on function public.complete_franchise_order_notification_summary(uuid, text)\nfrom anon",
+    "revoke all on function public.complete_franchise_order_notification_summary(uuid, text)\nfrom authenticated",
+    "grant execute on function public.complete_franchise_order_notification_summary(uuid, text)\nto service_role",
+    "comment on table public.franchise_order_notification_summaries is\n  'Non-blocking LINE summary queue for consolidating historical notification failures.'"
+  ]
+}
