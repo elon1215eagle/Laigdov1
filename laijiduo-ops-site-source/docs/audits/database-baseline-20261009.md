@@ -6,7 +6,7 @@
 - Supabase 專案：`wfhaqnicwqjfgzjcfmsq`
 - 正式專案狀態：`ACTIVE_HEALTHY`
 - 檢查模式：唯讀；未執行 DDL、DML、migration repair 或 db push
-- 判定：正式庫可營運，但 migration history 與本機已嚴重分岔。本分支只建立可追溯清冊、驗證 SQL 與修正草案，不更動正式庫。
+- 判定：正式庫可營運，但 migration history 與本機已嚴重分岔。本分支建立可追溯清冊與驗證 SQL；2026-10-09 11:42（Asia/Taipei）已依核准完成低風險安全維修。
 
 ## 基準範圍
 
@@ -66,7 +66,7 @@
 - `docs/audits/database-rpc-permission-matrix-20261009.csv`：80 支 public function 權限矩陣
 - `docs/audits/database-trigger-inventory-20261009.csv`：23 個 trigger 清冊
 - `supabase/production_security_catalog_audit.sql`：可重複執行的唯讀驗證 SQL
-- `supabase/drafts/20261009_security_baseline_hardening.sql`：未套用的可回滾修正草案
+- `supabase/production_maintenance_20261009_security_baseline_hardening.sql`：已套用的維修與回滾紀錄
 
 ## 已安裝 Extension
 
@@ -84,4 +84,33 @@
 - 正式資料不變。
 - 正式 migration history 不變。
 - 清冊可由 catalog SQL 重建。
-- 修正草案不得直接部署；須先完成 RPC 行為測試及 rollback 演練。
+- 後續新增修正仍須先完成 RPC 行為測試及 rollback 演練。
+
+## 維修結果
+
+### 已套用
+
+1. `current_taipei_business_date()` 固定 `search_path=pg_catalog`。
+2. `set_monthly_schedule_lock_updated_at()` 固定 `search_path=pg_catalog`。
+3. 撤銷 `anon` 與 `authenticated` 對 `rls_auto_enable()` 的執行權；保留 `service_role`。
+
+### 門店回報保護證據
+
+| 驗證項目 | 維修前 | 維修後 | 結果 |
+|---|---|---|---|
+| 營業日 | 2026-10-09 | 2026-10-09 | 一致 |
+| 昨日已回報門店 | 10 / 10 | 10 / 10 | 一致 |
+| 回報 RLS policy hash | `d34e17f9e13040bd4cbf61daf3ce1623` | 同左 | 未變更 |
+| 回報 table grants hash | `b3dea5663c8b1f6106a60bbea8bffe2e` | 同左 | 未變更 |
+| `ensure_rls` event trigger | 啟用 | 啟用 | 正常 |
+| 匿名可執行 SECURITY DEFINER 警示 | 5 | 4 | 減少 1 |
+| 登入者可執行 SECURITY DEFINER 警示 | 39 | 38 | 減少 1 |
+| Mutable search-path 警示 | 2 | 0 | 已排除 |
+
+### 功能驗證
+
+- 門店回報核心測試：22 / 22 通過。
+- 正式 APP：鳳山五甲店與屏東潮二店的營業日、14:00、19:00、全日總營收、現金差異及送出按鈕均正常。
+- 瀏覽器 console：0 個 error／warning。
+- 驗證過程未送出測試業績，未新增、修改或刪除營運資料。
+- 人資主檔未讀寫、未變更。

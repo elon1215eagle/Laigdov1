@@ -1,10 +1,8 @@
--- DRAFT ONLY - DO NOT APPLY DIRECTLY TO PRODUCTION
+-- APPLIED TO PRODUCTION: 2026-10-09 11:42 Asia/Taipei
+-- Supabase project: wfhaqnicwqjfgzjcfmsq
+-- Execution method: one guarded transaction through Supabase execute_sql
 -- Scope: catalog hardening only. No business or HR data changes.
--- Preconditions:
--- 1. Run production_security_catalog_audit.sql and archive the result.
--- 2. Verify public ordering and quick-checkout RPC regression tests.
--- 3. Apply in an isolated Supabase project first.
--- 4. Record rollback evidence.
+-- Do not re-run without a new maintenance approval and pre-flight snapshot.
 
 begin;
 
