@@ -1,0 +1,209 @@
+{
+  "date": "2026-10-11",
+  "project_id": "wfhaqnicwqjfgzjcfmsq",
+  "authorization": "核准，審核通過後套用",
+  "review": "manual targeted review passed; automated risk launcher blocked by Windows Application Control",
+  "migration": {
+    "version": "20261011013730",
+    "name": "fix_schedule_approval_consumption_scope",
+    "recordedSqlMatchesCandidate": true
+  },
+  "verification": {
+    "before": {
+      "columns": [
+        {
+          "data_type": "uuid",
+          "table_name": "stores",
+          "column_name": "id"
+        },
+        {
+          "data_type": "text",
+          "table_name": "stores",
+          "column_name": "store_code"
+        },
+        {
+          "data_type": "uuid",
+          "table_name": "profiles",
+          "column_name": "id"
+        },
+        {
+          "data_type": "USER-DEFINED",
+          "table_name": "profiles",
+          "column_name": "role"
+        },
+        {
+          "data_type": "uuid",
+          "table_name": "profiles",
+          "column_name": "store_id"
+        },
+        {
+          "data_type": "boolean",
+          "table_name": "profiles",
+          "column_name": "is_active"
+        }
+      ],
+      "triggers": [
+        {
+          "tgname": "consume_leave_schedule_approval",
+          "definition": "CREATE TRIGGER consume_leave_schedule_approval AFTER INSERT OR DELETE OR UPDATE ON public.monthly_leave_plans FOR EACH ROW EXECUTE FUNCTION private.consume_schedule_change_approval()"
+        },
+        {
+          "tgname": "consume_shift_schedule_approval",
+          "definition": "CREATE TRIGGER consume_shift_schedule_approval AFTER INSERT OR DELETE OR UPDATE ON public.daily_staff_shifts FOR EACH ROW EXECUTE FUNCTION private.consume_schedule_change_approval()"
+        }
+      ],
+      "functions": [
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "oid": "17958",
+          "owner": "postgres",
+          "nspname": "public",
+          "proname": "current_profile_role",
+          "body_md5": "7968c1be8b46da0054f4d94fcc40e1ab",
+          "proconfig": [
+            "search_path=public"
+          ],
+          "prosecdef": true
+        },
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "oid": "19537",
+          "owner": "postgres",
+          "nspname": "public",
+          "proname": "save_daily_operations",
+          "body_md5": "0ec03d0a74822787c0261e9faebe1397",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "prosecdef": false
+        },
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+          "oid": "19378",
+          "owner": "postgres",
+          "nspname": "private",
+          "proname": "store_owns_schedule_request_scope",
+          "body_md5": "e38c23ff5ab80103cc4252d93c3e480f",
+          "proconfig": [
+            "search_path=pg_catalog, public, private"
+          ],
+          "prosecdef": true
+        },
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+          "oid": "20387",
+          "owner": "postgres",
+          "nspname": "private",
+          "proname": "store_can_manage_schedule_entry",
+          "body_md5": "5e5e91b88b988948bca6d3337a149ed8",
+          "proconfig": [
+            "search_path=pg_catalog, public, private"
+          ],
+          "prosecdef": true
+        },
+        {
+          "acl": null,
+          "oid": "20392",
+          "owner": "postgres",
+          "nspname": "private",
+          "proname": "consume_schedule_change_approval",
+          "body_md5": "f6c9a497e33975e911b5ed70b049b309",
+          "proconfig": [
+            "search_path=pg_catalog, public, private"
+          ],
+          "prosecdef": true
+        }
+      ],
+      "latest_migration": "20261009034937"
+    },
+    "after": {
+      "triggers": [
+        {
+          "tgname": "consume_leave_schedule_approval",
+          "definition": "CREATE TRIGGER consume_leave_schedule_approval AFTER INSERT OR DELETE OR UPDATE ON public.monthly_leave_plans FOR EACH ROW EXECUTE FUNCTION private.consume_schedule_change_approval()"
+        },
+        {
+          "tgname": "consume_shift_schedule_approval",
+          "definition": "CREATE TRIGGER consume_shift_schedule_approval AFTER INSERT OR DELETE OR UPDATE ON public.daily_staff_shifts FOR EACH ROW EXECUTE FUNCTION private.consume_schedule_change_approval()"
+        }
+      ],
+      "functions": [
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "oid": "17958",
+          "owner": "postgres",
+          "nspname": "public",
+          "proname": "current_profile_role",
+          "body_md5": "7968c1be8b46da0054f4d94fcc40e1ab",
+          "proconfig": [
+            "search_path=public"
+          ],
+          "prosecdef": true
+        },
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+          "oid": "19378",
+          "owner": "postgres",
+          "nspname": "private",
+          "proname": "store_owns_schedule_request_scope",
+          "body_md5": "e38c23ff5ab80103cc4252d93c3e480f",
+          "proconfig": [
+            "search_path=pg_catalog, public, private"
+          ],
+          "prosecdef": true
+        },
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres,service_role=X/postgres}",
+          "oid": "19537",
+          "owner": "postgres",
+          "nspname": "public",
+          "proname": "save_daily_operations",
+          "body_md5": "0ec03d0a74822787c0261e9faebe1397",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "prosecdef": false
+        },
+        {
+          "acl": "{postgres=X/postgres,authenticated=X/postgres}",
+          "oid": "20387",
+          "owner": "postgres",
+          "nspname": "private",
+          "proname": "store_can_manage_schedule_entry",
+          "body_md5": "5e5e91b88b988948bca6d3337a149ed8",
+          "proconfig": [
+            "search_path=pg_catalog, public, private"
+          ],
+          "prosecdef": true
+        },
+        {
+          "acl": null,
+          "oid": "20392",
+          "owner": "postgres",
+          "nspname": "private",
+          "proname": "consume_schedule_change_approval",
+          "body_md5": "92f1ba305489d5f4f14cbeafd5c50f3a",
+          "proconfig": [
+            "search_path=pg_catalog, public, private"
+          ],
+          "prosecdef": true
+        }
+      ],
+      "migrations": [
+        {
+          "name": "fix_schedule_approval_consumption_scope",
+          "version": "20261011013730"
+        },
+        {
+          "name": "harden_authenticated_rpc_guards",
+          "version": "20261009034937"
+        }
+      ]
+    },
+    "functionAndTriggerComparison": "PASS"
+  },
+  "securityAdvisorsUnchanged": true,
+  "productionBusinessWriteTest": false,
+  "fullMigrationChainProductionReady": false
+}
+
