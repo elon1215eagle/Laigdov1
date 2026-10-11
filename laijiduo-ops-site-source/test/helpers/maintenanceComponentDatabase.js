@@ -65,6 +65,8 @@ export async function componentDatabase(component) {
         create table public.store_relation_groups(id uuid primary key,group_code text,
           coordinating_store_code text,schedule_shared boolean,is_active boolean);
         create table public.store_relation_group_members(group_id uuid,store_code text);
+        create table public.store_management_relations(managing_store_code text,managed_store_code text,
+          relationship_type text,is_active boolean,effective_from date,effective_to date);
         create table public.monthly_leave_plans(id uuid primary key default gen_random_uuid(),
           period_month text,store_code text,store_name text,staff_id text references public.store_staff(id),
           employee_name text,role_name text,leave_days integer[],manual_leave_days integer[],auto_leave_days integer[],
@@ -89,6 +91,7 @@ export async function componentDatabase(component) {
         'docs/audits/production-migration-history/20260802141922_workforce_safe_cutover_control.sql',
         'docs/audits/production-migration-history/20260802141935_enforce_workforce_single_writer.sql',
         'supabase/migrations/20260829044859_add_monthly_schedule_day_statuses.sql',
+        'test/fixtures/scheduleScopeProduction-20261011.sql',
       ];
     } else throw new Error('Unknown isolated component');
     for (const path of paths) await db.exec(await readFile(new URL(path, root), 'utf8'));
